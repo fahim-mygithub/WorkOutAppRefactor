@@ -1,0 +1,164 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 222.2 84% 4.9%;
+    --foreground: 210 40% 98%;
+    --card: 222.2 84% 4.9%;
+    --card-foreground: 210 40% 98%;
+    --primary: 217.2 91.2% 59.8%;
+    --primary-foreground: 222.2 84% 4.9%;
+    --secondary: 217.2 32.6% 17.5%;
+    --secondary-foreground: 210 40% 98%;
+    --accent: 217.2 32.6% 17.5%;
+    --accent-foreground: 210 40% 98%;
+    --muted: 217.2 32.6% 17.5%;
+    --muted-foreground: 215 20.2% 65.1%;
+    --border: 217.2 32.6% 17.5%;
+    --input: 217.2 32.6% 17.5%;
+    --ring: 224.3 76.3% 94.1%;
+  }
+
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    line-height: 1.6;
+    color: hsl(var(--foreground));
+    background: hsl(var(--background));
+    touch-action: manipulation;
+  }
+
+  html {
+    /* Support for safe area insets */
+    padding-bottom: env(safe-area-inset-bottom);
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+    padding-top: env(safe-area-inset-top);
+
+    /* Mobile viewport handling - allow proper scrolling */
+    height: 100%;
+    overflow-x: hidden;
+    overflow-y: auto;
+  }
+}
+
+@layer utilities {
+  /* Mobile viewport fixes for bottom navigation */
+  .fixed-bottom-safe {
+    position: fixed;
+    bottom: 0;
+    bottom: env(safe-area-inset-bottom);
+  }
+
+  /* Stable fixed positioning for mobile */
+  .mobile-fixed-bottom {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 50;
+    /* Prevent movement during scroll */
+    transform: translateZ(0);
+    -webkit-backface-visibility: hidden;
+    backface-visibility: hidden;
+  }
+
+  /* Use dynamic viewport height when available */
+  @supports (height: 100dvh) {
+    .min-h-screen-mobile {
+      min-height: 100dvh;
+    }
+  }
+
+  /* Fallback for browsers without dvh support */
+  @supports not (height: 100dvh) {
+    .min-h-screen-mobile {
+      min-height: 100vh;
+    }
+  }
+
+  /* Bottom navigation specific fixes */
+  .bottom-nav-keyboard-aware {
+    /* Stable positioning without transforms that cause issues */
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+  }
+
+  .bottom-nav-keyboard-aware.keyboard-hidden {
+    /* Keep at bottom and reset transform */
+    bottom: 0;
+    transform: translateY(0);
+    transition: transform 0.2s ease-in-out;
+  }
+
+  .bottom-nav-keyboard-aware.keyboard-visible {
+    /* Hide bottom nav when keyboard is visible to prevent conflicts */
+    transform: translateY(100%);
+    transition: transform 0.2s ease-in-out;
+  }
+
+  /* For PWA mode - ensure proper positioning */
+  @media (display-mode: standalone) {
+    .bottom-nav-pwa {
+      /* Ensure bottom nav stays at device bottom in PWA mode */
+      padding-bottom: env(safe-area-inset-bottom, 0px);
+      bottom: 0;
+    }
+  }
+
+  /* Mobile-specific fixes for viewport behavior */
+  @supports (-webkit-touch-callout: none) {
+    /* iOS Safari specific fixes */
+    .mobile-viewport-stable {
+      height: 100vh;
+      /* Use visual viewport when available */
+      height: 100svh;
+    }
+  }
+
+  /* Scroll container that works with fixed bottom nav */
+  .scroll-container-with-bottom-nav {
+    height: 100vh;
+    height: 100svh;
+    overflow-y: auto;
+    overflow-x: hidden;
+    /* Prevent scroll chaining on mobile */
+    overscroll-behavior: contain;
+    /* Smooth scrolling */
+    -webkit-overflow-scrolling: touch;
+    /* Account for bottom nav */
+    padding-bottom: calc(4.5rem + env(safe-area-inset-bottom, 0px));
+  }
+
+  /* iOS Safari specific fixes for absolute positioning */
+  .ios-absolute-bottom-nav {
+    position: absolute;
+    z-index: 50;
+    /* Hardware acceleration for smooth positioning */
+    transform: translateZ(0);
+    -webkit-backface-visibility: hidden;
+    backface-visibility: hidden;
+    /* Smooth transitions when switching positioning modes */
+    transition: none; /* Disable transitions during position calculations */
+  }
+
+  /* Ensure iOS absolute nav doesn't interfere with fixed styles */
+  .ios-absolute-bottom-nav.keyboard-visible {
+    /* Override the transform when using absolute positioning */
+    transform: translateZ(0) !important;
+  }
+
+  .ios-absolute-bottom-nav.keyboard-hidden {
+    /* Override the transform when using absolute positioning */
+    transform: translateZ(0) !important;
+  }
+}

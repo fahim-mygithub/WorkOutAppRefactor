@@ -1,0 +1,25 @@
+import { AuthProvider } from './contexts/AuthContext';
+import { StoreProvider } from './providers/StoreProvider';
+import { AppRouter } from './router';
+import { useAuthSync } from './hooks/useAuthSync';
+import './App.css';
+import './styles/animations.css';
+
+function AppContent() {
+  // Initialize auth sync
+  useAuthSync();
+
+  return <AppRouter />;
+}
+
+function App() {
+  return (
+    <StoreProvider>
+      <AuthProvider>
+        <AppContent />
+      </AuthProvider>
+    </StoreProvider>
+  );
+}
+
+export default App;

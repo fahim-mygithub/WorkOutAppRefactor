@@ -1,0 +1,33 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "sharedWorkouts",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "creatorId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "metadata.createdAt",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "customExercises",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "usageCount",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}

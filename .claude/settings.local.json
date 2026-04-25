@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run dev:*)",
+      "Bash(npm run typecheck:*)",
+      "Bash(npx eslint:*)",
+      "Bash(timeout:*)",
+      "Bash(npx tsc:*)",
+      "mcp__ide__getDiagnostics",
+      "WebFetch(domain:docs.claude.com)",
+      "Bash(/permissions)",
+      "Bash(echo $env:USERPROFILE)",
+      "Bash(dir C:Users)",
+      "Bash(dir:*)",
+      "WebSearch"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
