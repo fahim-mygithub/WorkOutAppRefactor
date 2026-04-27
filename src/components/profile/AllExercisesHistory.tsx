@@ -293,7 +293,7 @@ export const AllExercisesHistory: React.FC<AllExercisesHistoryProps> = ({
                   </p>
                 </div>
                 {group.hasPersonalRecords && (
-                  <Trophy className="h-4 w-4 text-yellow-500 flex-shrink-0 ml-2" title="Has Personal Records" />
+                  <Trophy className="h-4 w-4 text-yellow-500 flex-shrink-0 ml-2" aria-label="Has Personal Records" />
                 )}
               </div>
 

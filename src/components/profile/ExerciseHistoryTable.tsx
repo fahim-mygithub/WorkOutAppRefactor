@@ -223,13 +223,13 @@ export const ExerciseHistoryTable: React.FC<ExerciseHistoryTableProps> = ({
                   <td className="px-6 py-4 whitespace-nowrap text-sm">
                     <div className="flex gap-1">
                       {history.personalRecords?.maxWeight && (
-                        <Trophy className="h-4 w-4 text-yellow-500" title="Weight PR" />
+                        <Trophy className="h-4 w-4 text-yellow-500" aria-label="Weight PR" />
                       )}
                       {history.personalRecords?.maxReps && (
-                        <Trophy className="h-4 w-4 text-blue-500" title="Reps PR" />
+                        <Trophy className="h-4 w-4 text-blue-500" aria-label="Reps PR" />
                       )}
                       {history.personalRecords?.maxVolume && (
-                        <Trophy className="h-4 w-4 text-green-500" title="Volume PR" />
+                        <Trophy className="h-4 w-4 text-green-500" aria-label="Volume PR" />
                       )}
                     </div>
                   </td>

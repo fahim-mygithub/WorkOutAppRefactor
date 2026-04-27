@@ -194,7 +194,7 @@ export const ExerciseHistoryDetailModal: React.FC<ExerciseHistoryDetailModalProp
                               {formatDate(entry.workoutDate)}
                             </span>
                             {entry.personalRecords && Object.keys(entry.personalRecords).length > 0 && (
-                              <Trophy className="h-4 w-4 text-yellow-500" title="Personal Record" />
+                              <Trophy className="h-4 w-4 text-yellow-500" aria-label="Personal Record" />
                             )}
                           </div>
                           {entry.workoutName && (

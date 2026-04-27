@@ -103,13 +103,13 @@ export const PreviousPerformance: React.FC<PreviousPerformanceProps> = ({
           {previousPerformance.personalRecords && (
             <div className="flex gap-1">
               {previousPerformance.personalRecords.maxWeight && (
-                <Trophy className="h-3 w-3 text-yellow-500" title="Weight PR" />
+                <Trophy className="h-3 w-3 text-yellow-500" aria-label="Weight PR" />
               )}
               {previousPerformance.personalRecords.maxReps && (
-                <Trophy className="h-3 w-3 text-blue-500" title="Reps PR" />
+                <Trophy className="h-3 w-3 text-blue-500" aria-label="Reps PR" />
               )}
               {previousPerformance.personalRecords.maxVolume && (
-                <Trophy className="h-3 w-3 text-green-500" title="Volume PR" />
+                <Trophy className="h-3 w-3 text-green-500" aria-label="Volume PR" />
               )}
             </div>
           )}

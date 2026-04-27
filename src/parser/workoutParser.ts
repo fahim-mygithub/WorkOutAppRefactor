@@ -2,6 +2,8 @@ import { ParsedExercise, ParsedSet, ParsedWorkout, ParseResult, ParseError } fro
 import { Exercise } from '../types/exercise';
 import { FuzzyMatcher, MatchResult } from '../utils/fuzzyMatch';
 
+export type { ParseResult };
+
 export interface ExerciseSuggestion {
   exercise: Exercise;
   confidence: number;

@@ -78,7 +78,7 @@ export const DualViewVideo: React.FC<DualViewVideoProps> = ({
 
   // Setup video event handlers
   const setupVideoEvents = (
-    videoRef: React.RefObject<HTMLVideoElement>,
+    videoRef: React.RefObject<HTMLVideoElement | null>,
     setState: React.Dispatch<React.SetStateAction<VideoState>>,
     url: string
   ) => {

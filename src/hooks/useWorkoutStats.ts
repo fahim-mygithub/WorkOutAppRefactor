@@ -9,6 +9,8 @@ import {
   type MonthlyStats
 } from '../utils/statsCalculator';
 
+export type { WeeklyStats, MonthlyStats };
+
 export interface LastWorkoutStats {
   name: string;
   date: Date;
