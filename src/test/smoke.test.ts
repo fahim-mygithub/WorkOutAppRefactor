@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest';
+import { cn } from '@/lib/utils';
 
-describe('smoke', () => {
-  it('runs', () => {
-    expect(1 + 1).toBe(2);
+describe('alias', () => {
+  it('resolves @/* to src/*', () => {
+    expect(cn('a', false && 'b', 'c')).toBe('a c');
   });
 });
