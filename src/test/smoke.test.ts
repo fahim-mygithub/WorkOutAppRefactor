@@ -6,3 +6,10 @@ describe('alias', () => {
     expect(cn('a', false && 'b', 'c')).toBe('a c');
   });
 });
+
+describe('framer-motion', () => {
+  it('imports', async () => {
+    const { motion } = await import('framer-motion');
+    expect(motion.div).toBeDefined();
+  });
+});

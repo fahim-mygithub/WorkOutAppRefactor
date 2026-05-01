@@ -25,6 +25,7 @@
     "class-variance-authority": "^0.7.1",
     "claude": "^0.1.1",
     "firebase": "^11.9.1",
+    "framer-motion": "^12.38.0",
     "lucide-react": "^0.515.0",
     "papaparse": "^5.5.3",
     "react": "^19.1.0",
