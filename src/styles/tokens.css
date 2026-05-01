@@ -1,0 +1,84 @@
+/**
+ * Design tokens — CSS custom properties for v2.
+ *
+ * Authoritative values from docs/research/2026-04-23-ui-gap-analysis.md §5,
+ * validated by Gate 1 visual showcase. Two deviations from the placeholder
+ * spec are baked in:
+ *   1. --muscle-pull is cyan (198 85% 48%), not blue — avoids accent collision.
+ *   2. --ink-muted dark mode is 70% lightness, not 73% — meets WCAG AA on dark surface.
+ *
+ * Colors are stored as raw HSL triplets (e.g. "222 47% 11%") so Tailwind can
+ * compose them with hsl(var(--token) / <alpha>) for per-call alpha.
+ *
+ * Note: this file is imported standalone in main.tsx (not via App.css's
+ * @tailwind chain), so we deliberately omit a `@layer base` wrapper — Tailwind
+ * would error without a paired `@tailwind base`. Cascade order is preserved
+ * by import order: tokens.css loads before App.css's Tailwind base.
+ */
+
+:root {
+  /* Surface */
+  --surface:        0 0% 100%;
+  --surface-subtle: 0 0% 98%;
+  --surface-raised: 0 0% 100%;
+
+  /* Ink */
+  --ink:         222 47% 11%;
+  --ink-muted:   217 19% 35%;
+  --ink-subtle:  215 16% 47%;
+  --ink-inverse:   0  0% 100%;
+
+  /* Accent */
+  --accent:    217 91% 60%;
+  --accent-fg:   0  0% 100%;
+
+  /* Semantic state */
+  --success: 142 71% 45%;
+  --warning:  38 92% 50%;
+  --danger:    0 84% 60%;
+
+  /* Muscle groups */
+  --muscle-push:        4 90% 58%;
+  --muscle-pull:      198 85% 48%;  /* cyan — collision fix vs accent */
+  --muscle-legs:       35 91% 55%;
+  --muscle-core:      280 75% 60%;
+  --muscle-cardio:    345 85% 58%;
+  --muscle-full-body: 160 60% 45%;
+  --muscle-mobility:  200 70% 55%;
+
+  /* Elevation source color */
+  --shadow: 222 47% 11%;
+}
+
+.dark {
+  /* Surface */
+  --surface:        222 47%  8%;
+  --surface-subtle: 222 47% 11%;
+  --surface-raised: 222 47% 14%;
+
+  /* Ink */
+  --ink:         210 20% 98%;
+  --ink-muted:   217 19% 70%;  /* WCAG AA fix: 70%, not 73% */
+  --ink-subtle:  215 16% 60%;
+  --ink-inverse: 222 47%  8%;
+
+  /* Accent */
+  --accent:    217 91% 65%;
+  --accent-fg:   0  0% 100%;
+
+  /* Semantic state */
+  --success: 142 71% 50%;
+  --warning:  38 92% 55%;
+  --danger:    0 84% 65%;
+
+  /* Muscle group hues stay; only shadow flips */
+
+  /* Elevation source color */
+  --shadow: 0 0% 0%;
+}
+
+/* Tabular numerals utility for live-workout metrics. */
+.font-tabular {
+  font-feature-settings: "tnum";
+  font-variant-numeric: tabular-nums;
+}
