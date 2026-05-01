@@ -21,10 +21,10 @@ describe('MuscleGroupIcon', () => {
     expect(svg.tagName.toLowerCase()).toBe('svg');
   });
 
-  it('uses the game-icons native viewBox', () => {
+  it('uses the Tabler native 24x24 viewBox', () => {
     render(<MuscleGroupIcon group="push" aria-label="Push" />);
     const svg = screen.getByRole('img', { name: /push/i });
-    expect(svg).toHaveAttribute('viewBox', '0 0 512 512');
+    expect(svg).toHaveAttribute('viewBox', '0 0 24 24');
   });
 
   it('defaults size to 24 when omitted', () => {
@@ -63,10 +63,14 @@ describe('MuscleGroupIcon', () => {
     });
   });
 
-  it('uses currentColor so callers can tint via text-* classes', () => {
+  it('uses currentColor stroke so callers can tint via text-* classes', () => {
     const { container } = render(<MuscleGroupIcon group="pull" />);
+    const svg = container.querySelector('svg');
     const path = container.querySelector('svg path');
+    expect(svg).not.toBeNull();
     expect(path).not.toBeNull();
-    expect(path?.getAttribute('fill')).toBe('currentColor');
+    // Tabler icons are stroke-based, not filled.
+    expect(svg?.getAttribute('fill')).toBe('none');
+    expect(path?.getAttribute('stroke')).toBe('currentColor');
   });
 });
