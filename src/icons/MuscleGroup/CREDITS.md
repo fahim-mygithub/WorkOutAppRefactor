@@ -11,7 +11,7 @@ so the icons can be tinted via Tailwind `text-muscle-{group}` utilities.
 
 | Muscle group | Icon name        | Author     | Source URL                                                | License   |
 | ------------ | ---------------- | ---------- | --------------------------------------------------------- | --------- |
-| push         | biceps           | Delapouite | https://game-icons.net/1x1/delapouite/biceps.html         | CC BY 3.0 |
+| push         | weight-lifting-up| Delapouite | https://game-icons.net/1x1/delapouite/weight-lifting-up.html | CC BY 3.0 |
 | pull         | muscle-up        | Lorc       | https://game-icons.net/1x1/lorc/muscle-up.html            | CC BY 3.0 |
 | legs         | leg-armor        | Delapouite | https://game-icons.net/1x1/delapouite/leg-armor.html      | CC BY 3.0 |
 | core         | abdominal-armor  | Delapouite | https://game-icons.net/1x1/delapouite/abdominal-armor.html| CC BY 3.0 |
