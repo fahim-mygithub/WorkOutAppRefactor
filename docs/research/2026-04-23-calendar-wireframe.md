@@ -14,7 +14,7 @@
 | Surface | v1 | v2 |
 |---|---|---|
 | Default view | Month grid (`WorkoutCalendar.tsx:18–90`) | **Week strip**, month one tap deeper |
-| Day glyph | Letter-on-rectangle (`L` / `M` / `H`) | **Muscle-group SVG** (game-icons.net, CC BY 3.0; Task 9) |
+| Day glyph | Letter-on-rectangle (`L` / `M` / `H`) | **Muscle-group SVG** (Tabler Icons, MIT; Task 9) |
 | Day-detail | Centered modal (`WorkoutCalendar.tsx:217–249`) | **Bottom sheet** (Task 16 Sheet primitive) |
 | Today indicator | Pulsing dot + ring | Static accent ring around cell — pulsing during a workout violates least-intrusive principle |
 | Rest day | Empty cell | Subtle 4-px dot, `bg-ink-subtle/30` |
@@ -36,7 +36,7 @@ Five states; three orthogonal signal axes (color = muscle group, glyph variant =
 | **Rest day** | 4-px dot in `bg-ink-subtle/30`, no icon |
 | **Missed** | Muscle SVG at 50 % opacity + `slash` overlay glyph + `text-danger/85` tint |
 
-Real game-icons silhouettes do not have outline-vs-filled variants like the placeholder set, so **today** and **upcoming** are differentiated by ring + opacity rather than glyph variant. Cell-level treatment (background tint, ring, badge) carries the load.
+Tabler stroke icons are single-weight outlines — they don't have a filled variant, so **today** and **upcoming** are differentiated by background fill (today: filled accent tint) and opacity (upcoming: 60%) rather than glyph variant. Cell-level treatment (background, accent date label, success dot under date) carries the load. Following the layout-inspiration brief (`docs/research/2026-04-23-calendar-layout-inspiration.md`), each cell holds a max of three visual channels: date label, glyph, and one state cue.
 
 ---
 

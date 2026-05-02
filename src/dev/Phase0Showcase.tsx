@@ -431,30 +431,44 @@ const DayCell: React.FC<typeof dayCells[number] & { theme: Theme }> = ({
   const isUpcoming = state === 'upcoming';
   const isMissed = state === 'missed';
   const isRest = state === 'rest';
-  const checkFg = theme.label === 'Light' ? 'hsl(0 0% 100%)' : 'hsl(222 47% 8%)';
+
+  // Per inspiration brief: today = filled accent tint + accent date label,
+  // no border. Completed = inline accent dot under the date, not an
+  // overhanging badge. Three-channel ceiling per cell (date / glyph / state cue).
+  const dateColor = isToday ? theme.accent : theme.inkSubtle;
 
   return (
     <div
       style={{
         position: 'relative',
-        background: isToday ? `hsl(${theme.accentHsl} / 0.08)` : theme.surfaceRaised,
-        border: isToday ? `1.5px solid ${theme.accent}` : `1px solid hsl(${theme.inkHsl} / 0.08)`,
-        borderRadius: 14,
-        aspectRatio: '1 / 1.15',
-        display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-        padding: 12, gap: 8,
+        background: isToday
+          ? `hsl(${theme.accentHsl} / 0.16)`
+          : theme.surfaceRaised,
+        border: `1px solid hsl(${theme.inkHsl} / ${isToday ? 0 : 0.08})`,
+        borderRadius: 12,
+        aspectRatio: '1 / 1.25',
+        display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'space-between',
+        padding: '10px 8px', gap: 6,
       }}
     >
-      <div style={{ ...mono10, color: theme.inkSubtle, alignSelf: 'flex-start' }}>
-        {day} {date}
+      {/* Date label centered top + completed dot inline beneath */}
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3 }}>
+        <div style={{ ...mono11, color: dateColor, fontWeight: isToday ? 600 : 400 }}>
+          {day} {date}
+        </div>
+        {isCompleted && (
+          <div style={{
+            width: 5, height: 5, borderRadius: '50%', background: theme.success,
+          }} />
+        )}
       </div>
 
       {/* Icon area */}
       <div style={{
         flex: 1,
         display: 'flex', alignItems: 'center', justifyContent: 'center',
-        color, opacity: isUpcoming ? 0.65 : isMissed ? 0.5 : 1,
-        position: 'relative',
+        color, opacity: isUpcoming ? 0.6 : isMissed ? 0.45 : 1,
+        position: 'relative', minHeight: 32,
       }}>
         {isRest ? (
           <div style={{
@@ -462,7 +476,7 @@ const DayCell: React.FC<typeof dayCells[number] & { theme: Theme }> = ({
             background: `hsl(${theme.inkSubtleHsl} / 0.4)`,
           }} />
         ) : group ? (
-          <MuscleGroupIcon group={group as MuscleGroup} size={32} />
+          <MuscleGroupIcon group={group as MuscleGroup} size={28} />
         ) : null}
 
         {isMissed && (
@@ -471,14 +485,15 @@ const DayCell: React.FC<typeof dayCells[number] & { theme: Theme }> = ({
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             color: theme.danger, opacity: 0.9,
           }}>
-            <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
               <line x1="5" y1="19" x2="19" y2="5" />
             </svg>
           </div>
         )}
       </div>
 
-      {!isRest && intensity != null && (
+      {/* Intensity bar — only on completed days; serves as the secondary metric */}
+      {isCompleted && intensity != null ? (
         <div style={{
           width: '70%', height: 2, background: `hsl(${theme.inkHsl} / 0.1)`,
           borderRadius: 2, overflow: 'hidden',
@@ -488,18 +503,8 @@ const DayCell: React.FC<typeof dayCells[number] & { theme: Theme }> = ({
             background: color, opacity: 0.6,
           }} />
         </div>
-      )}
-
-      {isCompleted && (
-        <div style={{
-          position: 'absolute', top: -6, right: -6,
-          width: 20, height: 20, borderRadius: '50%',
-          background: theme.success, color: checkFg,
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontSize: 12, fontWeight: 700, fontFamily: FONT_DISPLAY,
-        }}>
-          ✓
-        </div>
+      ) : (
+        <div style={{ height: 2 }} aria-hidden />
       )}
     </div>
   );
@@ -518,49 +523,50 @@ const MonthCell: React.FC<MonthCellData & { theme: Theme }> = ({ date, state, gr
   const isMissed = state === 'missed';
   const isRest = state === 'rest';
   const isOutside = state === 'outside';
-  const checkFg = theme.label === 'Light' ? 'hsl(0 0% 100%)' : 'hsl(222 47% 8%)';
+
+  // Per inspiration brief: month cells are perfect square, gap 4, no
+  // overhanging badge. Today filled accent tint, no border.
+  const dateColor = isToday ? theme.accent : theme.inkSubtle;
 
   return (
     <div style={{
       position: 'relative',
       background: isOutside ? 'transparent'
-        : isToday ? `hsl(${theme.accentHsl} / 0.08)`
+        : isToday ? `hsl(${theme.accentHsl} / 0.16)`
         : `hsl(${theme.inkHsl} / 0.02)`,
-      border: isToday ? `1.5px solid ${theme.accent}` : `1px solid hsl(${theme.inkHsl} / 0.05)`,
+      border: `1px solid hsl(${theme.inkHsl} / ${isToday || isOutside ? 0 : 0.05})`,
       borderRadius: 8,
-      aspectRatio: '1 / 1.05',
-      display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-      padding: 4, gap: 2,
+      aspectRatio: '1 / 1',
+      display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'space-between',
+      padding: '4px 2px', gap: 1,
       opacity: isOutside ? 0.25 : 1,
     }}>
-      <div style={{ ...mono10, fontSize: 9, color: theme.inkSubtle, alignSelf: 'flex-start' }}>
-        {date}
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
+        <div style={{ ...mono10, fontSize: 9, color: dateColor, fontWeight: isToday ? 600 : 400 }}>
+          {date}
+        </div>
+        {isCompleted && (
+          <div style={{ width: 3, height: 3, borderRadius: '50%', background: theme.success }} />
+        )}
       </div>
       <div style={{
         flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
         color, opacity: isUpcoming ? 0.55 : isMissed ? 0.4 : 1,
-        position: 'relative', minHeight: 20,
+        position: 'relative', minHeight: 18,
       }}>
         {isOutside ? null
           : isRest ? <div style={{ width: 4, height: 4, borderRadius: '50%', background: `hsl(${theme.inkSubtleHsl} / 0.4)` }} />
-          : group ? <MuscleGroupIcon group={group as MuscleGroup} size={20} />
+          : group ? <MuscleGroupIcon group={group as MuscleGroup} size={18} />
           : null}
         {isMissed && (
           <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: theme.danger, opacity: 0.8 }}>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
               <line x1="5" y1="19" x2="19" y2="5" />
             </svg>
           </div>
         )}
       </div>
-      {isCompleted && (
-        <div style={{
-          position: 'absolute', top: -3, right: -3, width: 12, height: 12, borderRadius: '50%',
-          background: theme.success, color: checkFg,
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontSize: 8, fontWeight: 700, fontFamily: FONT_DISPLAY,
-        }}>✓</div>
-      )}
+      <div style={{ height: 2 }} aria-hidden />
     </div>
   );
 };
@@ -571,7 +577,7 @@ const WeekStrip: React.FC<{ theme: Theme }> = ({ theme }) => (
   <div>
     <div style={{
       display: 'flex', alignItems: 'baseline', justifyContent: 'space-between',
-      marginBottom: 16,
+      marginBottom: 24,
     }}>
       <div style={{
         fontFamily: FONT_DISPLAY, fontSize: 22, fontWeight: 600,
@@ -581,7 +587,7 @@ const WeekStrip: React.FC<{ theme: Theme }> = ({ theme }) => (
       </div>
       <div style={{ ...mono10, color: theme.inkSubtle }}>AUG 21–27</div>
     </div>
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 8 }}>
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 6 }}>
       {dayCells.map((c) => <DayCell key={c.date} {...c} theme={theme} />)}
     </div>
   </div>
@@ -634,7 +640,7 @@ const MonthGrid: React.FC<{ theme: Theme }> = ({ theme }) => (
   <div>
     <div style={{
       display: 'flex', alignItems: 'baseline', justifyContent: 'space-between',
-      marginBottom: 16,
+      marginBottom: 24,
     }}>
       <div style={{
         fontFamily: FONT_DISPLAY, fontSize: 22, fontWeight: 600,
@@ -644,12 +650,12 @@ const MonthGrid: React.FC<{ theme: Theme }> = ({ theme }) => (
       </div>
       <div style={{ ...mono10, color: theme.inkSubtle }}>18 / 23 PLANNED</div>
     </div>
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 8, marginBottom: 8 }}>
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4, marginBottom: 6 }}>
       {['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((d, i) => (
         <div key={i} style={{ ...mono10, color: theme.inkSubtle, textAlign: 'center' }}>{d}</div>
       ))}
     </div>
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 8 }}>
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4 }}>
       {monthGridData.map((cell, i) => <MonthCell key={i} {...cell} theme={theme} />)}
     </div>
   </div>
@@ -843,49 +849,58 @@ const Legend: React.FC = () => (
     display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 24, marginTop: 24,
   }}>
     {[
-      { state: 'Completed', desc: 'Full color + check badge', group: 'push' as const },
-      { state: 'Today',     desc: 'Accent ring + full color', group: 'legs' as const },
-      { state: 'Upcoming',  desc: '65% opacity tint',         group: 'core' as const },
-      { state: 'Rest',      desc: 'Subtle dot only',          group: undefined },
-      { state: 'Missed',    desc: 'Dim + slash + danger',     group: 'cardio' as const },
+      { state: 'Completed', desc: 'Full color + dot under date', group: 'push' as const },
+      { state: 'Today',     desc: 'Filled accent tint',          group: 'legs' as const },
+      { state: 'Upcoming',  desc: '60% opacity glyph',           group: 'core' as const },
+      { state: 'Rest',      desc: 'Subtle dot only',             group: undefined },
+      { state: 'Missed',    desc: 'Dim + slash + danger',        group: 'cardio' as const },
     ].map((row) => {
       const color = groupColor(row.group);
       const isToday = row.state === 'Today';
+      const isCompleted = row.state === 'Completed';
       const isMissed = row.state === 'Missed';
       const isUpcoming = row.state === 'Upcoming';
       return (
         <div key={row.state} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           <div style={{
             position: 'relative',
-            width: 56, height: 56, borderRadius: 10, background: T.surfaceRaised,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            color, opacity: isUpcoming ? 0.65 : isMissed ? 0.5 : 1,
-            border: isToday ? `1.5px solid ${T.accent}` : `1px solid hsl(${HSL.ink} / 0.06)`,
+            width: 64, height: 80, borderRadius: 12,
+            background: isToday ? `hsl(${HSL.accent} / 0.16)` : T.surfaceRaised,
+            border: `1px solid hsl(${HSL.ink} / ${isToday ? 0 : 0.06})`,
+            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'space-between',
+            padding: '10px 8px', gap: 4,
           }}>
-            {row.group ? <MuscleGroupIcon group={row.group} size={28} /> : (
-              <div style={{
-                width: 6, height: 6, borderRadius: '50%',
-                background: `hsl(${HSL.inkSubtle} / 0.4)`,
-              }} />
-            )}
-            {isMissed && (
-              <div style={{
-                position: 'absolute', inset: 0, display: 'flex', alignItems: 'center',
-                justifyContent: 'center', color: T.danger, opacity: 0.9,
-              }}>
-                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                  <line x1="5" y1="19" x2="19" y2="5" />
-                </svg>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3 }}>
+              <div style={{ ...mono11, color: isToday ? T.accent : T.inkSubtle, fontWeight: isToday ? 600 : 400 }}>
+                W 23
               </div>
-            )}
-            {row.state === 'Completed' && (
-              <div style={{
-                position: 'absolute', top: -4, right: -4, width: 16, height: 16,
-                borderRadius: '50%', background: T.success, color: T.inkInverse,
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: 10, fontWeight: 700,
-              }}>✓</div>
-            )}
+              {isCompleted && (
+                <div style={{ width: 5, height: 5, borderRadius: '50%', background: T.success }} />
+              )}
+            </div>
+            <div style={{
+              flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
+              color, opacity: isUpcoming ? 0.6 : isMissed ? 0.45 : 1,
+              position: 'relative', minHeight: 28,
+            }}>
+              {row.group ? <MuscleGroupIcon group={row.group} size={24} /> : (
+                <div style={{
+                  width: 6, height: 6, borderRadius: '50%',
+                  background: `hsl(${HSL.inkSubtle} / 0.4)`,
+                }} />
+              )}
+              {isMissed && (
+                <div style={{
+                  position: 'absolute', inset: 0, display: 'flex', alignItems: 'center',
+                  justifyContent: 'center', color: T.danger, opacity: 0.9,
+                }}>
+                  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                    <line x1="5" y1="19" x2="19" y2="5" />
+                  </svg>
+                </div>
+              )}
+            </div>
+            <div style={{ height: 2 }} aria-hidden />
           </div>
           <div>
             <div style={{ ...mono10, color: T.inkSubtle, marginBottom: 4 }}>
@@ -919,11 +934,11 @@ const CalendarSection: React.FC = () => (
         <SubHeading
           label="05.1 — WEEK VIEW (DEFAULT)"
           title="Glance, then plan."
-          lede="The week strip is what greets the user on Home. One muscle glyph per day, color = group. Today gets the accent ring. Light and dark side-by-side for direct comparison."
+          lede="The week strip is what greets the user on Home. One muscle glyph per day, color = group. Today is filled accent. Dark first (the app default), light below."
         />
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }}>
-          <ThemedFrame theme={lightTheme}><WeekStrip theme={lightTheme} /></ThemedFrame>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
           <ThemedFrame theme={darkTheme}><WeekStrip theme={darkTheme} /></ThemedFrame>
+          <ThemedFrame theme={lightTheme}><WeekStrip theme={lightTheme} /></ThemedFrame>
         </div>
         <Legend />
 
@@ -942,7 +957,7 @@ const CalendarSection: React.FC = () => (
         <DayDetailFlow />
 
         <div style={{ ...mono11, color: T.inkSubtle, marginTop: 24, lineHeight: 1.6 }}>
-          NOTE → real muscle-group icons (game-icons.net, CC BY 3.0). Wireframe shows
+          NOTE → muscle-group glyphs from Tabler Icons (MIT). Wireframe shows
           static states; spring motion (slow / springSoft) lands with Task 16 Sheet.
         </div>
       </div>
