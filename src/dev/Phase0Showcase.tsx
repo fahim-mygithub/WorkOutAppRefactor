@@ -1,6 +1,39 @@
 import React from 'react';
-import { MuscleGroupIcon } from '@/icons/MuscleGroup';
-import type { MuscleGroup } from '@/icons/MuscleGroup';
+import {
+  Activity,
+  Calendar,
+  Dumbbell,
+  Footprints,
+  Hand,
+  HeartPulse,
+  PersonStanding,
+  Target,
+  type LucideIcon,
+} from 'lucide-react';
+
+type MuscleGroup =
+  | 'push'
+  | 'pull'
+  | 'legs'
+  | 'core'
+  | 'cardio'
+  | 'full-body'
+  | 'mobility';
+
+const MUSCLE_ICONS: Record<MuscleGroup, LucideIcon> = {
+  push: Dumbbell,
+  pull: Hand,
+  legs: Footprints,
+  core: Target,
+  cardio: HeartPulse,
+  'full-body': PersonStanding,
+  mobility: Activity,
+};
+
+const MuscleIcon: React.FC<{ group: MuscleGroup; size?: number }> = ({ group, size = 24 }) => {
+  const Icon = MUSCLE_ICONS[group];
+  return <Icon size={size} />;
+};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Phase 0 Design Language Showcase
@@ -476,7 +509,7 @@ const DayCell: React.FC<typeof dayCells[number] & { theme: Theme }> = ({
             background: `hsl(${theme.inkSubtleHsl} / 0.4)`,
           }} />
         ) : group ? (
-          <MuscleGroupIcon group={group as MuscleGroup} size={28} />
+          <MuscleIcon group={group as MuscleGroup} size={28} />
         ) : null}
 
         {isMissed && (
@@ -556,7 +589,7 @@ const MonthCell: React.FC<MonthCellData & { theme: Theme }> = ({ date, state, gr
       }}>
         {isOutside ? null
           : isRest ? <div style={{ width: 4, height: 4, borderRadius: '50%', background: `hsl(${theme.inkSubtleHsl} / 0.4)` }} />
-          : group ? <MuscleGroupIcon group={group as MuscleGroup} size={18} />
+          : group ? <MuscleIcon group={group as MuscleGroup} size={18} />
           : null}
         {isMissed && (
           <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: theme.danger, opacity: 0.8 }}>
@@ -571,22 +604,32 @@ const MonthCell: React.FC<MonthCellData & { theme: Theme }> = ({ date, state, gr
   );
 };
 
+// ─── Calendar-view header (centered icon-above-title) ───────────────────────
+
+const ViewHeader: React.FC<{ theme: Theme; title: string; subtitle: string }> = ({
+  theme, title, subtitle,
+}) => (
+  <div style={{
+    display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
+    marginBottom: 24,
+  }}>
+    <Calendar size={28} color={theme.inkSubtle} aria-hidden />
+    <div style={{
+      fontFamily: FONT_MONO, fontSize: 11, fontWeight: 600,
+      textTransform: 'uppercase', letterSpacing: '0.08em',
+      color: theme.inkSubtle,
+    }}>
+      {title}
+    </div>
+    <div style={{ ...mono10, color: theme.inkSubtle }}>{subtitle}</div>
+  </div>
+);
+
 // ─── Week strip (parameterized by theme) ────────────────────────────────────
 
 const WeekStrip: React.FC<{ theme: Theme }> = ({ theme }) => (
   <div>
-    <div style={{
-      display: 'flex', alignItems: 'baseline', justifyContent: 'space-between',
-      marginBottom: 24,
-    }}>
-      <div style={{
-        fontFamily: FONT_DISPLAY, fontSize: 22, fontWeight: 600,
-        letterSpacing: '-0.01em', color: theme.ink,
-      }}>
-        This week
-      </div>
-      <div style={{ ...mono10, color: theme.inkSubtle }}>AUG 21–27</div>
-    </div>
+    <ViewHeader theme={theme} title="Workout" subtitle="AUG 21–27" />
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 6 }}>
       {dayCells.map((c) => <DayCell key={c.date} {...c} theme={theme} />)}
     </div>
@@ -638,18 +681,7 @@ const monthGridData: MonthCellData[] = [
 
 const MonthGrid: React.FC<{ theme: Theme }> = ({ theme }) => (
   <div>
-    <div style={{
-      display: 'flex', alignItems: 'baseline', justifyContent: 'space-between',
-      marginBottom: 24,
-    }}>
-      <div style={{
-        fontFamily: FONT_DISPLAY, fontSize: 22, fontWeight: 600,
-        letterSpacing: '-0.01em', color: theme.ink,
-      }}>
-        August 2026
-      </div>
-      <div style={{ ...mono10, color: theme.inkSubtle }}>18 / 23 PLANNED</div>
-    </div>
+    <ViewHeader theme={theme} title="Workout" subtitle="AUG 2026 · 18 / 23 PLANNED" />
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4, marginBottom: 6 }}>
       {['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((d, i) => (
         <div key={i} style={{ ...mono10, color: theme.inkSubtle, textAlign: 'center' }}>{d}</div>
@@ -727,7 +759,7 @@ const DayDetailFlow: React.FC = () => (
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
           <div style={{ color: T.legs, display: 'flex' }}>
-            <MuscleGroupIcon group="legs" size={32} />
+            <MuscleIcon group="legs" size={32} />
           </div>
           <div style={{
             fontFamily: FONT_DISPLAY, fontSize: 24, fontWeight: 700,
@@ -883,7 +915,7 @@ const Legend: React.FC = () => (
               color, opacity: isUpcoming ? 0.6 : isMissed ? 0.45 : 1,
               position: 'relative', minHeight: 28,
             }}>
-              {row.group ? <MuscleGroupIcon group={row.group} size={24} /> : (
+              {row.group ? <MuscleIcon group={row.group} size={24} /> : (
                 <div style={{
                   width: 6, height: 6, borderRadius: '50%',
                   background: `hsl(${HSL.inkSubtle} / 0.4)`,
@@ -947,7 +979,10 @@ const CalendarSection: React.FC = () => (
           title="One tap deeper for planning."
           lede="Tap the week-header date range to expand to a 5-week month grid. Same vocabulary at half scale. For when the user is planning a training block, not running today."
         />
-        <ThemedFrame theme={darkTheme}><MonthGrid theme={darkTheme} /></ThemedFrame>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+          <ThemedFrame theme={darkTheme}><MonthGrid theme={darkTheme} /></ThemedFrame>
+          <ThemedFrame theme={lightTheme}><MonthGrid theme={lightTheme} /></ThemedFrame>
+        </div>
 
         <SubHeading
           label="05.3 — DAY-DETAIL FLOW"
@@ -957,8 +992,9 @@ const CalendarSection: React.FC = () => (
         <DayDetailFlow />
 
         <div style={{ ...mono11, color: T.inkSubtle, marginTop: 24, lineHeight: 1.6 }}>
-          NOTE → muscle-group glyphs from Tabler Icons (MIT). Wireframe shows
-          static states; spring motion (slow / springSoft) lands with Task 16 Sheet.
+          NOTE → muscle-group glyphs from Lucide (MIT).
+          Wireframe shows static states; spring motion (slow / springSoft)
+          lands with Task 16 Sheet.
         </div>
       </div>
     </div>
