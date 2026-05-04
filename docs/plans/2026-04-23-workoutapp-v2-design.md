@@ -140,7 +140,7 @@ This v2 explicitly leverages three Anthropic tools in sequence:
 
 | Phase | Weeks | Focus | Exit gate |
 |---|---|---|---|
-| **0** | 1 | UI/UX gap research, design tokens, motion, icons, calendar wireframe, Shadcn + Framer Motion installed, base primitives | Design system live; gap research doc reviewed |
+| **0** | 1 | UI/UX gap research, design tokens, motion, icons, calendar wireframe, Shadcn + Framer Motion installed, base primitives | ✅ Complete 2026-05-04 |
 | **1** | 2–3 | Code-health quick wins: ESLint, console.log cleanup, error boundaries, `firestore/serde.ts`, redux-persist, kill ad-hoc localStorage. Capacitor scaffolded but not shipping yet. | All tests pass; clean lint |
 | **2** | 4–10 | Per-surface decompose + redesign + Capacitor plugin wiring: Nav overhaul, **Calendar redesign**, modals → bottom sheets, rest timer + LocalNotifications, keyboard plugin, haptics sweep, share/clipboard. | First TestFlight + Play Internal builds |
 | **3** | 11–13 | AI: `/ai` Cloud Function, parse surface, chat-with-tools, chart vocabulary, confirmation UX | Both AI surfaces live; tool catalog locked |

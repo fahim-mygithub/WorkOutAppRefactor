@@ -2,7 +2,6 @@
   "extends": "./tsconfig.json",
   "include": [
     "src/components/ui/**/*",
-    "src/icons/**/*",
     "src/lib/**/*",
     "src/test/**/*"
   ],
