@@ -93,7 +93,7 @@ export const SharedWorkoutLoader: React.FC<SharedWorkoutLoaderProps> = ({
 // Loading state component
 const SharedWorkoutLoadingState: React.FC = () => {
   return (
-    <div className="min-h-screen bg-gray-900 flex items-center justify-center">
+    <div className="min-h-full bg-gray-900 flex items-center justify-center">
       <div className="text-center">
         <div className="w-16 h-16 bg-gray-800 rounded-full flex items-center justify-center mx-auto mb-4">
           <Loader2 className="w-8 h-8 text-blue-400 animate-spin" />
@@ -130,7 +130,7 @@ const SharedWorkoutNotFoundError: React.FC<SharedWorkoutNotFoundErrorProps> = ({
   };
 
   return (
-    <div className="min-h-screen bg-gray-900 flex items-center justify-center p-4">
+    <div className="min-h-full bg-gray-900 flex items-center justify-center p-4">
       <div className="text-center max-w-md">
         <div className="w-16 h-16 bg-red-900 rounded-full flex items-center justify-center mx-auto mb-4">
           <AlertCircle className="w-8 h-8 text-red-400" />

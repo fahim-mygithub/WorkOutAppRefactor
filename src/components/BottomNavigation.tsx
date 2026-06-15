@@ -2,8 +2,6 @@ import React from 'react';
 import { NavLink } from 'react-router-dom';
 import { Home, Dumbbell, Plus, List, User } from 'lucide-react';
 import { cn } from '../lib/utils';
-import { useKeyboardDetection } from '../hooks/useKeyboardDetection';
-import { useIOSKeyboardFix } from '../hooks/useIOSKeyboardFix';
 
 interface NavItem {
   path: string;
@@ -44,43 +42,17 @@ const navItems: NavItem[] = [
 ];
 
 export const BottomNavigation: React.FC<BottomNavigationProps> = ({ className }) => {
-  const { isVisible: isKeyboardVisible } = useKeyboardDetection();
-  const {
-    isIOSSafari,
-    shouldUseAbsolutePositioning,
-    calculatedBottom,
-    isKeyboardVisible: isIOSKeyboardVisible
-  } = useIOSKeyboardFix();
-
-  // For iOS Safari, use the iOS-specific keyboard detection
-  const keyboardVisible = isIOSSafari ? isIOSKeyboardVisible : isKeyboardVisible;
-
-  // Generate dynamic styles for iOS absolute positioning
-  const dynamicStyles = isIOSSafari && shouldUseAbsolutePositioning ? {
-    position: 'absolute' as const,
-    top: `${calculatedBottom - 72}px`, // 72px is approximate height of nav
-    left: 0,
-    right: 0,
-    bottom: 'auto',
-  } : {};
-
   return (
     <nav
       className={cn(
-        // Use different base classes based on iOS Safari detection
-        isIOSSafari && shouldUseAbsolutePositioning
-          ? 'ios-absolute-bottom-nav'
-          : 'mobile-fixed-bottom',
+        // Plain flex sibling of the shell's scroll container — NOT fixed/absolute.
+        'shrink-0',
         'bg-black backdrop-blur-sm',
         'px-4 pt-2 border-t border-gray-800',
         'h-[calc(4.5rem+env(safe-area-inset-bottom))]',
         'pb-[env(safe-area-inset-bottom)]',
-        'bottom-nav-keyboard-aware',
-        'bottom-nav-pwa',
-        keyboardVisible ? 'keyboard-visible' : 'keyboard-hidden',
         className
       )}
-      style={dynamicStyles}
     >
       <div className="flex justify-around items-center mx-auto max-w-md">
         {navItems.map((item) => (

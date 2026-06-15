@@ -5,6 +5,7 @@ import { ExerciseVideo } from '../components/ExerciseVideo';
 import { CustomExerciseBadge } from '../components/workout/CustomExerciseBadge';
 import { Exercise } from '../types/exercise';
 import { selectCustomExercises } from '../store/slices/customExerciseSlice';
+import { scrollAppToTop } from '../lib/scroll';
 
 export default function ExercisesPage() {
   const dispatch = useAppDispatch();
@@ -46,7 +47,7 @@ export default function ExercisesPage() {
   const handlePageChange = (page: number) => {
     setCurrentPage(page);
     // Scroll to top when page changes
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    scrollAppToTop();
   };
 
   const handleExerciseClick = (exercise: Exercise) => {
@@ -55,7 +56,7 @@ export default function ExercisesPage() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-gray-900 p-4 flex items-center justify-center">
+      <div className="min-h-full bg-gray-900 p-4 flex items-center justify-center">
         <div className="text-white text-lg">Loading exercises...</div>
       </div>
     );
@@ -63,14 +64,14 @@ export default function ExercisesPage() {
 
   if (error) {
     return (
-      <div className="min-h-screen bg-gray-900 p-4 flex items-center justify-center">
+      <div className="min-h-full bg-gray-900 p-4 flex items-center justify-center">
         <div className="text-red-400 text-lg">{error}</div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-900 p-4">
+    <div className="min-h-full bg-gray-900 p-4">
       <div className="max-w-6xl mx-auto">
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-white mb-2">Exercise Database</h1>

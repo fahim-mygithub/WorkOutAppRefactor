@@ -4,6 +4,7 @@ import { ExerciseThumbnail } from '../ExerciseThumbnail';
 import { useSmartSearch } from '../../hooks/useSmartSearch';
 import { useKeyboardDetection } from '../../hooks/useKeyboardDetection';
 import { SearchMatch, highlightText } from '../../utils/searchUtils';
+import { APP_SCROLL_ID } from '../../lib/scroll';
 import { X, Search, Filter, ChevronDown, Plus } from 'lucide-react';
 
 interface MobileExerciseSearchModalProps {
@@ -96,24 +97,29 @@ export const MobileExerciseSearchModal: React.FC<MobileExerciseSearchModalProps>
 
   // Handle modal open/close
   useEffect(() => {
+    // Lock the app's scroll container (the body is already overflow:hidden via
+    // <AppShell>, so locking it here would fight the shell and break it on
+    // cleanup). The shell scroller is the element that actually scrolls.
+    const scroller = document.getElementById(APP_SCROLL_ID);
+
     if (isOpen) {
       // Focus search input when modal opens
       setTimeout(() => {
         searchInputRef.current?.focus();
       }, 100);
 
-      // Lock body scroll
-      document.body.style.overflow = 'hidden';
+      // Lock app scroll
+      if (scroller) scroller.style.overflow = 'hidden';
     } else {
-      // Reset state and unlock body scroll
+      // Reset state and unlock app scroll
       setSearchTerm('');
       setSelectedMuscleGroup('all');
       setShowFilters(false);
-      document.body.style.overflow = 'unset';
+      if (scroller) scroller.style.overflow = '';
     }
 
     return () => {
-      document.body.style.overflow = 'unset';
+      if (scroller) scroller.style.overflow = '';
     };
   }, [isOpen]);
 

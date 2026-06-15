@@ -3,6 +3,7 @@ import { Exercise } from '../../types/exercise';
 import { useSmartSearch } from '../../hooks/useSmartSearch';
 import { highlightText } from '../../utils/searchUtils';
 import { CustomExerciseBadge } from './CustomExerciseBadge';
+import { APP_SCROLL_ID } from '../../lib/scroll';
 
 interface ExerciseSearchModalProps {
   exercises: Exercise[];
@@ -102,10 +103,17 @@ export const ExerciseSearchModal: React.FC<ExerciseSearchModalProps> = ({
       }
     };
 
+    // The shell already sets body overflow:hidden, so lock the canonical
+    // scroll container (#app-scroll) instead of fighting the shell on body.
+    const scrollEl = document.getElementById(APP_SCROLL_ID);
+    const previousOverflow = scrollEl?.style.overflow ?? '';
+
     if (isOpen) {
       document.addEventListener('keydown', handleKeyDown);
-      document.body.style.overflow = 'hidden';
-      
+      if (scrollEl) {
+        scrollEl.style.overflow = 'hidden';
+      }
+
       // Focus search input when modal opens
       setTimeout(() => {
         searchInputRef.current?.focus();
@@ -114,7 +122,9 @@ export const ExerciseSearchModal: React.FC<ExerciseSearchModalProps> = ({
 
     return () => {
       document.removeEventListener('keydown', handleKeyDown);
-      document.body.style.overflow = 'unset';
+      if (scrollEl) {
+        scrollEl.style.overflow = previousOverflow;
+      }
     };
   }, [isOpen, onClose, filteredResults, selectedIndex]);
 

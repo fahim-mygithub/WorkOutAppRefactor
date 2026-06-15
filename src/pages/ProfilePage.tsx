@@ -229,7 +229,7 @@ export default function ProfilePage() {
   );
 
   return (
-    <div className="min-h-screen bg-gray-900 text-white p-4">
+    <div className="min-h-full bg-gray-900 text-white p-4">
       <div className="max-w-6xl mx-auto">
         <h1 className="text-3xl font-bold mb-8">Profile & Dashboard</h1>
 

@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Exercise } from '../../types/exercise';
+import { APP_SCROLL_ID } from '../../lib/scroll';
 
 interface ExercisePreviewModalProps {
   exercise: Exercise | null;
@@ -34,14 +35,23 @@ export const ExercisePreviewModal: React.FC<ExercisePreviewModalProps> = ({
       }
     };
 
+    // The shell already sets body overflow:hidden, so lock the canonical
+    // scroll container (#app-scroll) instead of fighting the shell on body.
+    const scrollEl = document.getElementById(APP_SCROLL_ID);
+    const previousOverflow = scrollEl?.style.overflow ?? '';
+
     if (isOpen) {
       document.addEventListener('keydown', handleEscapeKey);
-      document.body.style.overflow = 'hidden';
+      if (scrollEl) {
+        scrollEl.style.overflow = 'hidden';
+      }
     }
 
     return () => {
       document.removeEventListener('keydown', handleEscapeKey);
-      document.body.style.overflow = 'unset';
+      if (scrollEl) {
+        scrollEl.style.overflow = previousOverflow;
+      }
     };
   }, [isOpen, onClose]);
 

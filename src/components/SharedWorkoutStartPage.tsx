@@ -42,7 +42,7 @@ export const SharedWorkoutStartPage: React.FC<SharedWorkoutStartPageProps> = ({
   const stats = calculateWorkoutStats();
 
   return (
-    <div className="min-h-screen bg-gray-900 p-4">
+    <div className="min-h-full bg-gray-900 p-4">
       <div className="max-w-2xl mx-auto">
         {/* Header */}
         <div className="text-center mb-8">

@@ -6,7 +6,7 @@ import ExercisesPage from '../pages/ExercisesPage';
 import ProfilePage from '../pages/ProfilePage';
 import LoginPage from '../pages/LoginPage';
 import SignUpPage from '../pages/SignUpPage';
-import { BottomNavigation } from '../components/BottomNavigation';
+import { AppShell } from '../components/AppShell';
 import { useAuth } from '../contexts/AuthContext';
 import { useExercises } from '../hooks/useExercises';
 import { AuthPromptBanner } from '../components/AuthPromptBanner';
@@ -24,21 +24,15 @@ const SharedWorkoutRoute = ({ children }: { children: React.ReactNode }) => {
     routeType: 'SharedWorkout'
   });
 
+  // Shell owns layout + scroller + nav. Nav shows only for authenticated viewers.
   return (
-    <div className="mobile-viewport-stable bg-gray-900">
+    <AppShell showNav={!!user}>
       {/* Show auth prompt banner for non-authenticated users */}
       {!user && (
-        <>
-          <AuthPromptBanner message="Create a free account to save your workout progress and access more features!" />
-          {console.log('🔔 SharedWorkoutRoute: Showing auth prompt banner for anonymous user')}
-        </>
+        <AuthPromptBanner message="Create a free account to save your workout progress and access more features!" />
       )}
-      <div className="scroll-container-with-bottom-nav">
-        {children}
-      </div>
-      {/* Only show bottom navigation for authenticated users */}
-      {user && <BottomNavigation />}
-    </div>
+      {children}
+    </AppShell>
   );
 };
 
@@ -59,14 +53,7 @@ const AuthenticatedRoute = ({ children }: { children: React.ReactNode }) => {
   }
 
   console.log('✅ AuthenticatedRoute: User authenticated, rendering protected content');
-  return (
-    <div className="mobile-viewport-stable bg-gray-900">
-      <div className="scroll-container-with-bottom-nav">
-        {children}
-      </div>
-      <BottomNavigation />
-    </div>
-  );
+  return <AppShell>{children}</AppShell>;
 };
 
 export const AppRouter = () => {
@@ -85,7 +72,7 @@ export const AppRouter = () => {
   if (loading) {
     console.log('⏳ AppRouter: Auth loading state, showing spinner');
     return (
-      <div className="flex items-center justify-center min-h-screen bg-gray-900">
+      <div className="flex items-center justify-center h-[100svh] bg-gray-900">
         <div className="text-white text-lg">Loading...</div>
       </div>
     );

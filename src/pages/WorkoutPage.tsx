@@ -272,7 +272,7 @@ export default function WorkoutPage() {
 
     // Regular no workout page for authenticated users
     return (
-      <div className="min-h-screen bg-gray-900 flex items-center justify-center">
+      <div className="min-h-full bg-gray-900 flex items-center justify-center">
         <div className="text-center">
           <h1 className="text-2xl font-bold text-white mb-4">No Active Workout</h1>
           <p className="text-gray-400 mb-6">Start a workout from the Build page</p>
@@ -548,7 +548,7 @@ export default function WorkoutPage() {
   }, [currentSet, currentExercise, activeWorkout, restTimer, dispatch, handleCompleteSet, handleUncompleteSet, handleJumpToSet]);
 
   return (
-    <div className="min-h-screen bg-gray-900 p-4">
+    <div className="min-h-full bg-gray-900 p-4">
       <div className="max-w-4xl mx-auto">
         {/* Header */}
         <div className="bg-gray-800 rounded-lg p-6 mb-6">
