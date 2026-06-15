@@ -17,6 +17,33 @@ export default defineConfig(({ command, mode }) => {
   // Source keeps console.* calls intact for readability; esbuild drops them
   // at build time, so `vite build` ships a clean bundle while dev is unchanged.
   esbuild: command === 'build' ? { drop: ['console', 'debugger'] } : {},
+  build: {
+    rollupOptions: {
+      output: {
+        // Split heavy, rarely-changing vendor code into dedicated chunks so the
+        // main app chunk shrinks and vendors stay cached across app deploys.
+        // Firebase (firestore/auth/app) is by far the largest dependency, so it
+        // gets its own chunk; the rest are grouped by ownership.
+        manualChunks: (id) => {
+          if (!id.includes('node_modules')) return undefined
+          if (/[\\/]node_modules[\\/]firebase[\\/]/.test(id) ||
+              /[\\/]node_modules[\\/]@firebase[\\/]/.test(id)) {
+            return 'vendor-firebase'
+          }
+          if (/[\\/]node_modules[\\/](react|react-dom|react-router|react-router-dom|scheduler)[\\/]/.test(id)) {
+            return 'vendor-react'
+          }
+          if (/[\\/]node_modules[\\/]@radix-ui[\\/]/.test(id)) {
+            return 'vendor-radix'
+          }
+          if (/[\\/]node_modules[\\/](framer-motion|motion-dom|motion-utils)[\\/]/.test(id)) {
+            return 'vendor-motion'
+          }
+          return undefined
+        },
+      },
+    },
+  },
   plugins: [
     react(),
     VitePWA({
@@ -25,10 +52,31 @@ export default defineConfig(({ command, mode }) => {
         enabled: true
       },
       workbox: {
-        globPatterns: ['**/*.{js,css,html,ico,png,svg,json}'],
+        // NOTE: `json` is intentionally excluded from globPatterns. The 2 MB
+        // public/exercises.json must NOT be precached upfront (it dominated the
+        // precache manifest). manifest.webmanifest is emitted by the plugin as
+        // a separate precache entry regardless of globPatterns, so dropping
+        // `json` here does not affect the web manifest. exercises.json is
+        // instead fetched on demand and cached via the runtimeCaching rule below.
+        globPatterns: ['**/*.{js,css,html,ico,png,svg}'],
         navigateFallback: '/index.html',
         navigateFallbackDenylist: [/^\/api/],
         runtimeCaching: [
+          {
+            // exercises.json (~2 MB) is fetched lazily on first Directory/Build/
+            // Profile use rather than precached. StaleWhileRevalidate serves the
+            // cached copy instantly after the first load and refreshes in the
+            // background, so updated builds are picked up without blocking.
+            urlPattern: /\/exercises\.json$/i,
+            handler: 'StaleWhileRevalidate',
+            options: {
+              cacheName: 'exercises-data-cache',
+              expiration: {
+                maxEntries: 1,
+                maxAgeSeconds: 60 * 60 * 24 * 30,
+              },
+            },
+          },
           {
             urlPattern: /^https:\/\/firestore\.googleapis\.com\/.*/i,
             handler: 'NetworkFirst',

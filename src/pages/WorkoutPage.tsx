@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useAppDispatch, useAppSelector } from '../store/hooks';
 import { useAuth } from '../contexts/AuthContext';
@@ -193,6 +193,32 @@ export default function WorkoutPage() {
     configuredReps: currentExercise?.sets?.[0]?.reps // Pass configured reps from first set
   });
 
+  // Stable callbacks for the memoized <ExerciseListPanel>. Defined above the
+  // early returns (rules-of-hooks) and via useCallback so the panel — which is
+  // React.memo'd — does not re-render when WorkoutPage re-renders for unrelated
+  // reasons (set completion, set navigation, modal toggles). dispatch is stable.
+  const handleJumpToExercise = useCallback((exerciseIndex: number) => {
+    dispatch(jumpToSet({ exerciseIndex, setIndex: 0 }));
+  }, [dispatch]);
+
+  const handleEditExercise = useCallback((exercise: WorkoutExercise) => {
+    setEditingExercise(exercise);
+    setShowEditModal(true);
+  }, []);
+
+  // Memoize the grouped-exercise list so its array identity is stable across
+  // renders that don't change the exercise data (e.g. opening a modal). It still
+  // recomputes when sets complete or the active exercise changes — which is when
+  // the side-panel list genuinely needs to update. Guarded for the null-workout
+  // case so it can sit above the early returns (rules-of-hooks).
+  const exerciseGroups = useMemo<ExerciseDisplayGroup[]>(() => {
+    if (!activeWorkout) return [];
+    return getGroupedExercisesForDisplay(
+      activeWorkout.exercises,
+      activeWorkout.currentExerciseIndex,
+    );
+  }, [activeWorkout?.exercises, activeWorkout?.currentExerciseIndex]);
+
   // Effect to check for deload when recommendation loads
   useEffect(() => {
     if (activeWorkout && progressionHook.recommendation?.deloadApplied &&
@@ -353,18 +379,6 @@ export default function WorkoutPage() {
     }));
   };
 
-  const handleJumpToExercise = (exerciseIndex: number) => {
-    dispatch(jumpToSet({
-      exerciseIndex,
-      setIndex: 0
-    }));
-  };
-
-  const handleEditExercise = (exercise: WorkoutExercise) => {
-    setEditingExercise(exercise);
-    setShowEditModal(true);
-  };
-
   const handleSaveExercise = (exerciseId: string, sets: WorkoutSet[], restTime: number) => {
     dispatch(updateExercise({ exerciseId, sets, restTime }));
     setShowEditModal(false);
@@ -494,10 +508,6 @@ export default function WorkoutPage() {
   }, [currentSet, currentExercise, activeWorkout, restTimer, dispatch, handleCompleteSet, handleUncompleteSet, handleJumpToSet]);
 
   const progress = calculateWorkoutProgress();
-  const exerciseGroups = getGroupedExercisesForDisplay(
-    activeWorkout.exercises,
-    activeWorkout.currentExerciseIndex,
-  );
   const isSupersetView =
     !!currentExercise?.isSuperset &&
     !!currentExercise.supersetId &&
