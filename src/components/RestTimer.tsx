@@ -1,6 +1,7 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useAppDispatch, useAppSelector } from '../store/hooks';
 import { updateRestTimer, stopRestTimer, startRestTimer, nextSet, advanceToNextSupersetRound, setShowCompletionModal, updateExercise } from '../store/slices/workoutSlice';
+import { remainingSeconds, isElapsed } from '../lib/restTimer';
 import { Play, Pause, RotateCcw, X, Plus, Minus, Edit3 } from 'lucide-react';
 
 interface RestTimerProps {
@@ -21,64 +22,112 @@ export const RestTimer: React.FC<RestTimerProps> = ({
   // Get current exercise for rest time preference
   const currentExercise = activeWorkout?.exercises[activeWorkout.currentExerciseIndex];
 
-  useEffect(() => {
-    let interval: NodeJS.Timeout;
+  // Keep the latest activeWorkout reachable from stable callbacks (the
+  // visibilitychange listener and the completion handler) without re-subscribing
+  // listeners on every render.
+  const activeWorkoutRef = useRef(activeWorkout);
+  activeWorkoutRef.current = activeWorkout;
 
-    if (restTimer.isActive && restTimer.timeRemaining > 0) {
-      interval = setInterval(() => {
-        const newTime = restTimer.timeRemaining - 1;
-        dispatch(updateRestTimer(newTime));
+  // Guards completion from firing more than once for a single countdown. Keyed
+  // on the targetEndTime so a new timer (new anchor) re-arms it.
+  const completedForRef = useRef<number | null>(null);
 
-        // Visual/audio alerts for final countdown
-        if (newTime <= 3 && newTime > 0) {
-          // Play beep sound for countdown
-          playBeep();
+  // Tracks the last whole-second we played a countdown beep for, so resuming
+  // from background (which jumps several seconds at once) doesn't spam beeps.
+  const lastBeepSecondRef = useRef<number | null>(null);
+
+  // Advance the workout when the rest period elapses. Reads the workout through
+  // a ref so it stays referentially stable for listeners.
+  const handleCompletion = useCallback(() => {
+    playCompletionSound();
+
+    // Small delay for better UX (matches the prior behavior).
+    setTimeout(() => {
+      const workout = activeWorkoutRef.current;
+      if (workout) {
+        const currentExercise = workout.exercises[workout.currentExerciseIndex];
+        const isLastExercise = workout.currentExerciseIndex === workout.exercises.length - 1;
+        const isLastSet = workout.currentSetIndex === currentExercise.sets.length - 1;
+
+        const totalSets = workout.exercises.reduce((total, ex) => total + ex.sets.length, 0);
+        const completedSets = workout.exercises.reduce((total, ex) =>
+          total + ex.sets.filter(set => set.completed).length, 0
+        );
+
+        if (isLastExercise && isLastSet && completedSets === totalSets) {
+          dispatch(setShowCompletionModal(true));
+        } else if (currentExercise.isSuperset && currentExercise.supersetId) {
+          dispatch(advanceToNextSupersetRound());
+        } else {
+          dispatch(nextSet());
         }
+      } else {
+        dispatch(nextSet());
+      }
+    }, 1000);
+  }, [dispatch]);
 
-        // Auto-advance to next set when timer reaches 0
-        if (newTime === 0) {
-          // Play completion sound
-          playCompletionSound();
+  // Single sync function: derive the remaining time from the absolute
+  // targetEndTime against the current clock, push it to the store, fire the
+  // countdown beeps, and trigger completion if the anchor has elapsed. Called on
+  // each 1s tick AND on visibilitychange/resume, so returning to a backgrounded
+  // tab immediately shows the correct time (or completes if already elapsed).
+  const syncFromTargetEndTime = useCallback(() => {
+    const { isActive, targetEndTime } = restTimerRef.current;
+    if (!isActive || targetEndTime == null) return;
 
-          // Add a small delay for better UX
-          setTimeout(() => {
-            // Check if this is the last set of the workout
-            if (activeWorkout) {
-              const currentExercise = activeWorkout.exercises[activeWorkout.currentExerciseIndex];
-              const isLastExercise = activeWorkout.currentExerciseIndex === activeWorkout.exercises.length - 1;
-              const isLastSet = activeWorkout.currentSetIndex === currentExercise.sets.length - 1;
+    const now = Date.now();
+    const remaining = remainingSeconds(targetEndTime, now);
+    dispatch(updateRestTimer(remaining));
 
-              // Check if all sets are completed
-              const totalSets = activeWorkout.exercises.reduce((total, ex) => total + ex.sets.length, 0);
-              const completedSets = activeWorkout.exercises.reduce((total, ex) =>
-                total + ex.sets.filter(set => set.completed).length, 0
-              );
-
-              // If this is the last set and all sets are completed, show completion modal
-              if (isLastExercise && isLastSet && completedSets === totalSets) {
-                dispatch(setShowCompletionModal(true));
-              } else {
-                // Normal progression
-                if (currentExercise.isSuperset && currentExercise.supersetId) {
-                  dispatch(advanceToNextSupersetRound());
-                } else {
-                  dispatch(nextSet());
-                }
-              }
-            } else {
-              dispatch(nextSet());
-            }
-          }, 1000);
-        }
-      }, 1000);
+    // Countdown beeps for the final 3 seconds, once per second, and never when
+    // we jumped past them during a background gap.
+    if (remaining <= 3 && remaining > 0 && lastBeepSecondRef.current !== remaining) {
+      lastBeepSecondRef.current = remaining;
+      playBeep();
     }
 
-    return () => {
-      if (interval) {
-        clearInterval(interval);
+    if (isElapsed(targetEndTime, now)) {
+      if (completedForRef.current !== targetEndTime) {
+        completedForRef.current = targetEndTime;
+        handleCompletion();
+      }
+    }
+  }, [dispatch, handleCompletion]);
+
+  // Hold the latest restTimer slice so the stable sync callback reads current
+  // values without being re-created (which would thrash the interval/listener).
+  const restTimerRef = useRef(restTimer);
+  restTimerRef.current = restTimer;
+
+  useEffect(() => {
+    if (!restTimer.isActive || restTimer.targetEndTime == null) {
+      // Re-arm guards for the next countdown.
+      lastBeepSecondRef.current = null;
+      return;
+    }
+
+    // Immediately reconcile (covers the start tick and any anchor change).
+    syncFromTargetEndTime();
+
+    const interval = setInterval(syncFromTargetEndTime, 1000);
+
+    // Recompute the instant the tab/app returns to the foreground. Background
+    // timers throttle or freeze, so this is what makes the displayed time
+    // correct on resume — and fires completion if the rest already elapsed
+    // while we were away.
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        syncFromTargetEndTime();
       }
     };
-  }, [restTimer.isActive, restTimer.timeRemaining, dispatch]);
+    document.addEventListener('visibilitychange', handleVisibility);
+
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
+  }, [restTimer.isActive, restTimer.targetEndTime, syncFromTargetEndTime]);
 
   const playBeep = () => {
     // Create a short beep sound
@@ -119,8 +168,8 @@ export const RestTimer: React.FC<RestTimerProps> = ({
 
   const formatTime = (seconds: number): string => {
     const minutes = Math.floor(seconds / 60);
-    const remainingSeconds = seconds % 60;
-    return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
+    const secs = seconds % 60;
+    return `${minutes}:${secs.toString().padStart(2, '0')}`;
   };
 
   const handleStart = () => {

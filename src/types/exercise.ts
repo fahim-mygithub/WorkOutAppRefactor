@@ -85,6 +85,13 @@ export interface RestTimer {
   isActive: boolean;
   timeRemaining: number;
   duration: number;
+  /**
+   * Absolute epoch-ms instant the running timer should fire completion.
+   * Set when the timer starts/resumes; `null` when stopped or paused. The
+   * displayed `timeRemaining` is derived from this against `Date.now()` so the
+   * timer stays correct after the tab is backgrounded (no setInterval drift).
+   */
+  targetEndTime: number | null;
 }
 
 export interface ExerciseFilter {

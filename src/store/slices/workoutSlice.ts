@@ -1,6 +1,7 @@
 import { createSlice, type PayloadAction } from '@reduxjs/toolkit';
 import type { ActiveWorkout, RestTimer, WorkoutExercise, WorkoutSet } from '../../types/exercise';
 import type { ExperienceLevel, ProgressionTracking } from '../../types/progression';
+import { computeTargetEndTime } from '../../lib/restTimer';
 
 export interface WorkoutState {
   activeWorkout: ActiveWorkout | null;
@@ -18,6 +19,7 @@ const initialRestTimer: RestTimer = {
   isActive: false,
   timeRemaining: 0,
   duration: 120, // 2 minutes default
+  targetEndTime: null,
 };
 
 const initialState: WorkoutState = {
@@ -162,27 +164,50 @@ const workoutSlice = createSlice({
       }
     },
 
+    // Starts (or resumes) the countdown. We anchor an absolute `targetEndTime`
+    // (epoch ms) instead of decrementing a counter, so the remaining time can be
+    // re-derived from the clock after the tab is backgrounded. `duration` is
+    // both the initial length and the canonical length used for the progress
+    // bar; on resume the caller passes the remaining-on-pause seconds.
     startRestTimer: (state, action: PayloadAction<{ duration?: number }>) => {
-      const duration = action.payload.duration || 120;
+      const duration = action.payload.duration ?? 120;
       state.restTimer = {
         isActive: true,
         timeRemaining: duration,
         duration,
+        targetEndTime: computeTargetEndTime(duration, Date.now()),
       };
     },
 
+    // Tick/resume sync. The component derives the remaining seconds from
+    // `targetEndTime` against the current clock (each second and on
+    // visibilitychange) and dispatches the result here. Reaching 0 ends the
+    // countdown and clears the anchor.
     updateRestTimer: (state, action: PayloadAction<number>) => {
       if (state.restTimer.isActive) {
         state.restTimer.timeRemaining = Math.max(0, action.payload);
         if (state.restTimer.timeRemaining === 0) {
           state.restTimer.isActive = false;
+          state.restTimer.targetEndTime = null;
         }
+      }
+    },
+
+    // Pause: freeze on the remaining seconds and drop the clock anchor so the
+    // derived countdown stops advancing. Resuming re-dispatches startRestTimer
+    // with this remaining value, re-anchoring a fresh targetEndTime.
+    pauseRestTimer: (state, action: PayloadAction<number>) => {
+      if (state.restTimer.isActive) {
+        state.restTimer.isActive = false;
+        state.restTimer.timeRemaining = Math.max(0, action.payload);
+        state.restTimer.targetEndTime = null;
       }
     },
 
     stopRestTimer: (state) => {
       state.restTimer.isActive = false;
       state.restTimer.timeRemaining = 0;
+      state.restTimer.targetEndTime = null;
     },
 
     // New action to advance to next superset round after rest
@@ -397,6 +422,7 @@ export const {
   addSet,
   startRestTimer,
   updateRestTimer,
+  pauseRestTimer,
   stopRestTimer,
   advanceToNextSupersetRound,
   updateWorkoutDuration,
