@@ -12,6 +12,11 @@ import { useParseValidation } from '../../hooks/useParseValidation';
 import { useSmartSearch } from '../../hooks/useSmartSearch';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { useToast } from '../../hooks/useToast';
+import { Card } from '../ui/card';
+import { Input } from '../ui/input';
+import { Label } from '../ui/label';
+import { Button } from '../ui/button';
+import { IconButton } from '../ui/icon-button';
 
 interface EnhancedTextInputProps {
   workoutText: string;
@@ -350,31 +355,32 @@ export const EnhancedTextInput: React.FC<EnhancedTextInputProps> = ({
   return (
     <div className={`space-y-6 ${className}`}>
       {/* Workout Name */}
-      <div className="bg-gray-800 rounded-lg p-6">
-        <label className="block text-sm font-medium text-gray-300 mb-2">
+      <Card className="p-6">
+        <Label htmlFor="workout-name" className="mb-2 block">
           Workout Name
-        </label>
-        <input
+        </Label>
+        <Input
+          id="workout-name"
           type="text"
           value={workoutName}
           onChange={(e) => onWorkoutNameChange(e.target.value)}
           placeholder="Push Day, Pull Day, etc."
-          className="w-full p-3 bg-gray-700 border border-gray-600 rounded-lg text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
         />
-      </div>
+      </Card>
 
       {/* Exercise Search */}
-      <div className="bg-gray-800 rounded-lg p-6">
-        <label className="block text-sm font-medium text-gray-300 mb-2">
+      <Card className="p-6">
+        <Label htmlFor="exercise-search" className="mb-2 block">
           Search Exercises
-        </label>
+        </Label>
         <div className="relative z-10">
           <div className="absolute left-3 top-1/2 transform -translate-y-1/2 z-10">
-            <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-4 h-4 text-ink-subtle" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
             </svg>
           </div>
-          <input
+          <Input
+            id="exercise-search"
             type="text"
             placeholder={isMobile ? "Tap to search exercises..." : "Search for exercises to add to your workout..."}
             value={exerciseSearchTerm}
@@ -382,9 +388,9 @@ export const EnhancedTextInput: React.FC<EnhancedTextInputProps> = ({
             onKeyDown={handleExerciseSearchKeyDown}
             onFocus={handleSearchInputFocus}
             readOnly={isMobile} // Prevent keyboard on mobile, just open modal
-            className="w-full pl-10 p-3 bg-gray-700 border border-gray-600 rounded-lg text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent relative z-0"
+            className="pl-10"
           />
-          
+
           {/* Exercise Search Dropdown - Desktop only */}
           {showExerciseDropdown && !isMobile && (
             <ExerciseSearchDropdown
@@ -400,36 +406,36 @@ export const EnhancedTextInput: React.FC<EnhancedTextInputProps> = ({
             />
           )}
         </div>
-        
-        <div className="mt-2 text-xs text-gray-500 space-y-1">
+
+        <div className="mt-2 text-caption text-ink-subtle space-y-1">
           <div>
             Search by exercise name, muscle group, or equipment. Click an exercise to insert it at your cursor position.
           </div>
           {exerciseSearchTerm && (
-            <div className="flex items-center gap-2 text-xs">
+            <div className="flex items-center gap-2 text-caption">
               {isSearching ? (
                 <>
-                  <div className="w-3 h-3 border border-blue-400 border-t-transparent rounded-full animate-spin"></div>
-                  <span className="text-blue-400">Searching...</span>
+                  <div className="w-3 h-3 border border-accent border-t-transparent rounded-full animate-spin"></div>
+                  <span className="text-accent">Searching...</span>
                 </>
               ) : hasResults ? (
                 <>
-                  <span className="text-green-400">
+                  <span className="text-success">
                     Found {searchResults.length} match{searchResults.length !== 1 ? 'es' : ''}
                   </span>
                   {searchStats.searchTime > 0 && (
-                    <span className="text-gray-500">
+                    <span className="text-ink-subtle">
                       ({searchStats.searchTime.toFixed(1)}ms{searchStats.cacheHit ? ', cached' : ''})
                     </span>
                   )}
                 </>
               ) : (
-                <span className="text-yellow-400">No matches found - try "ohp" for overhead press</span>
+                <span className="text-warning">No matches found - try "ohp" for overhead press</span>
               )}
             </div>
           )}
         </div>
-      </div>
+      </Card>
 
       {/* Past Workouts */}
       <PastWorkouts
@@ -448,19 +454,21 @@ export const EnhancedTextInput: React.FC<EnhancedTextInputProps> = ({
       />
 
       {/* Text Input Section */}
-      <div className="bg-gray-800 rounded-lg p-6">
+      <Card className="p-6">
         <div className="flex justify-between items-center mb-4">
-          <label className="block text-sm font-medium text-gray-300">
+          <Label className="block">
             Workout Text
-          </label>
-          <button
+          </Label>
+          <Button
+            variant="ghost"
+            size="sm"
             onClick={onLoadExample}
-            className="text-blue-400 hover:text-blue-300 text-sm transition-colors-smooth hover-scale"
+            className="text-accent hover:text-accent"
           >
             Load Example
-          </button>
+          </Button>
         </div>
-        
+
         <HighlightedTextarea
           ref={textareaRef}
           value={workoutText}
@@ -471,18 +479,18 @@ export const EnhancedTextInput: React.FC<EnhancedTextInputProps> = ({
           placeholder={exampleText}
           rows={12}
           parseIssues={showInlineSuggestions ? issues : []}
-          className="w-full p-3 bg-gray-700 border border-gray-600 rounded-lg text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent font-mono text-sm"
+          className="w-full p-3 bg-surface border border-border rounded-lg text-ink focus:ring-2 focus:ring-accent focus:border-transparent font-mono text-body-sm"
           highlightText={highlightText}
         />
         
         {/* Live character and line count */}
         {/* Insert feedback */}
         {insertFeedback.show && (
-          <div className="mt-2 p-2 bg-blue-900/20 border border-blue-700 rounded flex items-center gap-2 animate-fade-in">
-            <svg className="w-4 h-4 text-blue-400" fill="currentColor" viewBox="0 0 20 20">
+          <div className="mt-2 p-2 bg-accent/10 border border-accent/40 rounded flex items-center gap-2 animate-fade-in">
+            <svg className="w-4 h-4 text-accent" fill="currentColor" viewBox="0 0 20 20">
               <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
             </svg>
-            <span className="text-sm text-blue-300">
+            <span className="text-body-sm text-accent">
               Added "{insertFeedback.exerciseName}" to workout
             </span>
           </div>
@@ -490,11 +498,11 @@ export const EnhancedTextInput: React.FC<EnhancedTextInputProps> = ({
 
         {/* Auto-correct feedback */}
         {autoCorrectCount > 0 && (
-          <div className="mt-2 p-2 bg-green-900/20 border border-green-700 rounded flex items-center gap-2">
-            <svg className="w-4 h-4 text-green-400" fill="currentColor" viewBox="0 0 20 20">
+          <div className="mt-2 p-2 bg-success/10 border border-success/40 rounded flex items-center gap-2">
+            <svg className="w-4 h-4 text-success" fill="currentColor" viewBox="0 0 20 20">
               <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
             </svg>
-            <span className="text-sm text-green-300">
+            <span className="text-body-sm text-success">
               Auto-corrected {autoCorrectCount} exercise{autoCorrectCount !== 1 ? 's' : ''}
             </span>
           </div>
@@ -514,119 +522,127 @@ export const EnhancedTextInput: React.FC<EnhancedTextInputProps> = ({
           />
         )}
 
-        <div className="mt-2 text-xs text-gray-500 flex justify-between items-center">
+        <div className="mt-2 text-caption text-ink-subtle flex justify-between items-center">
           <span>
             {workoutText.length} characters, {workoutText.split('\n').length} lines
             {hasIssues && showSuggestions && (
-              <span className="ml-2 text-yellow-400">
+              <span className="ml-2 text-warning">
                 • {issues.length} suggestion{issues.length !== 1 ? 's' : ''}
                 {issues.length > 0 && issues[0].suggestions[0]?.confidence >= 80 && (
-                  <span className="ml-1 text-blue-400">(Press Tab to accept)</span>
+                  <span className="ml-1 text-accent">(Press Tab to accept)</span>
                 )}
               </span>
             )}
           </span>
 
           <div className="flex items-center gap-2">
-            <button
+            <IconButton
+              variant="ghost"
+              size="sm"
               onClick={() => setShowShortcutsHelp(!showShortcutsHelp)}
-              className="text-gray-400 hover:text-gray-300 transition-colors-smooth hover-scale"
+              aria-label="Keyboard shortcuts"
               title="Keyboard shortcuts (Ctrl+/)"
+              className="h-6 w-6 text-ink-subtle"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 9l4-4 4 4m0 6l-4 4-4-4" />
               </svg>
-            </button>
+            </IconButton>
             <span>Cursor: {cursorPosition}</span>
           </div>
         </div>
 
         {/* Keyboard Shortcuts Help */}
         {showShortcutsHelp && (
-          <div className="mt-3 p-4 bg-gray-700 border border-gray-600 rounded-lg">
+          <div className="mt-3 p-4 bg-surface-subtle border border-border rounded-lg">
             <div className="flex items-center justify-between mb-3">
-              <h4 className="font-medium text-white">Keyboard Shortcuts</h4>
-              <button
+              <h4 className="font-medium text-ink">Keyboard Shortcuts</h4>
+              <IconButton
+                variant="ghost"
+                size="sm"
                 onClick={() => setShowShortcutsHelp(false)}
-                className="text-gray-400 hover:text-white transition-colors-smooth hover-scale"
+                aria-label="Close keyboard shortcuts"
+                className="h-7 w-7 text-ink-subtle"
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                 </svg>
-              </button>
+              </IconButton>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-body-sm">
               <div className="space-y-2">
                 <div className="flex justify-between">
-                  <span className="text-gray-300">Exercise search</span>
-                  <kbd className="px-2 py-1 bg-gray-800 rounded text-xs">Ctrl+Space</kbd>
+                  <span className="text-ink">Exercise search</span>
+                  <kbd className="px-2 py-1 bg-surface rounded text-caption">Ctrl+Space</kbd>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-gray-300">Duplicate line</span>
-                  <kbd className="px-2 py-1 bg-gray-800 rounded text-xs">Ctrl+D</kbd>
+                  <span className="text-ink">Duplicate line</span>
+                  <kbd className="px-2 py-1 bg-surface rounded text-caption">Ctrl+D</kbd>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-gray-300">Move line up/down</span>
-                  <kbd className="px-2 py-1 bg-gray-800 rounded text-xs">Alt+↑/↓</kbd>
+                  <span className="text-ink">Move line up/down</span>
+                  <kbd className="px-2 py-1 bg-surface rounded text-caption">Alt+↑/↓</kbd>
                 </div>
               </div>
 
               <div className="space-y-2">
                 <div className="flex justify-between">
-                  <span className="text-gray-300">Accept suggestion</span>
-                  <kbd className="px-2 py-1 bg-gray-800 rounded text-xs">Tab</kbd>
+                  <span className="text-ink">Accept suggestion</span>
+                  <kbd className="px-2 py-1 bg-surface rounded text-caption">Tab</kbd>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-gray-300">Show shortcuts</span>
-                  <kbd className="px-2 py-1 bg-gray-800 rounded text-xs">Ctrl+/</kbd>
+                  <span className="text-ink">Show shortcuts</span>
+                  <kbd className="px-2 py-1 bg-surface rounded text-caption">Ctrl+/</kbd>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-gray-300">Close dropdown</span>
-                  <kbd className="px-2 py-1 bg-gray-800 rounded text-xs">Esc</kbd>
+                  <span className="text-ink">Close dropdown</span>
+                  <kbd className="px-2 py-1 bg-surface rounded text-caption">Esc</kbd>
                 </div>
               </div>
             </div>
           </div>
         )}
-      </div>
+      </Card>
 
       {/* Parse Workout Button */}
-      <div className="bg-gray-800 rounded-lg p-6">
-        <button
+      <Card className="p-6">
+        <Button
+          variant="primary"
+          size="lg"
           onClick={onParseWorkout}
           disabled={isParseDisabled}
-          className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-medium py-3 px-4 rounded-lg transition-colors-smooth flex items-center justify-center gap-2 hover-lift btn-press focus-ring"
+          className="w-full"
         >
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
           </svg>
           Parse Workout
           {hasIssues && showSuggestions && (
-            <span className="ml-2 px-2 py-0.5 bg-yellow-600 text-yellow-100 text-xs rounded">
+            <span className="ml-2 px-2 py-0.5 bg-warning/20 text-warning text-caption rounded">
               {issues.length} issue{issues.length !== 1 ? 's' : ''}
             </span>
           )}
-        </button>
-        
+        </Button>
+
         {hasIssues && showSuggestions && (
-          <div className="mt-2 text-xs text-gray-400 text-center">
+          <div className="mt-2 text-caption text-ink-subtle text-center">
             Fix suggestions above or parse as-is to create custom exercises
           </div>
         )}
-      </div>
+      </Card>
 
       {/* Format Guide */}
-      <div className="bg-gray-800 rounded-lg p-6">
-        <h3 className="text-lg font-medium text-white mb-3">Format Guide</h3>
-        <div className="text-sm text-gray-400 space-y-2">
-          <p>• <span className="text-blue-400">3x10 Exercise Name</span> - 3 sets of 10 reps</p>
-          <p>• <span className="text-blue-400">3x8-12 Exercise Name</span> - 3 sets of 8-12 reps</p>
-          <p>• <span className="text-blue-400">3x8 Bench Press @155lbs</span> - with weight</p>
-          <p>• <span className="text-blue-400">Exercise 1 ss Exercise 2</span> - superset</p>
-          <p>• <span className="text-blue-400">Push Ups 4x15</span> - exercise name first</p>
+      <Card className="p-6">
+        <h3 className="text-title font-medium text-ink mb-3">Format Guide</h3>
+        <div className="text-body-sm text-ink-subtle space-y-2">
+          <p>• <span className="text-accent">3x10 Exercise Name</span> - 3 sets of 10 reps</p>
+          <p>• <span className="text-accent">3x8-12 Exercise Name</span> - 3 sets of 8-12 reps</p>
+          <p>• <span className="text-accent">3x8 Bench Press @155lbs</span> - with weight</p>
+          <p>• <span className="text-accent">Exercise 1 ss Exercise 2</span> - superset</p>
+          <p>• <span className="text-accent">Push Ups 4x15</span> - exercise name first</p>
         </div>
-      </div>
+      </Card>
 
       {/* Mobile Exercise Search Modal */}
       <MobileExerciseSearchModal

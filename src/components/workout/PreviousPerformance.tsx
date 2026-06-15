@@ -2,6 +2,8 @@ import React from 'react';
 import { WorkoutExercise, WorkoutSet } from '../../types/exercise';
 import { ExerciseHistory, PerformedSet } from '../../types/exerciseHistory';
 import { TrendingUp, TrendingDown, Minus, Trophy } from 'lucide-react';
+import { Card } from '@/components/ui/card';
+import { Skeleton } from '@/components/ui/skeleton';
 
 interface PreviousPerformanceProps {
   currentExercise: WorkoutExercise;
@@ -61,60 +63,60 @@ export const PreviousPerformance: React.FC<PreviousPerformanceProps> = ({
 
   if (isLoading) {
     return (
-      <div className="bg-gray-800 rounded-lg p-4 mb-4">
+      <Card className="p-4 mb-4" aria-busy="true">
         <div className="flex items-center justify-between mb-3">
-          <h3 className="text-sm font-medium text-gray-300">
+          <h3 className="text-body-sm font-medium text-ink-muted">
             Previous Performance
           </h3>
-          <div className="animate-pulse bg-gray-600 h-4 w-16 rounded"></div>
+          <Skeleton className="h-4 w-16" />
         </div>
         <div className="space-y-2">
           {Array.from({ length: 3 }).map((_, i) => (
-            <div key={i} className="animate-pulse bg-gray-600 h-8 w-full rounded"></div>
+            <Skeleton key={i} className="h-8 w-full" />
           ))}
         </div>
-      </div>
+      </Card>
     );
   }
 
   if (!previousPerformance) {
     return (
-      <div className="bg-gray-800 rounded-lg p-4 mb-4 border border-gray-700">
+      <Card className="p-4 mb-4 border border-accent/30 bg-accent/10">
         <div className="flex items-center gap-2 mb-2">
-          <TrendingUp className="h-4 w-4 text-blue-400" />
-          <h3 className="text-sm font-medium text-blue-200">
+          <TrendingUp className="h-4 w-4 text-accent" />
+          <h3 className="text-body-sm font-medium text-ink">
             First Time Performing This Exercise
           </h3>
         </div>
-        <p className="text-xs text-blue-300">
+        <p className="text-caption text-ink-muted">
           No previous performance data available. Time to set your baseline!
         </p>
-      </div>
+      </Card>
     );
   }
 
   return (
-    <div className="bg-gray-800 rounded-lg p-4 mb-4 border border-gray-700">
+    <Card className="p-4 mb-4 border border-border">
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
-          <h3 className="text-sm font-medium text-gray-300">
+          <h3 className="text-body-sm font-medium text-ink-muted">
             Previous Performance
           </h3>
           {previousPerformance.personalRecords && (
             <div className="flex gap-1">
               {previousPerformance.personalRecords.maxWeight && (
-                <Trophy className="h-3 w-3 text-yellow-500" aria-label="Weight PR" />
+                <Trophy className="h-3 w-3 text-warning" aria-label="Weight PR" />
               )}
               {previousPerformance.personalRecords.maxReps && (
-                <Trophy className="h-3 w-3 text-blue-500" aria-label="Reps PR" />
+                <Trophy className="h-3 w-3 text-accent" aria-label="Reps PR" />
               )}
               {previousPerformance.personalRecords.maxVolume && (
-                <Trophy className="h-3 w-3 text-green-500" aria-label="Volume PR" />
+                <Trophy className="h-3 w-3 text-success" aria-label="Volume PR" />
               )}
             </div>
           )}
         </div>
-        <div className="text-xs text-gray-400">
+        <div className="text-caption text-ink-subtle">
           {new Date(previousPerformance.workoutDate).toLocaleDateString()}
         </div>
       </div>
@@ -122,7 +124,7 @@ export const PreviousPerformance: React.FC<PreviousPerformanceProps> = ({
       {matchingSets ? (
         // Show exact matching configuration
         <div className="space-y-2">
-          <div className="flex items-center justify-between text-xs text-gray-400 border-b border-gray-600 pb-1">
+          <div className="flex items-center justify-between text-caption text-ink-subtle border-b border-border pb-1">
             <span>Set</span>
             <span>Previous</span>
             <span>Current</span>
@@ -136,24 +138,24 @@ export const PreviousPerformance: React.FC<PreviousPerformanceProps> = ({
             const comparison = previousSet ? getWeightComparison(currentWeight, previousWeight) : 'same';
 
             return (
-              <div key={currentSet.id} className="flex items-center justify-between text-sm">
-                <span className="text-gray-400 w-8">
+              <div key={currentSet.id} className="flex items-center justify-between text-body-sm">
+                <span className="text-ink-subtle w-8">
                   {index + 1}
                 </span>
 
                 <div className="flex-1 text-center">
                   {previousSet ? (
-                    <span className="text-gray-300">
+                    <span className="text-ink-muted font-tabular">
                       {previousSet.actualReps} × {previousSet.weight}
                       {previousSet.unit === 'kg' ? 'kg' : 'lbs'}
                     </span>
                   ) : (
-                    <span className="text-gray-500">-</span>
+                    <span className="text-ink-subtle">-</span>
                   )}
                 </div>
 
                 <div className="flex-1 text-center">
-                  <span className="text-gray-300">
+                  <span className="text-ink-muted font-tabular">
                     {currentSet.reps} × {currentWeight}
                     {currentSet.unit === 'kg' ? 'kg' : 'lbs'}
                   </span>
@@ -163,19 +165,19 @@ export const PreviousPerformance: React.FC<PreviousPerformanceProps> = ({
                   {previousSet && (
                     <>
                       {comparison === 'up' && (
-                        <div className="flex items-center gap-1 text-green-400">
+                        <div className="flex items-center gap-1 text-success">
                           <TrendingUp className="h-3 w-3" />
-                          <span className="text-xs">+{currentWeight - previousWeight}</span>
+                          <span className="text-caption">+{currentWeight - previousWeight}</span>
                         </div>
                       )}
                       {comparison === 'down' && (
-                        <div className="flex items-center gap-1 text-red-400">
+                        <div className="flex items-center gap-1 text-danger">
                           <TrendingDown className="h-3 w-3" />
-                          <span className="text-xs">-{previousWeight - currentWeight}</span>
+                          <span className="text-caption">-{previousWeight - currentWeight}</span>
                         </div>
                       )}
                       {comparison === 'same' && (
-                        <div className="flex items-center gap-1 text-gray-400">
+                        <div className="flex items-center gap-1 text-ink-subtle">
                           <Minus className="h-3 w-3" />
                         </div>
                       )}
@@ -189,34 +191,34 @@ export const PreviousPerformance: React.FC<PreviousPerformanceProps> = ({
       ) : (
         // Show general previous performance when configuration doesn't match
         <div className="space-y-2">
-          <div className="text-xs text-amber-400 mb-2">
+          <div className="text-caption text-warning mb-2">
             Configuration doesn't match. Last performed: {previousPerformance.configuration}
           </div>
 
-          <div className="bg-gray-700 rounded p-3">
-            <div className="grid grid-cols-2 gap-4 text-sm">
+          <div className="bg-surface-subtle rounded-md p-3">
+            <div className="grid grid-cols-2 gap-4 text-body-sm">
               <div>
-                <span className="text-gray-400">Sets × Reps:</span>
-                <span className="ml-2 font-medium text-gray-200">
+                <span className="text-ink-subtle">Sets × Reps:</span>
+                <span className="ml-2 font-medium text-ink">
                   {previousPerformance.configuration}
                 </span>
               </div>
               <div>
-                <span className="text-gray-400">Weight Range:</span>
-                <span className="ml-2 font-medium text-gray-200">
+                <span className="text-ink-subtle">Weight Range:</span>
+                <span className="ml-2 font-medium text-ink font-tabular">
                   {Math.min(...previousPerformance.sets.map(s => s.weight))} - {Math.max(...previousPerformance.sets.map(s => s.weight))}
                   {previousPerformance.sets[0]?.unit === 'kg' ? 'kg' : 'lbs'}
                 </span>
               </div>
               <div>
-                <span className="text-gray-400">Total Volume:</span>
-                <span className="ml-2 font-medium text-gray-200">
+                <span className="text-ink-subtle">Total Volume:</span>
+                <span className="ml-2 font-medium text-ink font-tabular">
                   {previousPerformance.totalVolume.toLocaleString()}
                 </span>
               </div>
               <div>
-                <span className="text-gray-400">Workout:</span>
-                <span className="ml-2 font-medium text-gray-200">
+                <span className="text-ink-subtle">Workout:</span>
+                <span className="ml-2 font-medium text-ink">
                   {previousPerformance.workoutName || 'Quick Workout'}
                 </span>
               </div>
@@ -226,11 +228,11 @@ export const PreviousPerformance: React.FC<PreviousPerformanceProps> = ({
       )}
 
       {previousPerformance.notes && (
-        <div className="mt-3 p-2 bg-gray-700 rounded text-xs">
-          <span className="text-gray-400">Notes: </span>
-          <span className="text-gray-300">{previousPerformance.notes}</span>
+        <div className="mt-3 p-2 bg-surface-subtle rounded-md text-caption">
+          <span className="text-ink-subtle">Notes: </span>
+          <span className="text-ink-muted">{previousPerformance.notes}</span>
         </div>
       )}
-    </div>
+    </Card>
   );
 };

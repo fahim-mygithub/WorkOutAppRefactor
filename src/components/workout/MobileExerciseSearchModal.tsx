@@ -3,9 +3,22 @@ import { Exercise } from '../../types/exercise';
 import { ExerciseThumbnail } from '../ExerciseThumbnail';
 import { useSmartSearch } from '../../hooks/useSmartSearch';
 import { useKeyboardDetection } from '../../hooks/useKeyboardDetection';
-import { SearchMatch, highlightText } from '../../utils/searchUtils';
-import { APP_SCROLL_ID } from '../../lib/scroll';
-import { X, Search, Filter, ChevronDown, Plus } from 'lucide-react';
+import { highlightText } from '../../utils/searchUtils';
+import { X, Search, Filter, Plus } from 'lucide-react';
+import {
+  Sheet,
+  SheetContent,
+  SheetTitle,
+} from '../ui/sheet';
+import { Input } from '../ui/input';
+import { IconButton } from '../ui/icon-button';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '../ui/select';
 
 interface MobileExerciseSearchModalProps {
   exercises: Exercise[];
@@ -18,13 +31,13 @@ interface MobileExerciseSearchModalProps {
 const getDifficultyColor = (difficulty: string): string => {
   switch (difficulty.toLowerCase()) {
     case 'beginner':
-      return 'bg-green-900 text-green-300 border-green-700';
+      return 'bg-success/15 text-success border-success/40';
     case 'intermediate':
-      return 'bg-yellow-900 text-yellow-300 border-yellow-700';
+      return 'bg-warning/15 text-warning border-warning/40';
     case 'advanced':
-      return 'bg-red-900 text-red-300 border-red-700';
+      return 'bg-danger/15 text-danger border-danger/40';
     default:
-      return 'bg-gray-900 text-gray-300 border-gray-700';
+      return 'bg-surface-subtle text-ink-subtle border-border';
   }
 };
 
@@ -95,45 +108,20 @@ export const MobileExerciseSearchModal: React.FC<MobileExerciseSearchModalProps>
     }
   }, [searchTerm, setSearchQuery, clearSearch]);
 
-  // Handle modal open/close
+  // Reset transient state when modal opens / focus search. Scroll-lock,
+  // Escape, focus-trap and backdrop are owned by the Sheet primitive.
   useEffect(() => {
-    // Lock the app's scroll container (the body is already overflow:hidden via
-    // <AppShell>, so locking it here would fight the shell and break it on
-    // cleanup). The shell scroller is the element that actually scrolls.
-    const scroller = document.getElementById(APP_SCROLL_ID);
-
     if (isOpen) {
       // Focus search input when modal opens
       setTimeout(() => {
         searchInputRef.current?.focus();
       }, 100);
-
-      // Lock app scroll
-      if (scroller) scroller.style.overflow = 'hidden';
     } else {
-      // Reset state and unlock app scroll
       setSearchTerm('');
       setSelectedMuscleGroup('all');
       setShowFilters(false);
-      if (scroller) scroller.style.overflow = '';
     }
-
-    return () => {
-      if (scroller) scroller.style.overflow = '';
-    };
   }, [isOpen]);
-
-  // Handle escape key
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape' && isOpen) {
-        onClose();
-      }
-    };
-
-    document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, onClose]);
 
   // Touch gesture handlers for swipe-to-close
   const handleTouchStart = (e: React.TouchEvent) => {
@@ -192,66 +180,55 @@ export const MobileExerciseSearchModal: React.FC<MobileExerciseSearchModalProps>
 
   const calculateModalHeight = () => {
     if (isKeyboardVisible) {
-      return `calc(100vh - ${keyboardHeight}px)`;
+      return `calc(100svh - ${keyboardHeight}px)`;
     }
-    return '100vh';
+    return '100svh';
   };
 
-  if (!isOpen) return null;
-
   return (
-    <div className={`fixed inset-0 z-50 ${className}`}>
-      {/* Backdrop */}
-      <div
-        className="fixed inset-0 bg-black bg-opacity-75 transition-opacity"
-        onClick={onClose}
-      />
-
-      {/* Modal */}
-      <div
+    <Sheet open={isOpen} onOpenChange={(next) => !next && onClose()}>
+      <SheetContent
         ref={modalRef}
-        className="relative w-full bg-gray-900 flex flex-col touch-pan-y"
+        className={`inset-0 flex max-h-none w-full flex-col rounded-none bg-surface p-0 touch-pan-y ${className}`}
         style={{ height: calculateModalHeight() }}
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
       >
         {/* Header */}
-        <div className="flex-shrink-0 bg-gray-800 border-b border-gray-700">
-          {/* Swipe handle indicator */}
-          <div className="flex justify-center pt-2 pb-1">
-            <div className="w-8 h-1 bg-gray-600 rounded-full"></div>
-          </div>
-
+        <div className="flex-shrink-0 bg-surface-raised border-b border-border">
           <div className="flex items-center justify-between p-4 pt-2">
-            <h2 className="text-lg font-semibold text-white">Add Exercise</h2>
-            <button
+            <SheetTitle className="text-title font-semibold text-ink">Add Exercise</SheetTitle>
+            <IconButton
+              variant="ghost"
+              size="sm"
               onClick={onClose}
-              className="p-2 text-gray-400 hover:text-white rounded-lg hover:bg-gray-700 transition-colors"
+              aria-label="Close exercise search"
             >
               <X className="w-5 h-5" />
-            </button>
+            </IconButton>
           </div>
         </div>
 
         {/* Search Input */}
-        <div className="flex-shrink-0 bg-gray-800 border-b border-gray-700 p-4 space-y-3">
+        <div className="flex-shrink-0 bg-surface-raised border-b border-border p-4 space-y-3">
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
-            <input
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-ink-subtle z-10" />
+            <Input
               ref={searchInputRef}
               type="text"
               placeholder="Search exercises..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-12 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              className="pl-10 pr-12"
             />
             <button
+              type="button"
               onClick={() => setShowFilters(!showFilters)}
               className={`absolute right-3 top-1/2 transform -translate-y-1/2 p-1 rounded transition-colors ${
                 selectedMuscleGroup !== 'all' || showFilters
-                  ? 'text-blue-400 bg-blue-900'
-                  : 'text-gray-400 hover:text-white'
+                  ? 'text-accent bg-accent/15'
+                  : 'text-ink-subtle hover:text-ink'
               }`}
             >
               <Filter className="w-4 h-4" />
@@ -260,28 +237,29 @@ export const MobileExerciseSearchModal: React.FC<MobileExerciseSearchModalProps>
 
           {/* Filters */}
           {showFilters && (
-            <div className="relative">
-              <select
-                value={selectedMuscleGroup}
-                onChange={(e) => setSelectedMuscleGroup(e.target.value)}
-                className="w-full py-2 px-3 bg-gray-700 border border-gray-600 rounded-lg text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent appearance-none"
-              >
+            <Select
+              value={selectedMuscleGroup}
+              onValueChange={setSelectedMuscleGroup}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="All Muscle Groups" />
+              </SelectTrigger>
+              <SelectContent>
                 {muscleGroups.map(group => (
-                  <option key={group} value={group}>
+                  <SelectItem key={group} value={group}>
                     {group === 'all' ? 'All Muscle Groups' : group}
-                  </option>
+                  </SelectItem>
                 ))}
-              </select>
-              <ChevronDown className="absolute right-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
-            </div>
+              </SelectContent>
+            </Select>
           )}
 
           {/* Search Stats */}
-          <div className="flex items-center justify-between text-xs text-gray-400">
+          <div className="flex items-center justify-between text-caption text-ink-subtle">
             <div className="flex items-center gap-2">
               {isSearching ? (
                 <>
-                  <div className="w-3 h-3 border border-blue-400 border-t-transparent rounded-full animate-spin"></div>
+                  <div className="w-3 h-3 border border-accent border-t-transparent rounded-full animate-spin"></div>
                   <span>Searching...</span>
                 </>
               ) : (
@@ -291,7 +269,7 @@ export const MobileExerciseSearchModal: React.FC<MobileExerciseSearchModalProps>
               )}
             </div>
             {searchStats && searchStats.searchTime > 0 && (
-              <span className="text-gray-500">
+              <span className="text-ink-subtle">
                 {searchStats.searchTime.toFixed(1)}ms
               </span>
             )}
@@ -302,28 +280,28 @@ export const MobileExerciseSearchModal: React.FC<MobileExerciseSearchModalProps>
         <div className="flex-1 overflow-y-auto">
           {filteredResults.length === 0 && !isSearching ? (
             <div className="flex flex-col items-center justify-center h-full text-center p-8">
-              <Search className="w-12 h-12 text-gray-500 mb-4" />
-              <h3 className="text-lg font-medium text-white mb-2">No exercises found</h3>
-              <p className="text-sm text-gray-400">
+              <Search className="w-12 h-12 text-ink-subtle mb-4" />
+              <h3 className="text-body font-medium text-ink mb-2">No exercises found</h3>
+              <p className="text-body-sm text-ink-subtle">
                 Try adjusting your search or filter settings
               </p>
             </div>
           ) : isSearching && filteredResults.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full text-center p-8">
-              <div className="w-8 h-8 border-2 border-blue-400 border-t-transparent rounded-full animate-spin mb-4"></div>
-              <p className="text-sm text-gray-400">Searching exercises...</p>
+              <div className="w-8 h-8 border-2 border-accent border-t-transparent rounded-full animate-spin mb-4"></div>
+              <p className="text-body-sm text-ink-subtle">Searching exercises...</p>
             </div>
           ) : (
             <div className="grid grid-cols-2 gap-3 p-4">
-              {filteredResults.map((result, index) => {
+              {filteredResults.map((result) => {
                 const { exercise, highlightRanges } = result;
                 return (
                   <div
                     key={exercise.id}
-                    className="bg-gray-800 rounded-lg border border-gray-700 overflow-hidden"
+                    className="bg-surface-raised rounded-lg border border-border overflow-hidden"
                   >
                     {/* Exercise Thumbnail */}
-                    <div className="aspect-video bg-gray-900 relative">
+                    <div className="aspect-video bg-surface-subtle relative">
                       <ExerciseThumbnail
                         exercise={exercise}
                         className="w-full h-full"
@@ -333,15 +311,15 @@ export const MobileExerciseSearchModal: React.FC<MobileExerciseSearchModalProps>
                       />
                       {/* Add button overlay */}
                       <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                        <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center opacity-90 shadow-lg">
-                          <Plus className="w-4 h-4 text-white" />
+                        <div className="w-8 h-8 bg-accent rounded-full flex items-center justify-center opacity-90 shadow-e2">
+                          <Plus className="w-4 h-4 text-accent-fg" />
                         </div>
                       </div>
                     </div>
 
                     {/* Exercise Info */}
                     <div className="p-3 space-y-2">
-                      <h3 className="font-medium text-white text-sm leading-tight">
+                      <h3 className="font-medium text-ink text-body-sm leading-tight">
                         <span
                           dangerouslySetInnerHTML={{
                             __html: highlightRanges.length > 0
@@ -351,24 +329,27 @@ export const MobileExerciseSearchModal: React.FC<MobileExerciseSearchModalProps>
                         />
                       </h3>
 
-                      <div className="flex items-center gap-2 text-xs text-gray-400">
+                      <div className="flex items-center gap-2 text-caption text-ink-subtle">
                         <span className="truncate">{exercise.muscleGroup}</span>
                         <span>•</span>
                         <span className="truncate">{exercise.equipment}</span>
                       </div>
 
                       <div className="flex items-center justify-between">
-                        <span className={`px-2 py-1 rounded text-xs font-medium border ${getDifficultyColor(exercise.difficulty)}`}>
+                        <span className={`px-2 py-1 rounded text-caption font-medium border ${getDifficultyColor(exercise.difficulty)}`}>
                           {exercise.difficulty}
                         </span>
 
                         {!exercise.videoLinks.length && (
-                          <button
+                          <IconButton
+                            variant="primary"
+                            size="sm"
                             onClick={() => handleSelectExercise(exercise)}
-                            className="p-1.5 bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors"
+                            aria-label={`Add ${exercise.name}`}
+                            className="h-7 w-7"
                           >
-                            <Plus className="w-3 h-3 text-white" />
-                          </button>
+                            <Plus className="w-3 h-3" />
+                          </IconButton>
                         )}
                       </div>
                     </div>
@@ -380,12 +361,12 @@ export const MobileExerciseSearchModal: React.FC<MobileExerciseSearchModalProps>
         </div>
 
         {/* Bottom hint */}
-        <div className="flex-shrink-0 bg-gray-800 border-t border-gray-700 p-3">
-          <p className="text-xs text-gray-400 text-center">
+        <div className="flex-shrink-0 bg-surface-raised border-t border-border p-3">
+          <p className="text-caption text-ink-subtle text-center">
             Tap exercises to add them to your workout
           </p>
         </div>
-      </div>
-    </div>
+      </SheetContent>
+    </Sheet>
   );
 };

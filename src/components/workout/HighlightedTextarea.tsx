@@ -69,11 +69,11 @@ export const HighlightedTextarea = React.forwardRef<HTMLTextAreaElement, Highlig
         const confidence = issue.suggestions[0]?.confidence || 0;
 
         // Determine highlight color based on confidence
-        let highlightClass = 'bg-red-900/40 border-b-2 border-red-400'; // Low confidence
+        let highlightClass = 'bg-danger/20 border-b-2 border-danger'; // Low confidence
         if (confidence >= 90) {
-          highlightClass = 'bg-green-900/40 border-b-2 border-green-400'; // High confidence
+          highlightClass = 'bg-success/20 border-b-2 border-success'; // High confidence
         } else if (confidence >= 70) {
-          highlightClass = 'bg-yellow-900/40 border-b-2 border-yellow-400'; // Medium confidence
+          highlightClass = 'bg-warning/20 border-b-2 border-warning'; // Medium confidence
         }
 
         // Use case-insensitive replacement but preserve original case
@@ -97,56 +97,56 @@ export const HighlightedTextarea = React.forwardRef<HTMLTextAreaElement, Highlig
     // Highlight sets and reps (e.g., 3x10, 5x5, 4x8-12)
     highlighted = highlighted.replace(
       /(\d+)\s*[x×\*]\s*(\d+(?:-\d+)?)/gi,
-      '<span class="text-blue-400 font-semibold">$1</span><span class="text-blue-300">×</span><span class="text-cyan-400 font-semibold">$2</span>'
+      '<span class="text-accent font-semibold">$1</span><span class="text-accent/80">×</span><span class="text-muscle-pull font-semibold">$2</span>'
     );
 
     // Highlight weights (e.g., @185lbs, @80kg)
     highlighted = highlighted.replace(
       /@\s*(\d+(?:\.\d+)?)\s*(lbs?|kg)?/gi,
-      '<span class="text-purple-400">@</span><span class="text-purple-300 font-semibold">$1</span><span class="text-purple-400">$2</span>'
+      '<span class="text-muscle-core">@</span><span class="text-muscle-core font-semibold">$1</span><span class="text-muscle-core">$2</span>'
     );
 
     // Highlight superset notation (ss, superset)
     highlighted = highlighted.replace(
       /\b(ss|superset)\b/gi,
-      '<span class="text-orange-400 font-bold bg-orange-900/30 px-1 rounded">$1</span>'
+      '<span class="text-muscle-cardio font-bold bg-muscle-cardio/20 px-1 rounded">$1</span>'
     );
 
     // Highlight rest times (e.g., rest 90s, rest 2min)
     highlighted = highlighted.replace(
       /\b(rest)\s+(\d+)\s*(s|sec|seconds?|min|minutes?)\b/gi,
-      '<span class="text-green-400">$1</span> <span class="text-green-300 font-semibold">$2</span><span class="text-green-400">$3</span>'
+      '<span class="text-success">$1</span> <span class="text-success font-semibold">$2</span><span class="text-success">$3</span>'
     );
 
     // Highlight tempo notation (e.g., tempo 3-1-2-0)
     highlighted = highlighted.replace(
       /\b(tempo)\s+(\d+-\d+-\d+-\d+)\b/gi,
-      '<span class="text-yellow-400">$1</span> <span class="text-yellow-300 font-semibold">$2</span>'
+      '<span class="text-warning">$1</span> <span class="text-warning font-semibold">$2</span>'
     );
 
     // Highlight RPE (e.g., RPE 8, @RPE9)
     highlighted = highlighted.replace(
       /(@?\s*RPE)\s*(\d+(?:\.\d+)?)/gi,
-      '<span class="text-red-400">$1</span> <span class="text-red-300 font-semibold">$2</span>'
+      '<span class="text-danger">$1</span> <span class="text-danger font-semibold">$2</span>'
     );
 
     // Highlight percentage notation (e.g., 85%, @85%)
     highlighted = highlighted.replace(
       /(@?\s*)(\d+)(%)/gi,
-      '<span class="text-indigo-400">$1</span><span class="text-indigo-300 font-semibold">$2</span><span class="text-indigo-400">$3</span>'
+      '<span class="text-muscle-mobility">$1</span><span class="text-muscle-mobility font-semibold">$2</span><span class="text-muscle-mobility">$3</span>'
     );
 
     // Highlight notes/comments (lines starting with # or //)
     highlighted = highlighted.replace(
       /^\s*(#|\/\/)(.*)$/gm,
-      '<span class="text-gray-500 italic">$1$2</span>'
+      '<span class="text-ink-subtle italic">$1$2</span>'
     );
 
     // Highlight exercise names (basic pattern - words that are likely exercise names)
     // This is a simple heuristic and could be improved with a exercise name database
     highlighted = highlighted.replace(
       /\b([A-Z][a-z]+(?:\s+[A-Z]?[a-z]+){1,4})(?=\s*\d+[x×\*]|$)/g,
-      '<span class="text-emerald-300 font-medium">$1</span>'
+      '<span class="text-muscle-legs font-medium">$1</span>'
     );
 
     return highlighted;

@@ -1,0 +1,59 @@
+// WorkoutNextActionBanner — the contextual status strip on the active-exercise
+// card: "Rest in progress", "Ready to perform set N", or "Set completed!".
+// Pure presentation driven by the rest-timer + current-set state. Uses semantic
+// state tokens (warning / success / accent) rather than bespoke orange/green/blue.
+import React from 'react';
+
+interface WorkoutNextActionBannerProps {
+  restActive: boolean;
+  restTimeRemaining: number;
+  currentSetCompleted: boolean;
+  currentSetNumber: number; // 1-based
+  hasNextSet: boolean;
+}
+
+function formatClock(seconds: number): string {
+  return `${Math.floor(seconds / 60)}:${(seconds % 60)
+    .toString()
+    .padStart(2, '0')}`;
+}
+
+export const WorkoutNextActionBanner: React.FC<WorkoutNextActionBannerProps> = ({
+  restActive,
+  restTimeRemaining,
+  currentSetCompleted,
+  currentSetNumber,
+  hasNextSet,
+}) => {
+  if (restActive) {
+    return (
+      <div className="mb-4 flex items-center gap-2 rounded-md border border-warning/40 bg-warning/15 p-3">
+        <span className="h-2 w-2 animate-pulse rounded-full bg-warning" />
+        <p className="text-body-sm font-medium text-warning">
+          Rest in progress - {formatClock(restTimeRemaining)} remaining
+        </p>
+      </div>
+    );
+  }
+
+  if (!currentSetCompleted) {
+    return (
+      <div className="mb-4 flex items-center gap-2 rounded-md border border-success/40 bg-success/15 p-3">
+        <span className="h-2 w-2 animate-pulse rounded-full bg-success" />
+        <p className="text-body-sm font-medium text-success">
+          Ready to perform set {currentSetNumber}
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mb-4 flex items-center gap-2 rounded-md border border-accent/40 bg-accent/15 p-3">
+      <span className="h-2 w-2 animate-pulse rounded-full bg-accent" />
+      <p className="text-body-sm font-medium text-accent">
+        Set completed!{' '}
+        {hasNextSet ? 'Ready for next set' : 'Ready for next exercise'}
+      </p>
+    </div>
+  );
+};

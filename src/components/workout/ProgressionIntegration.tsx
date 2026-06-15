@@ -183,8 +183,8 @@ export const ProgressionIntegration: React.FC<ProgressionIntegrationProps> = ({
 
       {/* Error Display */}
       {error && (
-        <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-          <p className="text-red-700 text-sm">{error}</p>
+        <div className="bg-danger/10 border border-danger/30 rounded-md p-4">
+          <p className="text-danger text-body-sm">{error}</p>
         </div>
       )}
 
@@ -215,9 +215,9 @@ export const ProgressionIntegration: React.FC<ProgressionIntegrationProps> = ({
       )}
 
       {/* Usage Instructions (remove in production) */}
-      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 text-xs">
-        <h4 className="font-semibold text-blue-900 mb-2">Integration Points:</h4>
-        <ul className="space-y-1 text-blue-700">
+      <div className="bg-accent/10 border border-accent/30 rounded-md p-4 text-caption">
+        <h4 className="font-semibold text-ink mb-2">Integration Points:</h4>
+        <ul className="space-y-1 text-ink-muted">
           <li>• Call checkSetPerformance() after each set completion</li>
           <li>• Save progressionTracking with exercise history</li>
           <li>• Load recommendation on exercise start</li>

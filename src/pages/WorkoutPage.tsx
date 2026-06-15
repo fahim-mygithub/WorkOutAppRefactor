@@ -2,10 +2,11 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useAppDispatch, useAppSelector } from '../store/hooks';
 import { useAuth } from '../contexts/AuthContext';
+import { useWakeLock } from '../hooks/useWakeLock';
 import { SharedWorkoutLoader } from '../components/SharedWorkoutLoader';
 import { SharedWorkoutStartPage } from '../components/SharedWorkoutStartPage';
 import { incrementWorkoutUseCount } from '../store/slices/sharedWorkoutSlice';
-import { loadWorkoutContext, loadPreviousPerformance } from '../store/slices/exerciseHistorySlice';
+import { loadWorkoutContext } from '../store/slices/exerciseHistorySlice';
 import { WorkoutStorageService } from '../services/workoutStorageService';
 import {
   startWorkout,
@@ -18,44 +19,30 @@ import {
   jumpToSet,
   startRestTimer,
   stopRestTimer,
-  updateWorkoutDuration,
   nextSupersetExercise,
   completeSuperset,
-  advanceToNextSupersetRound,
   updateExercise,
   updateExerciseNotesAndTitle,
   setShowCompletionModal,
-  setExperienceLevel,
-  setProgressionTracking,
   recordProgressionOutcome
 } from '../store/slices/workoutSlice';
 import { RestTimer } from '../components/RestTimer';
-import { ExerciseVideo } from '../components/ExerciseVideo';
-import { DualViewVideo } from '../components/DualViewVideo';
 import { SupersetExerciseCard } from '../components/SupersetExerciseCard';
-import { SetInput } from '../components/SetInput';
 import { ExerciseEditModal } from '../components/ExerciseEditModal';
-import { PreviousPerformance } from '../components/workout/PreviousPerformance';
-import { ExerciseNotesEditor } from '../components/workout/ExerciseNotesEditor';
 import { WorkoutCompletionModal } from '../components/WorkoutCompletionModal';
 import { EndWorkoutModal } from '../components/EndWorkoutModal';
-import { WeightProgressionSlider } from '../components/workout/WeightProgressionSlider';
 import { DeloadSuggestion } from '../components/workout/DeloadSuggestion';
 import { FatigueCheck } from '../components/workout/FatigueCheck';
+import { WorkoutHeader } from '../components/workout/WorkoutHeader';
+import { ActiveExerciseCard } from '../components/workout/ActiveExerciseCard';
+import {
+  ExerciseListPanel,
+  type ExerciseDisplayGroup,
+} from '../components/workout/ExerciseListPanel';
 import { useProgressionRecommendation } from '../hooks/useProgressionRecommendation';
-import { Play, Pause, SkipForward, SkipBack, Plus, Check, X, Edit } from 'lucide-react';
+import { Button } from '../components/ui/button';
+import { Card } from '../components/ui/card';
 import { Exercise, WorkoutExercise, WorkoutSet } from '../types/exercise';
-
-// Helper interface for grouped exercise display
-interface ExerciseDisplayGroup {
-  id: string;
-  name: string;
-  isSuperset: boolean;
-  exercises: WorkoutExercise[];
-  totalSets: number;
-  completedSets: number;
-  isActive: boolean;
-}
 
 // Helper function to group exercises for display purposes
 const getGroupedExercisesForDisplay = (exercises: WorkoutExercise[], currentExerciseIndex: number): ExerciseDisplayGroup[] => {
@@ -116,12 +103,10 @@ const getGroupedExercisesForDisplay = (exercises: WorkoutExercise[], currentExer
 export default function WorkoutPage() {
   const navigate = useNavigate();
   const dispatch = useAppDispatch();
-  const { activeWorkout, restTimer, showCompletionModal, experienceLevel: globalExperienceLevel } = useAppSelector((state) => state.workout);
+  const { activeWorkout, restTimer, showCompletionModal } = useAppSelector((state) => state.workout);
   const { preferences } = useAppSelector((state) => state.user);
   const { user } = useAuth(); // Get Firebase user from auth context
   const { previousPerformances, isLoadingPrevious } = useAppSelector((state) => state.exerciseHistory);
-  const { currentSharedWorkout, isAnonymousSession } = useAppSelector((state) => state.sharedWorkout);
-  const [workoutStartTime] = useState(Date.now());
 
   // Check if we're viewing a shared workout
   const { shareId } = useParams<{ shareId?: string }>() || {};
@@ -141,16 +126,10 @@ export default function WorkoutPage() {
   const [isSharedSession] = useState(!!shareId || !!storedContext?.isSharedSession);
   const isAnonymousUser = (isViewingSharedWorkout || isSharedSession) && !user;
 
-  console.log('💪 WorkoutPage rendering:', {
-    shareId,
-    isViewingSharedWorkout,
-    isSharedSession,
-    isAnonymousUser,
-    hasActiveWorkout: !!activeWorkout,
-    user: user?.uid || 'anonymous',
-    currentSharedWorkout: !!currentSharedWorkout,
-    path: window.location.pathname
-  });
+  // Keep the screen awake for the duration of a live workout (PWA hardening §3).
+  // Feature-detected + auto-degrading inside the hook; safe everywhere.
+  useWakeLock(!!activeWorkout);
+
   const [editingExercise, setEditingExercise] = useState<WorkoutExercise | null>(null);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showDeloadModal, setShowDeloadModal] = useState(false);
@@ -182,44 +161,26 @@ export default function WorkoutPage() {
     if (!activeWorkout) {
       // Don't redirect if we're on a shared workout route or in a shared session
       if (!isViewingSharedWorkout && !isSharedSession) {
-        console.log('🔄 WorkoutPage: No active workout, redirecting to build (not a shared session)');
         navigate('/build');
-      } else {
-        console.log('🔗 WorkoutPage: No active workout, but staying on shared route for anonymous access');
       }
       return;
     }
-
-    console.log('🏋️ WorkoutPage: Active workout detected, setting up context');
 
     // Load workout context only once per workout (when workout ID changes)
     // Only for authenticated users - anonymous users can workout without context
     if (user?.uid && exerciseIdsForContext.length > 0 && contextLoadedRef.current !== activeWorkout.id) {
       contextLoadedRef.current = activeWorkout.id;
       dispatch(loadWorkoutContext({ userId: user.uid, exerciseIds: exerciseIdsForContext }));
-      console.log('📊 WorkoutPage: Loading workout context for authenticated user');
-    } else if (isAnonymousUser) {
-      console.log('👤 WorkoutPage: Anonymous user - skipping context loading');
     }
   }, [activeWorkout?.id, navigate, dispatch, user?.uid, exerciseIdsForContext, isViewingSharedWorkout, isSharedSession, isAnonymousUser]);
 
-
-  // Separate effect for duration updates
-  useEffect(() => {
-    if (!activeWorkout) return;
-
-    const interval = setInterval(() => {
-      const elapsed = Math.floor((Date.now() - new Date(activeWorkout.startTime).getTime()) / 1000);
-      dispatch(updateWorkoutDuration(elapsed));
-    }, 1000);
-
-    return () => clearInterval(interval);
-  }, [activeWorkout?.id, dispatch]); // Only depend on workout ID and dispatch
+  // NOTE: the workout-duration interval lives in <WorkoutDurationTimer> (a leaf
+  // rendered by <WorkoutHeader>) so the per-second tick no longer re-renders the
+  // whole workout tree — PWA hardening §5.
 
   // Move all variable declarations and hooks before early return to prevent hook count mismatch
   const currentExercise = activeWorkout?.exercises[activeWorkout.currentExerciseIndex];
   const currentSet = currentExercise?.sets[activeWorkout?.currentSetIndex || 0];
-  const isInSuperset = activeWorkout?.isInSuperset;
   const currentSupersetIndex = activeWorkout?.currentSupersetIndex || 0;
 
   // Initialize progression recommendation hook for current exercise (always call this hook)
@@ -242,11 +203,8 @@ export default function WorkoutPage() {
   }, [progressionHook.recommendation, activeWorkout]);
 
   if (!activeWorkout) {
-    console.log('❌ WorkoutPage: No active workout detected');
-
     // If we're viewing a shared workout, wrap with SharedWorkoutLoader
     if (isViewingSharedWorkout) {
-      console.log('🔗 WorkoutPage: Rendering SharedWorkoutLoader for shareId:', shareId);
       return (
         <SharedWorkoutLoader
           onWorkoutNotFound={() => navigate('/build')}
@@ -255,7 +213,6 @@ export default function WorkoutPage() {
             <SharedWorkoutStartPage
               sharedWorkout={sharedWorkout}
               onStartWorkout={(workout) => {
-                console.log('▶️ WorkoutPage: Starting shared workout:', workout.workoutData.name);
                 // Start the shared workout
                 dispatch(startWorkout({
                   name: workout.workoutData.name,
@@ -274,17 +231,12 @@ export default function WorkoutPage() {
 
     // Regular no workout page for authenticated users
     return (
-      <div className="min-h-full bg-gray-900 flex items-center justify-center">
-        <div className="text-center">
-          <h1 className="text-2xl font-bold text-white mb-4">No Active Workout</h1>
-          <p className="text-gray-400 mb-6">Start a workout from the Build page</p>
-          <button
-            onClick={() => navigate('/build')}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg transition-colors"
-          >
-            Go to Build Page
-          </button>
-        </div>
+      <div className="flex min-h-full items-center justify-center bg-surface p-4">
+        <Card elevation={1} className="p-8 text-center">
+          <h1 className="mb-4 text-title font-bold text-ink">No Active Workout</h1>
+          <p className="mb-6 text-ink-subtle">Start a workout from the Build page</p>
+          <Button onClick={() => navigate('/build')}>Go to Build Page</Button>
+        </Card>
       </div>
     );
   }
@@ -294,17 +246,12 @@ export default function WorkoutPage() {
   // `currentExercise` to a defined value for the rest of the render.
   if (!currentExercise) {
     return (
-      <div className="min-h-full bg-gray-900 flex items-center justify-center">
-        <div className="text-center">
-          <h1 className="text-2xl font-bold text-white mb-4">No Exercise Selected</h1>
-          <p className="text-gray-400 mb-6">This workout has no current exercise.</p>
-          <button
-            onClick={() => navigate('/build')}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg transition-colors"
-          >
-            Go to Build Page
-          </button>
-        </div>
+      <div className="flex min-h-full items-center justify-center bg-surface p-4">
+        <Card elevation={1} className="p-8 text-center">
+          <h1 className="mb-4 text-title font-bold text-ink">No Exercise Selected</h1>
+          <p className="mb-6 text-ink-subtle">This workout has no current exercise.</p>
+          <Button onClick={() => navigate('/build')}>Go to Build Page</Button>
+        </Card>
       </div>
     );
   }
@@ -383,9 +330,9 @@ export default function WorkoutPage() {
   };
 
   const handleUncompleteSet = () => {
-    dispatch(uncompleteSet({ 
-      exerciseIndex: activeWorkout.currentExerciseIndex, 
-      setIndex: activeWorkout.currentSetIndex 
+    dispatch(uncompleteSet({
+      exerciseIndex: activeWorkout.currentExerciseIndex,
+      setIndex: activeWorkout.currentSetIndex
     }));
   };
 
@@ -437,10 +384,7 @@ export default function WorkoutPage() {
     dispatch(endWorkout());
     setShowEndWorkoutModal(false);
     // Navigate appropriately based on user type
-    if (isAnonymousUser) {
-      console.log('👤 Anonymous user ended workout without saving - staying on current route');
-      // Stay on current shared route
-    } else {
+    if (!isAnonymousUser) {
       navigate('/');
     }
   };
@@ -450,17 +394,12 @@ export default function WorkoutPage() {
       // Save completed workout to Firebase
       if (user?.uid) {
         await WorkoutStorageService.saveCompletedWorkout(user.uid, activeWorkout);
-        console.log('✅ Workout saved successfully');
       }
 
       dispatch(endWorkout());
       setShowEndWorkoutModal(false);
       // Navigate appropriately based on user type
-      if (isAnonymousUser) {
-        // For anonymous users, stay on the current page or go to build
-        console.log('👤 Workout completed by anonymous user - staying on current route');
-        // We could show a completion modal here instead of navigating
-      } else {
+      if (!isAnonymousUser) {
         navigate('/profile', { state: { showWorkoutComplete: true } });
       }
     } catch (error) {
@@ -471,29 +410,14 @@ export default function WorkoutPage() {
       dispatch(endWorkout());
       setShowEndWorkoutModal(false);
       // Navigate appropriately based on user type
-      if (isAnonymousUser) {
-        console.log('👤 Anonymous user workout ended after error - staying on current route');
-      } else {
+      if (!isAnonymousUser) {
         navigate('/');
       }
     }
   };
 
-  const formatTime = (seconds: number): string => {
-    const hours = Math.floor(seconds / 3600);
-    const minutes = Math.floor((seconds % 3600) / 60);
-    const remainingSeconds = seconds % 60;
-
-    if (hours > 0) {
-      return `${hours}:${minutes.toString().padStart(2, '0')}:${remainingSeconds.toString().padStart(2, '0')}`;
-    }
-    return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
-  };
-
   // Calculate accurate progress based on completed sets
   const calculateWorkoutProgress = () => {
-    if (!activeWorkout) return { completedSets: 0, totalSets: 0, percentage: 0 };
-
     const totalSets = activeWorkout.exercises.reduce((total, ex) => total + ex.sets.length, 0);
     const completedSets = activeWorkout.exercises.reduce((total, ex) =>
       total + ex.sets.filter(set => set.completed).length, 0
@@ -569,326 +493,108 @@ export default function WorkoutPage() {
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [currentSet, currentExercise, activeWorkout, restTimer, dispatch, handleCompleteSet, handleUncompleteSet, handleJumpToSet]);
 
+  const progress = calculateWorkoutProgress();
+  const exerciseGroups = getGroupedExercisesForDisplay(
+    activeWorkout.exercises,
+    activeWorkout.currentExerciseIndex,
+  );
+  const isSupersetView =
+    !!currentExercise?.isSuperset &&
+    !!currentExercise.supersetId &&
+    supersetExercises.length > 1;
+
   return (
-    <div className="min-h-full bg-gray-900 p-4">
-      <div className="max-w-4xl mx-auto">
-        {/* Header */}
-        <div className="bg-gray-800 rounded-lg p-6 mb-6">
-          <div className="flex justify-between items-center">
-            <div>
-              <h1 className="text-2xl font-bold text-white">{activeWorkout.name}</h1>
-              <p className="text-gray-400">Duration: {formatTime(activeWorkout.duration)}</p>
-            </div>
-            <div className="flex space-x-4">
-              <button
-                onClick={handleEndWorkoutClick}
-                className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg transition-colors"
-              >
-                End Workout
-              </button>
-            </div>
-          </div>
+    <div className="min-h-full bg-surface p-4">
+      <div className="mx-auto max-w-4xl">
+        <WorkoutHeader
+          name={activeWorkout.name}
+          overallCompletedSets={progress.completedSets}
+          overallTotalSets={progress.totalSets}
+          overallPercentage={progress.percentage}
+          currentExerciseNumber={activeWorkout.currentExerciseIndex + 1}
+          totalExercises={activeWorkout.exercises.length}
+          currentExerciseCompletedSets={
+            currentExercise?.sets.filter((set) => set.completed).length || 0
+          }
+          currentExerciseTotalSets={currentExercise?.sets.length || 0}
+          onEndWorkout={handleEndWorkoutClick}
+        />
 
-          {/* Progress Bar */}
-          <div className="mt-4">
-            {/* Overall workout progress */}
-            <div className="mb-3">
-              <div className="flex justify-between text-sm text-gray-400 mb-1">
-                <span>Overall Progress</span>
-                <span>{calculateWorkoutProgress().percentage}%</span>
-              </div>
-              <div className="w-full bg-gray-700 rounded-full h-3">
-                <div
-                  className="bg-gradient-to-r from-blue-500 to-green-500 h-3 rounded-full transition-all duration-500 shadow-lg"
-                  style={{
-                    width: `${calculateWorkoutProgress().percentage}%`
-                  }}
-                />
-              </div>
-              <div className="flex justify-between text-xs text-gray-500 mt-1">
-                <span>{calculateWorkoutProgress().completedSets} sets completed</span>
-                <span>{calculateWorkoutProgress().totalSets} total sets</span>
-              </div>
-            </div>
-
-            {/* Current exercise progress */}
-            <div className="flex justify-between text-sm text-gray-400 mb-1">
-              <span>Exercise {activeWorkout.currentExerciseIndex + 1} of {activeWorkout.exercises.length}</span>
-              <span>{currentExercise?.sets.filter(set => set.completed).length || 0} / {currentExercise?.sets.length || 0} sets completed</span>
-            </div>
-            <div className="w-full bg-gray-700 rounded-full h-2">
-              <div
-                className="bg-blue-500 h-2 rounded-full transition-all duration-300"
-                style={{
-                  width: `${(currentExercise?.sets.length || 0) > 0 ? ((currentExercise?.sets.filter(set => set.completed).length || 0) / (currentExercise?.sets.length || 1)) * 100 : 0}%`
-                }}
-              />
-            </div>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
           {/* Main Exercise Panel */}
-          <div className="lg:col-span-2 flex flex-col gap-6">
-            {/* Superset or Regular Exercise */}
-            {currentExercise?.isSuperset && currentExercise.supersetId && supersetExercises.length > 1 ? (
-              <div className="order-1">
-                <SupersetExerciseCard
-                  exercises={supersetExercises}
-                  currentSupersetIndex={currentSupersetIndex}
-                  currentSetIndex={activeWorkout.currentSetIndex}
-                  onCompleteSet={handleCompleteSet}
-                  onUncompleteSet={handleUncompleteSet}
-                  onJumpToSet={handleJumpToSet}
-                  onAddSet={handleAddSet}
-                  previousPerformances={previousPerformances}
-                />
-              </div>
+          <div className="flex flex-col gap-6 lg:col-span-2">
+            {isSupersetView ? (
+              <SupersetExerciseCard
+                exercises={supersetExercises}
+                currentSupersetIndex={currentSupersetIndex}
+                currentSetIndex={activeWorkout.currentSetIndex}
+                onCompleteSet={handleCompleteSet}
+                onUncompleteSet={handleUncompleteSet}
+                onJumpToSet={handleJumpToSet}
+                onAddSet={handleAddSet}
+                previousPerformances={previousPerformances}
+              />
             ) : (
-              /* Current Exercise */
-              <div className="bg-gray-800 rounded-lg p-6 order-1">
-              <div className="flex justify-between items-center mb-4">
-                <div className="flex-1">
-                  <ExerciseNotesEditor
-                    exercise={currentExercise}
-                    onUpdateTitle={(title) => dispatch(updateExerciseNotesAndTitle({
-                      exerciseId: currentExercise.id,
-                      customTitle: title
-                    }))}
-                    onUpdateNotes={(notes) => dispatch(updateExerciseNotesAndTitle({
-                      exerciseId: currentExercise.id,
-                      notes: notes
-                    }))}
-                  />
-                </div>
-                <div className="flex space-x-2 ml-4">
-                  <button
-                    onClick={() => handleEditExercise(currentExercise)}
-                    className="p-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors"
-                    title="Edit sets"
-                  >
-                    <Edit className="w-4 h-4" />
-                  </button>
-                  <button
-                    onClick={() => dispatch(previousExercise())}
-                    disabled={activeWorkout.currentExerciseIndex === 0}
-                    className="p-2 bg-gray-700 hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg transition-colors"
-                  >
-                    <SkipBack className="w-4 h-4" />
-                  </button>
-                  <button
-                    onClick={() => dispatch(nextExercise())}
-                    disabled={activeWorkout.currentExerciseIndex === activeWorkout.exercises.length - 1}
-                    className="p-2 bg-gray-700 hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg transition-colors"
-                  >
-                    <SkipForward className="w-4 h-4" />
-                  </button>
-                </div>
-              </div>
-
-              {/* Exercise Video */}
-              {currentExercise?.exercise.videoLinks.length > 0 && (
-                <div className="mb-6">
-                  {(currentExercise?.exercise.videoLinks.length || 0) >= 2 ? (
-                    <DualViewVideo
-                      key={`workout-dual-${currentExercise?.exercise.id}-${activeWorkout.currentExerciseIndex}`}
-                      videoUrls={currentExercise?.exercise.videoLinks || []}
-                      exerciseName={currentExercise?.customTitle || currentExercise?.exercise.name || ''}
-                      autoPlay={true}
-                      muted={true}
-                      compact={true}
-                      instructions={currentExercise?.exercise.instructions || []}
-                    />
-                  ) : (
-                    <ExerciseVideo
-                      key={`workout-single-${currentExercise?.exercise.id}-${activeWorkout.currentExerciseIndex}`}
-                      videoUrl={currentExercise?.exercise.videoLinks?.[0] || ''}
-                      exerciseName={currentExercise?.customTitle || currentExercise?.exercise.name || ''}
-                      autoPlay={true}
-                      muted={true}
-                      compact={true}
-                      fallbackVideoUrls={currentExercise?.exercise.videoLinks?.slice(1) || []}
-                      instructions={currentExercise?.exercise.instructions || []}
-                    />
-                  )}
-                </div>
-              )}
-
-              {/* Previous Performance Display - Only for authenticated users */}
-              {!isAnonymousUser && (
-                <PreviousPerformance
-                  currentExercise={currentExercise}
-                  previousPerformance={
-                    currentExercise?.exercise.id?.startsWith('fallback-')
-                      ? null // Don't show previous performance for fallback exercises
-                      : (currentExercise?.exercise.id ? previousPerformances[currentExercise.exercise.id] || null : null)
-                  }
-                  isLoading={isLoadingPrevious && !currentExercise?.exercise.id?.startsWith('fallback-')}
-                />
-              )}
-
-              {/* Rest Timer - Mobile only */}
-              <div className="lg:hidden">
-                <RestTimer />
-              </div>
-
-              {/* Weight Progression Slider - Only for authenticated users */}
-              {!isAnonymousUser && progressionHook.recommendation &&
-               !progressionHook.isLoading &&
-               progressionHook.recommendation.previousWeight &&
-               progressionHook.recommendation.previousWeight > 0 && (
-                <div className="mb-4">
-                  <WeightProgressionSlider
-                    previousWeight={progressionHook.recommendation.previousWeight}
-                    currentWeight={progressionHook.recommendation.recommendedWeight || progressionHook.recommendation.previousWeight}
-                    onWeightChange={(weight) => {
-                      // Auto-apply weight change
-                      progressionHook.modifyRecommendation(weight, progressionHook.recommendation?.recommendedReps);
-                      progressionHook.acceptRecommendation();
-                    }}
-                    minIncrease={2.5}
-                    maxIncrease={10}
-                    action={progressionHook.recommendation.action}
-                    reasoning={progressionHook.recommendation.reasoning}
-                    deloadApplied={progressionHook.recommendation.deloadApplied}
-                  />
-                </div>
-              )}
-
-              {/* Next Action Indicator */}
-              {restTimer.isActive ? (
-                <div className="mb-4 p-3 bg-orange-600 bg-opacity-20 border border-orange-500 rounded-lg">
-                  <div className="flex items-center space-x-2">
-                    <div className="w-2 h-2 bg-orange-500 rounded-full animate-pulse"></div>
-                    <p className="text-orange-300 font-medium">
-                      Rest in progress - {Math.floor(restTimer.timeRemaining / 60)}:{(restTimer.timeRemaining % 60).toString().padStart(2, '0')} remaining
-                    </p>
-                  </div>
-                </div>
-              ) : !currentSet?.completed ? (
-                <div className="mb-4 p-3 bg-green-600 bg-opacity-20 border border-green-500 rounded-lg">
-                  <div className="flex items-center space-x-2">
-                    <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-                    <p className="text-green-300 font-medium">
-                      Ready to perform set {activeWorkout.currentSetIndex + 1}
-                    </p>
-                  </div>
-                </div>
-              ) : (
-                <div className="mb-4 p-3 bg-blue-600 bg-opacity-20 border border-blue-500 rounded-lg">
-                  <div className="flex items-center space-x-2">
-                    <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
-                    <p className="text-blue-300 font-medium">
-                      Set completed! {activeWorkout.currentSetIndex < (currentExercise?.sets.length || 0) - 1 ? 'Ready for next set' : 'Ready for next exercise'}
-                    </p>
-                  </div>
-                </div>
-              )}
-
-              {/* Current Set */}
-              <div className="mb-6">
-                <div className="flex justify-between items-center mb-3">
-                  <h3 className="text-lg font-semibold text-white">
-                    Current Set: {activeWorkout.currentSetIndex + 1} / {currentExercise?.sets.length || 0}
-                  </h3>
-                  <div className="flex space-x-2">
-                    <button
-                      onClick={() => handleJumpToSet(Math.max(0, activeWorkout.currentSetIndex - 1))}
-                      disabled={activeWorkout.currentSetIndex === 0}
-                      className="p-2 bg-gray-700 hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg transition-colors"
-                      title="Previous Set"
-                    >
-                      <SkipBack className="w-4 h-4" />
-                    </button>
-                    <button
-                      onClick={() => handleJumpToSet(Math.min(currentExercise.sets.length - 1, activeWorkout.currentSetIndex + 1))}
-                      disabled={activeWorkout.currentSetIndex === (currentExercise?.sets.length || 0) - 1}
-                      className="p-2 bg-gray-700 hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg transition-colors"
-                      title="Next Set"
-                    >
-                      <SkipForward className="w-4 h-4" />
-                    </button>
-                  </div>
-                </div>
-                <SetInput
-                  set={currentSet}
-                  onComplete={handleCompleteSet}
-                  onUncomplete={handleUncompleteSet}
-                  previousSet={activeWorkout.currentSetIndex > 0 ? currentExercise?.sets?.[activeWorkout.currentSetIndex - 1] || null : null}
-                  allSets={currentExercise?.sets || []}
-                  recommendedWeight={progressionHook.acceptedRecommendation ? progressionHook.recommendation?.recommendedWeight : undefined}
-                  recommendedReps={progressionHook.acceptedRecommendation ? progressionHook.recommendation?.recommendedReps : undefined}
-                />
-              </div>
-
-              {/* All Sets Overview */}
-              <div className="space-y-2">
-                <div className="flex justify-between items-center">
-                  <h4 className="font-medium text-white">All Sets</h4>
-                  <button
-                    onClick={handleAddSet}
-                    className="flex items-center space-x-1 text-blue-400 hover:text-blue-300 transition-colors"
-                  >
-                    <Plus className="w-4 h-4" />
-                    <span className="text-sm">Add Set</span>
-                  </button>
-                </div>
-                <div className="grid grid-cols-4 gap-2 text-xs text-gray-400 font-medium">
-                  <span>Set</span>
-                  <span>Previous</span>
-                  <span>Reps</span>
-                  <span>Weight</span>
-                </div>
-                {(currentExercise?.sets || []).map((set, index) => {
-                  // Get previous performance data for this exercise
-                  const previousPerformance = currentExercise?.exercise.id ? previousPerformances[currentExercise.exercise.id] : null;
-                  const previousSet = previousPerformance?.sets?.[index];
-
-                  // Format previous set display
-                  const previousDisplay = previousSet
-                    ? `${previousSet.actualReps}×${previousSet.weight}`
-                    : '-';
-
-                  return (
-                    <div
-                      key={set.id}
-                      onClick={() => handleJumpToSet(index)}
-                      className={`grid grid-cols-4 gap-2 p-2 rounded text-sm cursor-pointer transition-all duration-200 hover:ring-2 hover:ring-blue-400 ${
-                        index === activeWorkout.currentSetIndex
-                          ? 'bg-blue-600 text-white shadow-lg'
-                          : set.completed
-                          ? 'bg-green-600 text-white hover:bg-green-500'
-                          : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-                      }`}
-                    >
-                      <span className="font-medium">{index + 1}</span>
-                      <span className="text-xs">{previousDisplay}</span>
-                      <span>{set.reps || '-'}</span>
-                      <span>{set.weight ? `${set.weight} lbs` : '-'}</span>
-                      {index === activeWorkout.currentSetIndex && (
-                        <div className="col-span-4 text-xs opacity-75 text-center mt-1">
-                          Current Set
-                        </div>
-                      )}
-                    </div>
+              <ActiveExerciseCard
+                exercise={currentExercise}
+                exerciseIndex={activeWorkout.currentExerciseIndex}
+                totalExercises={activeWorkout.exercises.length}
+                currentSetIndex={activeWorkout.currentSetIndex}
+                currentSet={currentSet}
+                previousPerformance={
+                  currentExercise?.exercise.id
+                    ? previousPerformances[currentExercise.exercise.id] || null
+                    : null
+                }
+                isLoadingPrevious={isLoadingPrevious}
+                isAnonymousUser={isAnonymousUser}
+                restActive={restTimer.isActive}
+                restTimeRemaining={restTimer.timeRemaining}
+                showProgressionSlider={
+                  !!progressionHook.recommendation && !progressionHook.isLoading
+                }
+                recommendation={progressionHook.recommendation}
+                recommendedWeight={
+                  progressionHook.acceptedRecommendation
+                    ? progressionHook.recommendation?.recommendedWeight
+                    : undefined
+                }
+                recommendedReps={
+                  progressionHook.acceptedRecommendation
+                    ? progressionHook.recommendation?.recommendedReps
+                    : undefined
+                }
+                onAcceptWeight={(weight) => {
+                  progressionHook.modifyRecommendation(
+                    weight,
+                    progressionHook.recommendation?.recommendedReps,
                   );
-                })}
-              </div>
-
-              {/* Exercise Instructions */}
-              {(currentExercise?.exercise.instructions?.length || 0) > 0 && (
-                <div className="bg-gray-800 rounded-lg p-6">
-                  <h3 className="text-lg font-semibold text-white mb-3">Instructions</h3>
-                  <ol className="space-y-2">
-                    {(currentExercise?.exercise.instructions || []).map((instruction, index) => (
-                      <li key={index} className="text-gray-300 text-sm">
-                        <span className="text-blue-400 font-medium">{index + 1}.</span> {instruction}
-                      </li>
-                    ))}
-                  </ol>
-                </div>
-              )}
-            </div>
+                  progressionHook.acceptRecommendation();
+                }}
+                onUpdateTitle={(title) =>
+                  dispatch(
+                    updateExerciseNotesAndTitle({
+                      exerciseId: currentExercise.id,
+                      customTitle: title,
+                    }),
+                  )
+                }
+                onUpdateNotes={(notes) =>
+                  dispatch(
+                    updateExerciseNotesAndTitle({
+                      exerciseId: currentExercise.id,
+                      notes,
+                    }),
+                  )
+                }
+                onEditSets={() => handleEditExercise(currentExercise)}
+                onPreviousExercise={() => dispatch(previousExercise())}
+                onNextExercise={() => dispatch(nextExercise())}
+                onCompleteSet={handleCompleteSet}
+                onUncompleteSet={handleUncompleteSet}
+                onJumpToSet={handleJumpToSet}
+                onAddSet={handleAddSet}
+              />
             )}
           </div>
 
@@ -897,76 +603,13 @@ export default function WorkoutPage() {
             {/* Rest Timer - Desktop only */}
             <RestTimer className="hidden lg:block" />
 
-
             {/* Exercise List */}
-            <div className="bg-gray-800 rounded-lg p-4">
-              <h3 className="text-lg font-semibold text-white mb-3">Exercises</h3>
-              <div className="space-y-2">
-                {getGroupedExercisesForDisplay(activeWorkout.exercises, activeWorkout.currentExerciseIndex).map((group) => {
-                  // Find the exercise index for navigation
-                  const exerciseIndex = group.isSuperset
-                    ? activeWorkout.exercises.findIndex(ex => ex.supersetId === group.id)
-                    : activeWorkout.exercises.findIndex(ex => ex.id === group.id);
-
-                  return (
-                    <div
-                      key={group.id}
-                      className={`rounded-lg text-sm transition-all duration-200 ${
-                        group.isActive
-                          ? 'bg-blue-600 text-white shadow-lg ring-2 ring-blue-400'
-                          : 'bg-gray-700 text-gray-300'
-                      }`}
-                    >
-                      <div className="flex">
-                        <button
-                          onClick={() => exerciseIndex !== -1 && handleJumpToExercise(exerciseIndex)}
-                          className="flex-1 p-3 text-left hover:bg-opacity-80 transition-all duration-200"
-                        >
-                          <div className="flex justify-between items-start">
-                            <div className="flex-1">
-                              <p className="font-medium">{group.name}</p>
-                              <p className="text-xs opacity-75">
-                                {group.completedSets} / {group.totalSets} sets
-                              </p>
-                              {group.isSuperset && (
-                                <p className="text-xs opacity-60 mt-1">
-                                  Superset ({group.exercises.length} exercises)
-                                </p>
-                              )}
-                            </div>
-                            {group.isActive && (
-                              <div className="flex-shrink-0 ml-2">
-                                <div className="w-2 h-2 bg-white rounded-full animate-pulse"></div>
-                              </div>
-                            )}
-                          </div>
-                        </button>
-
-                        {/* Edit Button */}
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            // For supersets, edit the first exercise in the group
-                            const exerciseToEdit = group.isSuperset
-                              ? group.exercises[0]
-                              : group.exercises[0];
-                            handleEditExercise(exerciseToEdit);
-                          }}
-                          className={`p-3 border-l transition-colors ${
-                            group.isActive
-                              ? 'border-blue-500 hover:bg-blue-700'
-                              : 'border-gray-600 hover:bg-gray-600'
-                          }`}
-                          title="Edit exercise"
-                        >
-                          <Edit className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
+            <ExerciseListPanel
+              groups={exerciseGroups}
+              exercises={activeWorkout.exercises}
+              onJumpToExercise={handleJumpToExercise}
+              onEditExercise={handleEditExercise}
+            />
           </div>
         </div>
       </div>
@@ -1036,4 +679,3 @@ export default function WorkoutPage() {
     </div>
   );
 }
-

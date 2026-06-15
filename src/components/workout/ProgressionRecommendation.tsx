@@ -1,6 +1,10 @@
 import React, { useState } from 'react';
 import { ChevronDown, ChevronUp, TrendingUp, TrendingDown, Minus, AlertCircle, CheckCircle } from 'lucide-react';
 import type { ProgressionRecommendation as ProgressionRec } from '../../types/progression';
+import { Card } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Skeleton } from '@/components/ui/skeleton';
 
 interface ProgressionRecommendationProps {
   recommendation: ProgressionRec;
@@ -25,40 +29,40 @@ export const ProgressionRecommendation: React.FC<ProgressionRecommendationProps>
   const getActionIcon = () => {
     switch (recommendation.action) {
       case 'increase':
-        return <TrendingUp className="w-5 h-5 text-green-500" />;
+        return <TrendingUp className="w-5 h-5 text-success" />;
       case 'decrease':
       case 'deload':
-        return <TrendingDown className="w-5 h-5 text-yellow-500" />;
+        return <TrendingDown className="w-5 h-5 text-warning" />;
       case 'maintain':
-        return <Minus className="w-5 h-5 text-blue-500" />;
+        return <Minus className="w-5 h-5 text-accent" />;
       default:
-        return <AlertCircle className="w-5 h-5 text-gray-500" />;
+        return <AlertCircle className="w-5 h-5 text-ink-subtle" />;
     }
   };
 
   const getActionColor = () => {
     switch (recommendation.action) {
       case 'increase':
-        return 'border-green-200 bg-green-50';
+        return 'border-success/30 bg-success/10';
       case 'decrease':
       case 'deload':
-        return 'border-yellow-200 bg-yellow-50';
+        return 'border-warning/30 bg-warning/10';
       case 'maintain':
-        return 'border-blue-200 bg-blue-50';
+        return 'border-accent/30 bg-accent/10';
       default:
-        return 'border-gray-200 bg-gray-50';
+        return 'border-border bg-surface-subtle';
     }
   };
 
   const getConfidenceBadge = () => {
     const colors = {
-      high: 'bg-green-100 text-green-800',
-      medium: 'bg-yellow-100 text-yellow-800',
-      low: 'bg-red-100 text-red-800'
+      high: 'bg-success/15 text-success',
+      medium: 'bg-warning/15 text-warning',
+      low: 'bg-danger/15 text-danger'
     };
 
     return (
-      <span className={`px-2 py-1 text-xs font-medium rounded-full ${colors[recommendation.confidence]}`}>
+      <span className={`px-2 py-1 text-caption font-medium rounded-full ${colors[recommendation.confidence]}`}>
         {recommendation.confidence} confidence
       </span>
     );
@@ -73,16 +77,16 @@ export const ProgressionRecommendation: React.FC<ProgressionRecommendationProps>
 
       return (
         <div className="space-y-1">
-          <div className="text-lg font-semibold">
+          <div className="text-title font-semibold text-ink">
             {recommendation.recommendedWeight} lbs × {recommendation.recommendedReps} reps
             {weightChange !== 0 && (
-              <span className={`ml-2 text-sm ${weightChange > 0 ? 'text-green-600' : 'text-yellow-600'}`}>
+              <span className={`ml-2 text-body-sm ${weightChange > 0 ? 'text-success' : 'text-warning'}`}>
                 ({sign}{weightChange} lbs)
               </span>
             )}
           </div>
           {recommendation.previousWeight && (
-            <div className="text-sm text-gray-600">
+            <div className="text-body-sm text-ink-muted">
               Previous: {recommendation.previousWeight} lbs × {recommendation.previousReps} reps
               {recommendation.daysSinceLastWorkout && (
                 <span className="ml-2">({recommendation.daysSinceLastWorkout} days ago)</span>
@@ -95,7 +99,7 @@ export const ProgressionRecommendation: React.FC<ProgressionRecommendationProps>
 
     if (recommendation.recommendedTime) {
       return (
-        <div className="text-lg font-semibold">
+        <div className="text-title font-semibold text-ink">
           Hold for {recommendation.recommendedTime} seconds
         </div>
       );
@@ -103,7 +107,7 @@ export const ProgressionRecommendation: React.FC<ProgressionRecommendationProps>
 
     if (recommendation.recommendedVariation) {
       return (
-        <div className="text-lg font-semibold">
+        <div className="text-title font-semibold text-ink">
           {recommendation.recommendedVariation}
         </div>
       );
@@ -114,24 +118,24 @@ export const ProgressionRecommendation: React.FC<ProgressionRecommendationProps>
 
   if (isLoading) {
     return (
-      <div className="animate-pulse bg-gray-100 rounded-lg p-4 mb-4">
-        <div className="h-4 bg-gray-300 rounded w-3/4 mb-2"></div>
-        <div className="h-4 bg-gray-300 rounded w-1/2"></div>
-      </div>
+      <Card className="p-4 mb-4" aria-busy="true">
+        <Skeleton className="h-4 w-3/4 mb-2" />
+        <Skeleton className="h-4 w-1/2" />
+      </Card>
     );
   }
 
   return (
-    <div className={`border rounded-lg p-4 mb-4 transition-all ${getActionColor()}`}>
+    <div className={`border rounded-lg p-4 mb-4 transition-colors duration-smooth ${getActionColor()}`}>
       {/* Header */}
       <div className="flex items-center justify-between mb-3">
-        <div className="flex items-center space-x-2">
+        <div className="flex items-center gap-2">
           {getActionIcon()}
-          <h3 className="font-semibold text-gray-900">Progression Recommendation</h3>
+          <h3 className="font-semibold text-ink">Progression Recommendation</h3>
           {getConfidenceBadge()}
         </div>
         {recommendation.deloadApplied && (
-          <span className="px-2 py-1 text-xs font-medium bg-orange-100 text-orange-800 rounded-full">
+          <span className="px-2 py-1 text-caption font-medium bg-warning/15 text-warning rounded-full">
             Deload Applied
           </span>
         )}
@@ -143,101 +147,93 @@ export const ProgressionRecommendation: React.FC<ProgressionRecommendationProps>
       </div>
 
       {/* Reasoning - Always visible */}
-      <p className="text-sm text-gray-700 mb-3">{recommendation.reasoning}</p>
+      <p className="text-body-sm text-ink-muted mb-3">{recommendation.reasoning}</p>
 
       {/* Action Buttons */}
       <div className="flex flex-wrap gap-2 mb-3">
-        <button
-          onClick={onAccept}
-          className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition flex items-center space-x-1"
-        >
+        <Button variant="primary" size="sm" onClick={onAccept}>
           <CheckCircle className="w-4 h-4" />
           <span>Accept</span>
-        </button>
+        </Button>
 
         {!showCustomInput ? (
           <>
-            <button
-              onClick={() => setShowCustomInput(true)}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
-            >
+            <Button variant="secondary" size="sm" onClick={() => setShowCustomInput(true)}>
               Modify
-            </button>
-            <button
-              onClick={onDismiss}
-              className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition"
-            >
+            </Button>
+            <Button variant="ghost" size="sm" onClick={onDismiss}>
               Dismiss
-            </button>
+            </Button>
           </>
         ) : (
-          <div className="flex items-center space-x-2 flex-1">
+          <div className="flex items-center gap-2 flex-1">
             {recommendation.recommendedWeight !== undefined && (
-              <input
+              <Input
                 type="number"
+                size="sm"
                 value={customWeight}
                 onChange={(e) => setCustomWeight(Number(e.target.value))}
-                className="w-24 px-2 py-1 border rounded"
+                className="w-24"
                 placeholder="Weight"
               />
             )}
             {recommendation.recommendedReps !== undefined && (
-              <input
+              <Input
                 type="number"
+                size="sm"
                 value={customReps}
                 onChange={(e) => setCustomReps(Number(e.target.value))}
-                className="w-20 px-2 py-1 border rounded"
+                className="w-20"
                 placeholder="Reps"
               />
             )}
-            <button
+            <Button
+              variant="primary"
+              size="sm"
               onClick={() => {
                 onModify(customWeight, customReps);
                 setShowCustomInput(false);
               }}
-              className="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700"
             >
               Apply
-            </button>
-            <button
-              onClick={() => setShowCustomInput(false)}
-              className="px-3 py-1 bg-gray-400 text-white rounded hover:bg-gray-500"
-            >
+            </Button>
+            <Button variant="ghost" size="sm" onClick={() => setShowCustomInput(false)}>
               Cancel
-            </button>
+            </Button>
           </div>
         )}
       </div>
 
       {/* Expandable Alternatives Section */}
       {recommendation.alternatives && recommendation.alternatives.length > 0 && (
-        <div className="border-t pt-3">
+        <div className="border-t border-border pt-3">
           <button
+            type="button"
             onClick={() => setIsExpanded(!isExpanded)}
             className="flex items-center justify-between w-full text-left"
           >
-            <span className="text-sm font-medium text-gray-700">
+            <span className="text-body-sm font-medium text-ink-muted">
               Alternative Progressions ({recommendation.alternatives.length})
             </span>
             {isExpanded ? (
-              <ChevronUp className="w-4 h-4 text-gray-500" />
+              <ChevronUp className="w-4 h-4 text-ink-subtle" />
             ) : (
-              <ChevronDown className="w-4 h-4 text-gray-500" />
+              <ChevronDown className="w-4 h-4 text-ink-subtle" />
             )}
           </button>
 
           {isExpanded && (
             <div className="mt-3 space-y-2">
               {recommendation.alternatives.map((alt, index) => (
-                <div key={index} className="p-3 bg-white bg-opacity-50 rounded-lg">
+                <Card key={index} elevation={0} className="p-3 bg-surface-raised/50">
                   <div className="flex items-center justify-between mb-1">
-                    <span className="text-sm font-medium text-gray-900 capitalize">
+                    <span className="text-body-sm font-medium text-ink capitalize">
                       {alt.type.replace('-', ' ')}
                     </span>
                   </div>
-                  <p className="text-sm text-gray-600 mb-1">{alt.description}</p>
-                  <p className="text-sm text-gray-800 font-medium">{alt.recommendation}</p>
-                </div>
+                  <p className="text-body-sm text-ink-muted mb-1">{alt.description}</p>
+                  <p className="text-body-sm text-ink font-medium">{alt.recommendation}</p>
+                </Card>
               ))}
             </div>
           )}

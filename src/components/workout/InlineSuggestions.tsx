@@ -5,6 +5,8 @@ import { ExerciseSelectionModal } from './ExerciseSelectionModal';
 import { useAppDispatch } from '../../store/hooks';
 import { saveCustomExercise } from '../../store/slices/customExerciseSlice';
 import { CustomExerciseService } from '../../services/customExerciseService';
+import { Button } from '../ui/button';
+import { IconButton } from '../ui/icon-button';
 
 interface InlineSuggestionsProps {
   issues: ParseIssue[];
@@ -100,9 +102,9 @@ export const InlineSuggestions: React.FC<InlineSuggestionsProps> = ({
   };
   if (isValidating) {
     return (
-      <div className="mt-2 p-3 bg-gray-800 border border-gray-600 rounded-lg">
-        <div className="flex items-center gap-2 text-gray-400 text-sm">
-          <div className="w-4 h-4 border-2 border-gray-500 border-t-blue-500 rounded-full animate-spin"></div>
+      <div className="mt-2 p-3 bg-surface-raised border border-border rounded-lg">
+        <div className="flex items-center gap-2 text-ink-subtle text-body-sm">
+          <div className="w-4 h-4 border-2 border-border border-t-accent rounded-full animate-spin"></div>
           Checking exercise names...
         </div>
       </div>
@@ -118,65 +120,69 @@ export const InlineSuggestions: React.FC<InlineSuggestionsProps> = ({
   ).length;
 
   const getConfidenceColor = (confidence: number) => {
-    if (confidence >= 90) return 'bg-green-900/50 text-green-400 border-green-700';
-    if (confidence >= 70) return 'bg-yellow-900/50 text-yellow-400 border-yellow-700';
-    return 'bg-red-900/50 text-red-400 border-red-700';
+    if (confidence >= 90) return 'bg-success/15 text-success border-success/40';
+    if (confidence >= 70) return 'bg-warning/15 text-warning border-warning/40';
+    return 'bg-danger/15 text-danger border-danger/40';
   };
 
   const getConfidenceIcon = (confidence: number) => {
     if (confidence >= 90) {
       return (
-        <svg className="w-3 h-3 text-green-400" fill="currentColor" viewBox="0 0 20 20">
+        <svg className="w-3 h-3 text-success" fill="currentColor" viewBox="0 0 20 20">
           <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
         </svg>
       );
     }
     if (confidence >= 70) {
       return (
-        <svg className="w-3 h-3 text-yellow-400" fill="currentColor" viewBox="0 0 20 20">
+        <svg className="w-3 h-3 text-warning" fill="currentColor" viewBox="0 0 20 20">
           <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
         </svg>
       );
     }
     return (
-      <svg className="w-3 h-3 text-red-400" fill="currentColor" viewBox="0 0 20 20">
+      <svg className="w-3 h-3 text-danger" fill="currentColor" viewBox="0 0 20 20">
         <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
       </svg>
     );
   };
 
   return (
-    <div className="mt-2 p-4 bg-gray-800 border border-gray-600 rounded-lg space-y-3">
+    <div className="mt-2 p-4 bg-surface-raised border border-border rounded-lg space-y-3">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <svg className="w-4 h-4 text-yellow-400" fill="currentColor" viewBox="0 0 20 20">
+          <svg className="w-4 h-4 text-warning" fill="currentColor" viewBox="0 0 20 20">
             <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
           </svg>
-          <span className="text-sm font-medium text-gray-300">
+          <span className="text-body-sm font-medium text-ink">
             {issues.length} exercise{issues.length !== 1 ? 's' : ''} not found
           </span>
         </div>
-        
+
         <div className="flex items-center gap-2">
           {highConfidenceCount > 0 && (
-            <button
+            <Button
+              variant="primary"
+              size="sm"
               onClick={onApplyAllHighConfidence}
-              className="text-xs bg-green-700 hover:bg-green-600 text-white px-2 py-1 rounded transition-colors"
+              className="bg-success hover:bg-success/90 text-ink-inverse"
               title={`Auto-fix ${highConfidenceCount} high-confidence matches`}
             >
               Auto-fix {highConfidenceCount}
-            </button>
+            </Button>
           )}
-          <button
+          <IconButton
+            variant="ghost"
+            size="sm"
             onClick={onDismiss}
-            className="text-gray-400 hover:text-gray-300 p-1"
+            aria-label="Dismiss suggestions"
             title="Dismiss suggestions"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
-          </button>
+          </IconButton>
         </div>
       </div>
 
@@ -187,57 +193,60 @@ export const InlineSuggestions: React.FC<InlineSuggestionsProps> = ({
           if (!topSuggestion) return null;
 
           return (
-            <div key={`${issue.exerciseName}-${index}`} className="flex items-center justify-between p-2 bg-gray-700 rounded border border-gray-600">
+            <div key={`${issue.exerciseName}-${index}`} className="flex items-center justify-between p-2 bg-surface-subtle rounded border border-border">
               <div className="flex items-center gap-3 flex-1 min-w-0">
                 {/* Original text */}
                 <div className="flex items-center gap-1 flex-shrink-0">
-                  <span className="text-red-300 font-medium text-sm line-through">
+                  <span className="text-danger font-medium text-body-sm line-through">
                     {issue.exerciseName}
                   </span>
-                  <svg className="w-3 h-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-3 h-3 text-ink-subtle" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8l4 4m0 0l-4 4m4-4H3" />
                   </svg>
                 </div>
 
                 {/* Suggestion */}
                 <div className="flex items-center gap-2 flex-1 min-w-0">
-                  <span className="text-white font-medium text-sm truncate">
+                  <span className="text-ink font-medium text-body-sm truncate">
                     {topSuggestion.exercise.name}
                   </span>
-                  
+
                   {/* Confidence badge */}
-                  <div className={`flex items-center gap-1 px-2 py-0.5 rounded border text-xs flex-shrink-0 ${getConfidenceColor(topSuggestion.confidence)}`}>
+                  <div className={`flex items-center gap-1 px-2 py-0.5 rounded border text-caption flex-shrink-0 ${getConfidenceColor(topSuggestion.confidence)}`}>
                     {getConfidenceIcon(topSuggestion.confidence)}
                     {topSuggestion.confidence}%
                   </div>
                 </div>
 
                 {/* Exercise details */}
-                <div className="text-xs text-gray-400 flex-shrink-0 hidden sm:block">
+                <div className="text-caption text-ink-subtle flex-shrink-0 hidden sm:block">
                   {topSuggestion.exercise.muscleGroup}
                 </div>
               </div>
 
               {/* Actions */}
               <div className="flex items-center gap-1 ml-3">
-                <button
+                <Button
+                  variant="primary"
+                  size="sm"
                   onClick={() => handleOpenExerciseModal(issue)}
-                  className="text-xs bg-blue-600 hover:bg-blue-700 text-white px-2 py-1 rounded transition-colors"
                   title="Browse and select from exercise database"
                 >
                   Fix
-                </button>
-                <button
+                </Button>
+                <Button
+                  variant="primary"
+                  size="sm"
                   onClick={() => handleKeepAsCustom(issue.exerciseName)}
                   disabled={customExerciseStatus[issue.exerciseName] === 'saving'}
-                  className="text-xs bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white px-2 py-1 rounded transition-colors"
+                  className="bg-success hover:bg-success/90 text-ink-inverse"
                   title="Save as custom exercise"
                 >
                   {customExerciseStatus[issue.exerciseName] === 'saving' ? 'Saving...' :
                    customExerciseStatus[issue.exerciseName] === 'saved' ? 'Saved ✓' :
                    customExerciseStatus[issue.exerciseName] === 'error' ? 'Error' :
                    'Keep'}
-                </button>
+                </Button>
               </div>
             </div>
           );
@@ -246,13 +255,13 @@ export const InlineSuggestions: React.FC<InlineSuggestionsProps> = ({
 
       {/* Footer info */}
       {issues.length > 5 && (
-        <div className="text-xs text-gray-500 text-center pt-2 border-t border-gray-700">
+        <div className="text-caption text-ink-subtle text-center pt-2 border-t border-border">
           Showing 5 of {issues.length} suggestions
         </div>
       )}
 
       {/* Help text */}
-      <div className="text-xs text-gray-500">
+      <div className="text-caption text-ink-subtle">
         Click "Fix" to browse exercise database or "Keep" to save as custom exercise.
       </div>
 

@@ -1,10 +1,22 @@
 import React, { useState, useEffect } from 'react';
-import { X, Copy, Check, Share, ExternalLink, Users } from 'lucide-react';
+import { Copy, Check, Share, ExternalLink } from 'lucide-react';
 import { generateShareUrl } from '../utils/shareIdGenerator';
 import { useAppSelector, useAppDispatch } from '../store/hooks';
 import { createSharedWorkout, clearShareError, clearLastCreatedShareId } from '../store/slices/sharedWorkoutSlice';
 import { useAuth } from '../contexts/AuthContext';
 import { CreateSharedWorkoutData } from '../services/sharedWorkoutService';
+import {
+  Sheet,
+  SheetContent,
+  SheetTitle,
+  SheetDescription,
+} from '@/components/ui/sheet';
+import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
+import { Stack } from '@/components/ui/stack';
 
 interface ShareWorkoutModalProps {
   isOpen: boolean;
@@ -47,8 +59,6 @@ export const ShareWorkoutModal: React.FC<ShareWorkoutModalProps> = ({
       dispatch(clearShareError());
     }
   }, [isOpen, dispatch]);
-
-  if (!isOpen) return null;
 
   const handleCreateShare = async () => {
     if (!user?.uid || !user?.displayName) return;
@@ -113,175 +123,178 @@ export const ShareWorkoutModal: React.FC<ShareWorkoutModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-gray-800 rounded-lg max-w-md w-full mx-auto relative">
-        {/* Header */}
-        <div className="bg-gradient-to-r from-blue-600 to-purple-600 text-white p-6 rounded-t-lg">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-3">
-              <Share className="w-6 h-6" />
-              <h2 className="text-xl font-bold">Share Workout</h2>
+    <Sheet
+      open={isOpen}
+      onOpenChange={(next) => {
+        if (!next) handleClose();
+      }}
+    >
+      <SheetContent>
+        <Stack direction="row" align="center" gap={3} className="mb-1">
+          <Share aria-hidden="true" className="h-6 w-6 text-accent" />
+          <SheetTitle className="text-title">Share Workout</SheetTitle>
+        </Stack>
+
+        {!shareUrl ? (
+          // Share creation form
+          <div className="space-y-4">
+            <div>
+              <h3 className="text-body font-semibold text-ink mb-1">
+                {workoutData.name}
+              </h3>
+              <SheetDescription className="mt-0">
+                Create a shareable link that allows others to view and perform
+                your workout.
+              </SheetDescription>
             </div>
-            <button
-              onClick={handleClose}
-              className="text-white hover:text-gray-200 transition-colors"
+
+            {/* Share Settings */}
+            <Stack
+              direction="row"
+              align="center"
+              justify="between"
+              gap={3}
+              className="rounded-lg bg-surface-subtle p-3"
             >
-              <X className="w-5 h-5" />
-            </button>
-          </div>
-        </div>
-
-        {/* Content */}
-        <div className="p-6">
-          {!shareUrl ? (
-            // Share creation form
-            <div className="space-y-4">
-              <div>
-                <h3 className="text-lg font-semibold text-white mb-2">{workoutData.name}</h3>
-                <p className="text-gray-400 text-sm">
-                  Create a shareable link that allows others to view and perform your workout.
+              <div className="min-w-0">
+                <p className="text-body-sm font-medium text-ink">
+                  Allow Anonymous Access
+                </p>
+                <p className="text-caption text-ink-muted">
+                  Anyone with the link can access this workout
                 </p>
               </div>
+              <Switch
+                checked={allowAnonymous}
+                onCheckedChange={setAllowAnonymous}
+                aria-label="Allow anonymous access"
+              />
+            </Stack>
 
-              {/* Share Settings */}
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-white text-sm font-medium">Allow Anonymous Access</p>
-                    <p className="text-gray-400 text-xs">Anyone with the link can access this workout</p>
-                  </div>
-                  <label className="relative inline-flex items-center cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={allowAnonymous}
-                      onChange={(e) => setAllowAnonymous(e.target.checked)}
-                      className="sr-only peer"
-                    />
-                    <div className="w-11 h-6 bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-                  </label>
-                </div>
+            {/* Error Display */}
+            {shareError && (
+              <div className="rounded-lg border border-danger bg-danger/10 p-3">
+                <p className="text-body-sm text-danger">{shareError}</p>
               </div>
+            )}
 
-              {/* Error Display */}
-              {shareError && (
-                <div className="bg-red-900 border border-red-600 rounded-lg p-3">
-                  <p className="text-red-300 text-sm">{shareError}</p>
-                </div>
-              )}
-
-              {/* Action Buttons */}
-              <div className="flex space-x-3">
-                <button
-                  onClick={handleClose}
-                  className="flex-1 bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleCreateShare}
-                  disabled={isCreating}
-                  className="flex-1 flex items-center justify-center space-x-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white px-4 py-2 rounded-lg transition-colors"
-                >
-                  {isCreating ? (
-                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                  ) : (
-                    <Share className="w-4 h-4" />
-                  )}
-                  <span>{isCreating ? 'Creating...' : 'Create Share Link'}</span>
-                </button>
-              </div>
-            </div>
-          ) : (
-            // Share URL display
-            <div className="space-y-4">
-              <div className="text-center">
-                <div className="w-16 h-16 bg-green-600 rounded-full flex items-center justify-center mx-auto mb-3">
-                  <Check className="w-8 h-8 text-white" />
-                </div>
-                <h3 className="text-lg font-semibold text-white mb-1">Share Link Created!</h3>
-                <p className="text-gray-400 text-sm">
-                  Your workout is now shareable. Anyone with this link can access it.
-                </p>
-              </div>
-
-              {/* Share URL Input */}
-              <div className="space-y-3">
-                <label className="block text-sm font-medium text-gray-300">
-                  Share URL
-                </label>
-                <div className="flex space-x-2">
-                  <input
-                    id="share-url-input"
-                    type="text"
-                    value={shareUrl}
-                    readOnly
-                    className="flex-1 bg-gray-700 border border-gray-600 text-white px-3 py-2 rounded-lg text-sm"
-                  />
-                  <button
-                    onClick={handleCopyUrl}
-                    className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                      copySuccess
-                        ? 'bg-green-600 text-white'
-                        : 'bg-blue-600 hover:bg-blue-700 text-white'
-                    }`}
-                  >
-                    {copySuccess ? (
-                      <Check className="w-4 h-4" />
-                    ) : (
-                      <Copy className="w-4 h-4" />
-                    )}
-                  </button>
-                </div>
-                {copySuccess && (
-                  <p className="text-green-400 text-xs">Copied to clipboard!</p>
+            {/* Action Buttons */}
+            <Stack direction="row" gap={3}>
+              <Button
+                variant="secondary"
+                className="flex-1"
+                onClick={handleClose}
+              >
+                Cancel
+              </Button>
+              <Button
+                className="flex-1"
+                onClick={handleCreateShare}
+                disabled={isCreating}
+              >
+                {isCreating ? (
+                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-accent-fg border-t-transparent" />
+                ) : (
+                  <Share className="h-4 w-4" aria-hidden="true" />
                 )}
+                <span>{isCreating ? 'Creating...' : 'Create Share Link'}</span>
+              </Button>
+            </Stack>
+          </div>
+        ) : (
+          // Share URL display
+          <div className="space-y-4">
+            <div className="text-center">
+              <div className="mx-auto mb-3 flex h-16 w-16 items-center justify-center rounded-full bg-success">
+                <Check className="h-8 w-8 text-ink-inverse" aria-hidden="true" />
               </div>
-
-              {/* Social Share Buttons */}
-              <div className="space-y-2">
-                <p className="text-sm font-medium text-gray-300">Share to:</p>
-                <div className="flex space-x-2">
-                  <button
-                    onClick={() => handleShareToSocial('twitter')}
-                    className="flex-1 bg-blue-500 hover:bg-blue-600 text-white px-3 py-2 rounded-lg text-sm transition-colors"
-                  >
-                    Twitter
-                  </button>
-                  <button
-                    onClick={() => handleShareToSocial('facebook')}
-                    className="flex-1 bg-blue-700 hover:bg-blue-800 text-white px-3 py-2 rounded-lg text-sm transition-colors"
-                  >
-                    Facebook
-                  </button>
-                  <button
-                    onClick={() => handleShareToSocial('whatsapp')}
-                    className="flex-1 bg-green-600 hover:bg-green-700 text-white px-3 py-2 rounded-lg text-sm transition-colors"
-                  >
-                    WhatsApp
-                  </button>
-                </div>
-              </div>
-
-              {/* Quick Actions */}
-              <div className="flex space-x-3">
-                <button
-                  onClick={() => window.open(shareUrl, '_blank')}
-                  className="flex-1 flex items-center justify-center space-x-2 bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg transition-colors"
-                >
-                  <ExternalLink className="w-4 h-4" />
-                  <span>Preview</span>
-                </button>
-                <button
-                  onClick={handleClose}
-                  className="flex-1 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors"
-                >
-                  Done
-                </button>
-              </div>
+              <h3 className="text-body font-semibold text-ink mb-1">
+                Share Link Created!
+              </h3>
+              <p className="text-body-sm text-ink-muted">
+                Your workout is now shareable. Anyone with this link can access
+                it.
+              </p>
             </div>
-          )}
-        </div>
-      </div>
-    </div>
+
+            {/* Share URL Input */}
+            <div className="space-y-3">
+              <Label htmlFor="share-url-input">Share URL</Label>
+              <Stack direction="row" gap={2}>
+                <Input
+                  id="share-url-input"
+                  type="text"
+                  value={shareUrl}
+                  readOnly
+                  className="flex-1"
+                />
+                <IconButton
+                  aria-label={copySuccess ? 'Copied' : 'Copy share URL'}
+                  variant={copySuccess ? 'primary' : 'secondary'}
+                  onClick={handleCopyUrl}
+                >
+                  {copySuccess ? (
+                    <Check className="h-4 w-4" aria-hidden="true" />
+                  ) : (
+                    <Copy className="h-4 w-4" aria-hidden="true" />
+                  )}
+                </IconButton>
+              </Stack>
+              {copySuccess && (
+                <p className="text-caption text-success">Copied to clipboard!</p>
+              )}
+            </div>
+
+            {/* Social Share Buttons */}
+            <div className="space-y-2">
+              <p className="text-body-sm font-medium text-ink-muted">
+                Share to:
+              </p>
+              <Stack direction="row" gap={2}>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  className="flex-1"
+                  onClick={() => handleShareToSocial('twitter')}
+                >
+                  Twitter
+                </Button>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  className="flex-1"
+                  onClick={() => handleShareToSocial('facebook')}
+                >
+                  Facebook
+                </Button>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  className="flex-1"
+                  onClick={() => handleShareToSocial('whatsapp')}
+                >
+                  WhatsApp
+                </Button>
+              </Stack>
+            </div>
+
+            {/* Quick Actions */}
+            <Stack direction="row" gap={3}>
+              <Button
+                variant="secondary"
+                className="flex-1"
+                onClick={() => window.open(shareUrl, '_blank')}
+              >
+                <ExternalLink className="h-4 w-4" aria-hidden="true" />
+                <span>Preview</span>
+              </Button>
+              <Button className="flex-1" onClick={handleClose}>
+                Done
+              </Button>
+            </Stack>
+          </div>
+        )}
+      </SheetContent>
+    </Sheet>
   );
 };

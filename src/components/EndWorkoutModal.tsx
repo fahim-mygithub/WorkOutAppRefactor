@@ -1,6 +1,14 @@
 import React, { useState } from 'react';
 import { Clock, Target, TrendingUp, Trophy, AlertTriangle, Save, X, ArrowLeft } from 'lucide-react';
 import { ActiveWorkout } from '../types/exercise';
+import {
+  Sheet,
+  SheetContent,
+  SheetTitle,
+  SheetDescription,
+} from '@/components/ui/sheet';
+import { Button } from '@/components/ui/button';
+import { Stack } from '@/components/ui/stack';
 
 interface EndWorkoutModalProps {
   isOpen: boolean;
@@ -22,8 +30,6 @@ export const EndWorkoutModal: React.FC<EndWorkoutModalProps> = ({
   isSharedWorkout = false
 }) => {
   const [isEnding, setIsEnding] = useState(false);
-
-  if (!isOpen) return null;
 
   const formatTime = (seconds: number): string => {
     const hours = Math.floor(seconds / 3600);
@@ -81,144 +87,146 @@ export const EndWorkoutModal: React.FC<EndWorkoutModalProps> = ({
   const stats = calculateStats();
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-gray-800 rounded-lg max-w-md w-full mx-auto relative">
+    <Sheet
+      open={isOpen}
+      onOpenChange={(next) => {
+        if (!next) onClose();
+      }}
+    >
+      <SheetContent className="max-w-md sm:mx-auto">
         {/* Header */}
-        <div className="bg-gradient-to-r from-gray-700 to-gray-600 text-white p-6 rounded-t-lg">
-          <div className="flex items-center justify-between">
-            <h2 className="text-xl font-bold">End Workout</h2>
-            <button
-              onClick={onClose}
-              className="text-gray-300 hover:text-white transition-colors"
-            >
-              <X className="w-5 h-5" />
-            </button>
-          </div>
-          <p className="text-gray-200 text-sm mt-1">Choose how you'd like to finish your workout</p>
+        <div className="mb-6">
+          <SheetTitle className="text-title">End Workout</SheetTitle>
+          <SheetDescription>
+            Choose how you'd like to finish your workout
+          </SheetDescription>
         </div>
 
         {/* Workout Summary */}
-        <div className="p-6">
-          <h3 className="text-lg font-semibold text-white mb-4">{activeWorkout.name}</h3>
+        <h3 className="mb-4 text-body font-semibold text-ink">
+          {activeWorkout.name}
+        </h3>
 
-          <div className="grid grid-cols-2 gap-3 mb-6">
-            <div className="bg-gray-700 rounded-lg p-3 text-center">
-              <Clock className="w-5 h-5 mx-auto mb-1 text-blue-400" />
-              <div className="text-xs text-gray-400">Duration</div>
-              <div className="text-sm font-bold text-white">{formatTime(activeWorkout.duration)}</div>
-            </div>
-
-            <div className="bg-gray-700 rounded-lg p-3 text-center">
-              <Target className="w-5 h-5 mx-auto mb-1 text-green-400" />
-              <div className="text-xs text-gray-400">Sets Complete</div>
-              <div className="text-sm font-bold text-white">{stats.completedSets}/{stats.totalSets}</div>
-            </div>
-
-            <div className="bg-gray-700 rounded-lg p-3 text-center">
-              <TrendingUp className="w-5 h-5 mx-auto mb-1 text-purple-400" />
-              <div className="text-xs text-gray-400">Total Reps</div>
-              <div className="text-sm font-bold text-white">{stats.totalReps.toLocaleString()}</div>
-            </div>
-
-            <div className="bg-gray-700 rounded-lg p-3 text-center">
-              <Trophy className="w-5 h-5 mx-auto mb-1 text-yellow-400" />
-              <div className="text-xs text-gray-400">Volume</div>
-              <div className="text-sm font-bold text-white">{stats.totalVolume.toLocaleString()} lbs</div>
-            </div>
+        <div className="mb-6 grid grid-cols-2 gap-3">
+          <div className="rounded-lg bg-surface-subtle p-3 text-center">
+            <Clock className="mx-auto mb-1 h-5 w-5 text-accent" aria-hidden="true" />
+            <div className="text-caption text-ink-subtle">Duration</div>
+            <div className="text-body-sm font-bold text-ink">{formatTime(activeWorkout.duration)}</div>
           </div>
 
-          {/* Progress Bar */}
-          <div className="mb-6">
-            <div className="flex justify-between text-sm text-gray-400 mb-2">
-              <span>Workout Progress</span>
-              <span>{stats.completionPercentage}%</span>
-            </div>
-            <div className="w-full bg-gray-700 rounded-full h-2">
-              <div
-                className="bg-gradient-to-r from-blue-500 to-green-500 h-2 rounded-full transition-all duration-300"
-                style={{ width: `${stats.completionPercentage}%` }}
-              />
-            </div>
+          <div className="rounded-lg bg-surface-subtle p-3 text-center">
+            <Target className="mx-auto mb-1 h-5 w-5 text-success" aria-hidden="true" />
+            <div className="text-caption text-ink-subtle">Sets Complete</div>
+            <div className="text-body-sm font-bold text-ink">{stats.completedSets}/{stats.totalSets}</div>
           </div>
 
-          {/* Action Buttons */}
-          <div className="space-y-3">
-            {isAnonymousUser ? (
-              // Anonymous user buttons
-              <>
-                {/* End Session (only option for anonymous users) */}
-                <button
-                  onClick={handleEndWithoutSaving}
-                  disabled={isEnding}
-                  className="w-full flex items-center justify-center space-x-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white px-4 py-3 rounded-lg transition-colors"
-                >
-                  <X className="w-5 h-5" />
-                  <span>End Session</span>
-                </button>
+          <div className="rounded-lg bg-surface-subtle p-3 text-center">
+            <TrendingUp className="mx-auto mb-1 h-5 w-5 text-accent" aria-hidden="true" />
+            <div className="text-caption text-ink-subtle">Total Reps</div>
+            <div className="text-body-sm font-bold text-ink">{stats.totalReps.toLocaleString()}</div>
+          </div>
 
-                {/* Anonymous user notice */}
-                <div className="bg-yellow-900 border border-yellow-600 rounded-lg p-3">
-                  <p className="text-yellow-200 text-xs text-center">
-                    💡 Sign up to save your workout progress and track your fitness journey!
-                  </p>
-                </div>
-
-                {/* Continue Workout */}
-                <button
-                  onClick={onClose}
-                  disabled={isEnding}
-                  className="w-full flex items-center justify-center space-x-2 bg-gray-600 hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed text-white px-4 py-3 rounded-lg transition-colors"
-                >
-                  <ArrowLeft className="w-5 h-5" />
-                  <span>Continue Workout</span>
-                </button>
-              </>
-            ) : (
-              // Authenticated user buttons
-              <>
-                {/* Save and End */}
-                <button
-                  onClick={handleSaveAndEnd}
-                  disabled={isEnding}
-                  className="w-full flex items-center justify-center space-x-2 bg-green-600 hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed text-white px-4 py-3 rounded-lg transition-colors"
-                >
-                  {isEnding ? (
-                    <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                  ) : (
-                    <Save className="w-5 h-5" />
-                  )}
-                  <span>{isEnding ? 'Saving...' : 'Save to Profile'}</span>
-                </button>
-
-                {/* End Without Saving */}
-                <button
-                  onClick={handleEndWithoutSaving}
-                  disabled={isEnding}
-                  className="w-full flex items-center justify-center space-x-2 bg-red-600 hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed text-white px-4 py-3 rounded-lg transition-colors"
-                >
-                  <AlertTriangle className="w-5 h-5" />
-                  <span>End Without Saving</span>
-                </button>
-
-                {/* Warning text for end without saving */}
-                <p className="text-xs text-gray-400 text-center">
-                  ⚠️ Ending without saving will lose all workout progress
-                </p>
-
-                {/* Continue Workout */}
-                <button
-                  onClick={onClose}
-                  disabled={isEnding}
-                  className="w-full flex items-center justify-center space-x-2 bg-gray-600 hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed text-white px-4 py-3 rounded-lg transition-colors"
-                >
-                  <ArrowLeft className="w-5 h-5" />
-                  <span>Continue Workout</span>
-                </button>
-              </>
-            )}
+          <div className="rounded-lg bg-surface-subtle p-3 text-center">
+            <Trophy className="mx-auto mb-1 h-5 w-5 text-warning" aria-hidden="true" />
+            <div className="text-caption text-ink-subtle">Volume</div>
+            <div className="text-body-sm font-bold text-ink">{stats.totalVolume.toLocaleString()} lbs</div>
           </div>
         </div>
-      </div>
-    </div>
+
+        {/* Progress Bar */}
+        <div className="mb-6">
+          <Stack direction="row" justify="between" className="mb-2">
+            <span className="text-body-sm text-ink-subtle">Workout Progress</span>
+            <span className="text-body-sm text-ink-subtle">{stats.completionPercentage}%</span>
+          </Stack>
+          <div className="h-2 w-full rounded-full bg-surface-subtle">
+            <div
+              className="h-2 rounded-full bg-accent transition-all duration-smooth"
+              style={{ width: `${stats.completionPercentage}%` }}
+            />
+          </div>
+        </div>
+
+        {/* Action Buttons */}
+        <div className="space-y-3">
+          {isAnonymousUser ? (
+            // Anonymous user buttons
+            <>
+              {/* End Session (only option for anonymous users) */}
+              <Button
+                className="w-full"
+                onClick={handleEndWithoutSaving}
+                disabled={isEnding}
+              >
+                <X className="h-5 w-5" aria-hidden="true" />
+                <span>End Session</span>
+              </Button>
+
+              {/* Anonymous user notice */}
+              <div className="rounded-lg border border-warning bg-warning/10 p-3">
+                <p className="text-center text-caption text-ink-muted">
+                  💡 Sign up to save your workout progress and track your fitness journey!
+                </p>
+              </div>
+
+              {/* Continue Workout */}
+              <Button
+                variant="secondary"
+                className="w-full"
+                onClick={onClose}
+                disabled={isEnding}
+              >
+                <ArrowLeft className="h-5 w-5" aria-hidden="true" />
+                <span>Continue Workout</span>
+              </Button>
+            </>
+          ) : (
+            // Authenticated user buttons
+            <>
+              {/* Save and End */}
+              <Button
+                className="w-full bg-success hover:bg-success/90 text-ink-inverse"
+                onClick={handleSaveAndEnd}
+                disabled={isEnding}
+              >
+                {isEnding ? (
+                  <span className="h-5 w-5 animate-spin rounded-full border-2 border-ink-inverse border-t-transparent" />
+                ) : (
+                  <Save className="h-5 w-5" aria-hidden="true" />
+                )}
+                <span>{isEnding ? 'Saving...' : 'Save to Profile'}</span>
+              </Button>
+
+              {/* End Without Saving */}
+              <Button
+                variant="danger"
+                className="w-full"
+                onClick={handleEndWithoutSaving}
+                disabled={isEnding}
+              >
+                <AlertTriangle className="h-5 w-5" aria-hidden="true" />
+                <span>End Without Saving</span>
+              </Button>
+
+              {/* Warning text for end without saving */}
+              <p className="text-center text-caption text-ink-subtle">
+                ⚠️ Ending without saving will lose all workout progress
+              </p>
+
+              {/* Continue Workout */}
+              <Button
+                variant="secondary"
+                className="w-full"
+                onClick={onClose}
+                disabled={isEnding}
+              >
+                <ArrowLeft className="h-5 w-5" aria-hidden="true" />
+                <span>Continue Workout</span>
+              </Button>
+            </>
+          )}
+        </div>
+      </SheetContent>
+    </Sheet>
   );
 };

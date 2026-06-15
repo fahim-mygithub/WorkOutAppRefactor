@@ -74,21 +74,21 @@ export const ExerciseSearchDropdown: React.FC<ExerciseSearchDropdownProps> = ({
     switch (matchType) {
       case 'exact':
       case 'name-prefix':
-        return 'text-green-400';
+        return 'text-success';
       case 'word-exact':
       case 'word-prefix':
-        return 'text-blue-400';
+        return 'text-accent';
       case 'word-contains':
-        return 'text-cyan-400';
+        return 'text-muscle-pull';
       case 'fuzzy':
-        return 'text-yellow-400';
+        return 'text-warning';
       case 'muscle-exact':
       case 'equipment-exact':
-        return 'text-purple-400';
+        return 'text-muscle-core';
       case 'synonym':
-        return 'text-orange-400';
+        return 'text-muscle-cardio';
       default:
-        return 'text-gray-400';
+        return 'text-ink-subtle';
     }
   };
 
@@ -99,15 +99,15 @@ export const ExerciseSearchDropdown: React.FC<ExerciseSearchDropdownProps> = ({
   return (
     <div
       ref={dropdownRef}
-      className={`absolute left-0 right-0 bg-gray-700 border-2 border-gray-600 rounded-md shadow-2xl z-[100] max-h-[300px] overflow-y-auto animate-slide-in transition-all-smooth ${positionClasses} ${className}`}
+      className={`absolute left-0 right-0 bg-surface-raised border border-border rounded-md shadow-e3 z-[100] max-h-[300px] overflow-y-auto animate-slide-in transition-all-smooth ${positionClasses} ${className}`}
     >
       {/* Header with search stats */}
-      <div className="px-3 py-2 border-b border-gray-600 bg-gray-800 sticky top-0">
+      <div className="px-3 py-2 border-b border-border bg-surface-subtle sticky top-0">
         <div className="flex items-center justify-between">
-          <div className="text-xs text-gray-400 font-medium">
+          <div className="text-caption text-ink-subtle font-medium">
             {isSearching ? (
               <div className="flex items-center gap-2">
-                <div className="w-3 h-3 border border-blue-400 border-t-transparent rounded-full animate-spin"></div>
+                <div className="w-3 h-3 border border-accent border-t-transparent rounded-full animate-spin"></div>
                 <span>Searching...</span>
               </div>
             ) : (
@@ -117,18 +117,18 @@ export const ExerciseSearchDropdown: React.FC<ExerciseSearchDropdownProps> = ({
             )}
           </div>
           {searchStats && searchStats.searchTime > 0 && (
-            <div className="text-xs text-gray-500">
+            <div className="text-caption text-ink-subtle">
               {searchStats.searchTime.toFixed(1)}ms{searchStats.cacheHit ? ' (cached)' : ''}
             </div>
           )}
         </div>
       </div>
-      
+
       {/* Loading state */}
       {isSearching && searchResults.length === 0 && (
-        <div className="px-4 py-8 text-center text-gray-400">
-          <div className="w-8 h-8 border-2 border-blue-400 border-t-transparent rounded-full animate-spin mx-auto mb-3"></div>
-          <div className="text-sm">Searching exercises...</div>
+        <div className="px-4 py-8 text-center text-ink-subtle">
+          <div className="w-8 h-8 border-2 border-accent border-t-transparent rounded-full animate-spin mx-auto mb-3"></div>
+          <div className="text-body-sm">Searching exercises...</div>
         </div>
       )}
 
@@ -139,17 +139,17 @@ export const ExerciseSearchDropdown: React.FC<ExerciseSearchDropdownProps> = ({
           <button
             key={exercise.id}
             onClick={() => onSelectExercise(exercise)}
-            className="w-full px-4 py-3 text-left hover:bg-gray-600 focus:bg-gray-600 focus:outline-none transition-colors-smooth group border-b border-gray-700 last:border-b-0 hover-lift"
+            className="w-full px-4 py-3 text-left hover:bg-surface-subtle focus:bg-surface-subtle focus:outline-none transition-colors-smooth group border-b border-border last:border-b-0 hover-lift"
           >
             <div className="flex items-center gap-3">
               {/* Exercise Icon with rank indicator */}
               <div className="flex-shrink-0">
-                <div className="w-8 h-8 bg-gray-800 rounded-full flex items-center justify-center relative">
-                  <svg className="w-4 h-4 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <div className="w-8 h-8 bg-surface-subtle rounded-full flex items-center justify-center relative">
+                  <svg className="w-4 h-4 text-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
                   </svg>
                   {index < 3 && (
-                    <div className="absolute -top-1 -right-1 w-4 h-4 bg-blue-600 text-white text-xs rounded-full flex items-center justify-center font-bold">
+                    <div className="absolute -top-1 -right-1 w-4 h-4 bg-accent text-accent-fg text-caption rounded-full flex items-center justify-center font-bold">
                       {index + 1}
                     </div>
                   )}
@@ -158,7 +158,7 @@ export const ExerciseSearchDropdown: React.FC<ExerciseSearchDropdownProps> = ({
 
               <div className="flex-1 min-w-0">
                 {/* Exercise name with highlighting */}
-                <div className="font-medium text-white group-hover:text-blue-300 transition-colors">
+                <div className="font-medium text-ink group-hover:text-accent transition-colors">
                   <span
                     dangerouslySetInnerHTML={{
                       __html: highlightRanges.length > 0
@@ -169,7 +169,7 @@ export const ExerciseSearchDropdown: React.FC<ExerciseSearchDropdownProps> = ({
                 </div>
 
                 {/* Exercise details */}
-                <div className="text-sm text-gray-400 flex items-center gap-2 mt-1">
+                <div className="text-body-sm text-ink-subtle flex items-center gap-2 mt-1">
                   <span className="inline-flex items-center gap-1">
                     <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
                       <path fillRule="evenodd" d="M3 3a1 1 0 000 2v8a2 2 0 002 2h2.586l-1.293 1.293a1 1 0 101.414 1.414L10 15.414l2.293 2.293a1 1 0 001.414-1.414L12.414 15H15a2 2 0 002-2V5a1 1 0 100-2H3zm11.707 4.707a1 1 0 00-1.414-1.414L10 9.586 8.707 8.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
@@ -186,26 +186,26 @@ export const ExerciseSearchDropdown: React.FC<ExerciseSearchDropdownProps> = ({
                 </div>
 
                 {/* Match info and metadata */}
-                <div className="text-xs mt-1 flex items-center gap-2 flex-wrap">
+                <div className="text-caption mt-1 flex items-center gap-2 flex-wrap">
                   <span className={`px-2 py-0.5 rounded font-medium ${
-                    exercise.difficulty === 'Beginner' ? 'bg-green-900 text-green-300' :
-                    exercise.difficulty === 'Intermediate' ? 'bg-yellow-900 text-yellow-300' :
-                    exercise.difficulty === 'Advanced' ? 'bg-red-900 text-red-300' :
-                    'bg-gray-900 text-gray-300'
+                    exercise.difficulty === 'Beginner' ? 'bg-success/15 text-success' :
+                    exercise.difficulty === 'Intermediate' ? 'bg-warning/15 text-warning' :
+                    exercise.difficulty === 'Advanced' ? 'bg-danger/15 text-danger' :
+                    'bg-surface-subtle text-ink-subtle'
                   }`}>
                     {exercise.difficulty}
                   </span>
 
-                  <span className={`px-2 py-0.5 rounded text-xs font-medium bg-gray-700 border ${getMatchTypeColor(matchType)}`}>
+                  <span className={`px-2 py-0.5 rounded text-caption font-medium bg-surface-subtle border border-border ${getMatchTypeColor(matchType)}`}>
                     {getMatchTypeLabel(matchType)}
                   </span>
 
-                  <span className="text-gray-500 font-mono">
+                  <span className="text-ink-subtle font-mono">
                     {score}pts
                   </span>
 
                   {exercise.mechanic && (
-                    <span className="text-gray-500">
+                    <span className="text-ink-subtle">
                       {exercise.mechanic}
                     </span>
                   )}
@@ -213,7 +213,7 @@ export const ExerciseSearchDropdown: React.FC<ExerciseSearchDropdownProps> = ({
               </div>
 
               {/* Insert icon */}
-              <div className="flex-shrink-0 text-gray-500 group-hover:text-green-400 transition-colors-smooth hover-scale">
+              <div className="flex-shrink-0 text-ink-subtle group-hover:text-success transition-colors-smooth hover-scale">
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                 </svg>
@@ -225,27 +225,27 @@ export const ExerciseSearchDropdown: React.FC<ExerciseSearchDropdownProps> = ({
 
       {/* No results message */}
       {!isSearching && searchResults.length === 0 && (
-        <div className="px-4 py-6 text-center text-gray-400">
-          <svg className="w-8 h-8 mx-auto mb-3 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <div className="px-4 py-6 text-center text-ink-subtle">
+          <svg className="w-8 h-8 mx-auto mb-3 text-ink-subtle" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
           </svg>
-          <div className="text-sm font-medium mb-1">No exercises found</div>
-          <div className="text-xs text-gray-500">
+          <div className="text-body-sm font-medium mb-1">No exercises found</div>
+          <div className="text-caption text-ink-subtle">
             Try "ohp" for overhead press or "bp" for bench press
           </div>
         </div>
       )}
-      
+
       {/* Instructions at bottom */}
       {searchResults.length > 0 && (
-        <div className="px-4 py-2 bg-gray-800 border-t border-gray-600 sticky bottom-0">
-          <div className="text-xs text-gray-500 flex items-center justify-between">
+        <div className="px-4 py-2 bg-surface-subtle border-t border-border sticky bottom-0">
+          <div className="text-caption text-ink-subtle flex items-center justify-between">
             <div className="flex items-center gap-4">
               <span>Click to insert</span>
               <span>•</span>
               <span>ESC to close</span>
             </div>
-            <div className="text-gray-600">
+            <div className="text-ink-subtle">
               {searchResults.length > 8 && `+${searchResults.length - 8} more`}
             </div>
           </div>

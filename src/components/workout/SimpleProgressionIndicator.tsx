@@ -1,6 +1,7 @@
 import React from 'react';
 import { TrendingUp, TrendingDown, Minus } from 'lucide-react';
 import type { ProgressionRecommendation } from '../../types/progression';
+import { Button } from '@/components/ui/button';
 
 interface SimpleProgressionIndicatorProps {
   recommendation: ProgressionRecommendation | null;
@@ -20,12 +21,12 @@ export const SimpleProgressionIndicator: React.FC<SimpleProgressionIndicatorProp
   const getIcon = () => {
     switch (recommendation.action) {
       case 'increase':
-        return <TrendingUp className="w-4 h-4 text-green-500" />;
+        return <TrendingUp className="w-4 h-4 text-success" />;
       case 'decrease':
       case 'deload':
-        return <TrendingDown className="w-4 h-4 text-yellow-500" />;
+        return <TrendingDown className="w-4 h-4 text-warning" />;
       case 'maintain':
-        return <Minus className="w-4 h-4 text-blue-500" />;
+        return <Minus className="w-4 h-4 text-accent" />;
       default:
         return null;
     }
@@ -58,26 +59,23 @@ export const SimpleProgressionIndicator: React.FC<SimpleProgressionIndicatorProp
   };
 
   return (
-    <div className="flex items-center justify-between bg-gray-800 rounded-lg px-3 py-2 text-sm">
-      <div className="flex items-center space-x-2">
+    <div className="flex items-center justify-between bg-surface-subtle rounded-md px-3 py-2 text-body-sm">
+      <div className="flex items-center gap-2">
         {getIcon()}
-        <span className="text-gray-400">Suggested:</span>
-        <span className="text-white font-medium">{getRecommendationText()}</span>
-        <span className={`text-xs ${
-          recommendation.action === 'increase' ? 'text-green-500' :
-          recommendation.action === 'decrease' ? 'text-yellow-500' :
-          'text-blue-500'
+        <span className="text-ink-subtle">Suggested:</span>
+        <span className="text-ink font-medium">{getRecommendationText()}</span>
+        <span className={`text-caption ${
+          recommendation.action === 'increase' ? 'text-success' :
+          recommendation.action === 'decrease' ? 'text-warning' :
+          'text-accent'
         }`}>
           ({getActionText()})
         </span>
       </div>
       {onApply && (
-        <button
-          onClick={onApply}
-          className="px-3 py-1 bg-gray-700 hover:bg-gray-600 text-white text-xs rounded-lg transition-colors"
-        >
+        <Button variant="secondary" size="sm" onClick={onApply}>
           Apply
-        </button>
+        </Button>
       )}
     </div>
   );

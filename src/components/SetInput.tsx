@@ -1,5 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Check, X, Edit3, Save } from 'lucide-react';
+import { Button } from './ui/button';
+import { Input } from './ui/input';
+import { Label } from './ui/label';
 
 interface SetInputProps {
   set: any;
@@ -121,25 +124,30 @@ export const SetInput: React.FC<SetInputProps> = ({
   if (set?.completed) {
     if (isEditing) {
       return (
-        <div className="bg-green-600 rounded-lg p-4 text-white">
-          <p className="font-medium mb-3">Edit Completed Set</p>
-          <div className="grid grid-cols-2 gap-4 mb-4">
+        <div className="rounded-lg border border-success/40 bg-success/15 p-4">
+          <p className="mb-3 font-medium text-success">Edit Completed Set</p>
+          <div className="mb-4 grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium mb-2 opacity-90">Reps</label>
-              <input
+              <Label htmlFor="set-edit-reps" className="mb-2 block">
+                Reps
+              </Label>
+              <Input
+                id="set-edit-reps"
                 type="number"
                 inputMode="numeric"
                 value={reps}
                 onChange={(e) => setReps(parseInt(e.target.value) || 0)}
                 onFocus={(e) => e.target.select()}
                 onKeyDown={handleInputKeyDown}
-                className="w-full p-2 bg-green-700 border border-green-500 rounded-lg text-white placeholder-green-200 focus:ring-2 focus:ring-green-300 focus:border-transparent"
                 autoComplete="off"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium mb-2 opacity-90">Weight (lbs)</label>
-              <input
+              <Label htmlFor="set-edit-weight" className="mb-2 block">
+                Weight (lbs)
+              </Label>
+              <Input
+                id="set-edit-weight"
                 type="number"
                 inputMode="decimal"
                 step="0.5"
@@ -147,53 +155,50 @@ export const SetInput: React.FC<SetInputProps> = ({
                 onChange={(e) => setWeight(parseFloat(e.target.value) || 0)}
                 onFocus={(e) => e.target.select()}
                 onKeyDown={handleInputKeyDown}
-                className="w-full p-2 bg-green-700 border border-green-500 rounded-lg text-white placeholder-green-200 focus:ring-2 focus:ring-green-300 focus:border-transparent"
                 autoComplete="off"
               />
             </div>
           </div>
-          <div className="flex space-x-2">
-            <button
-              onClick={handleSaveEdit}
-              className="flex items-center space-x-2 bg-green-700 hover:bg-green-800 text-white px-4 py-2 rounded-lg transition-colors flex-1"
-            >
-              <Save className="w-4 h-4" />
+          <div className="flex gap-2">
+            <Button onClick={handleSaveEdit} className="flex-1">
+              <Save className="h-4 w-4" />
               <span>Save</span>
-            </button>
-            <button
-              onClick={handleCancelEdit}
-              className="flex items-center space-x-2 bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg transition-colors flex-1"
-            >
-              <X className="w-4 h-4" />
+            </Button>
+            <Button variant="secondary" onClick={handleCancelEdit} className="flex-1">
+              <X className="h-4 w-4" />
               <span>Cancel</span>
-            </button>
+            </Button>
           </div>
         </div>
       );
     }
 
     return (
-      <div className="bg-green-600 rounded-lg p-4 text-white">
-        <div className="flex justify-between items-center">
+      <div className="rounded-lg border border-success/40 bg-success/15 p-4">
+        <div className="flex items-center justify-between">
           <div>
-            <p className="font-medium">Set Completed ✓</p>
-            <p className="text-sm opacity-75">{set.reps} reps × {set.weight} lbs</p>
+            <p className="font-medium text-success">Set Completed ✓</p>
+            <p className="text-body-sm text-ink-subtle">
+              {set.reps} reps × {set.weight} lbs
+            </p>
           </div>
-          <div className="flex space-x-2">
-            <button
+          <div className="flex gap-2">
+            <Button
+              variant="secondary"
+              size="sm"
               onClick={handleEdit}
-              className="p-2 bg-green-700 hover:bg-green-800 rounded transition-colors"
               title="Edit Set"
             >
-              <Edit3 className="w-4 h-4" />
-            </button>
-            <button
+              <Edit3 className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
               onClick={onUncomplete}
-              className="p-2 bg-green-700 hover:bg-green-800 rounded transition-colors"
               title="Mark Incomplete"
             >
-              <X className="w-4 h-4" />
-            </button>
+              <X className="h-4 w-4" />
+            </Button>
           </div>
         </div>
       </div>
@@ -215,32 +220,37 @@ export const SetInput: React.FC<SetInputProps> = ({
   };
 
   return (
-    <div className="bg-gray-700 rounded-lg p-4">
+    <div className="rounded-lg bg-surface-subtle p-4">
       {isUsingSmartDefaults() && (
-        <div className="mb-3 p-2 bg-blue-600 bg-opacity-20 border border-blue-500 rounded-lg">
-          <p className="text-blue-300 text-sm">
+        <div className="mb-3 rounded-md border border-accent/40 bg-accent/15 p-2">
+          <p className="text-body-sm text-accent">
             💡 Auto-filled from {getDefaultSource()}
           </p>
         </div>
       )}
 
-      <div className="grid grid-cols-2 gap-4 mb-4">
+      <div className="mb-4 grid grid-cols-2 gap-4">
         <div>
-          <label className="block text-sm font-medium text-gray-300 mb-2">Reps</label>
-          <input
+          <Label htmlFor="set-reps" className="mb-2 block">
+            Reps
+          </Label>
+          <Input
+            id="set-reps"
             type="number"
             inputMode="numeric"
             value={reps}
             onChange={(e) => setReps(parseInt(e.target.value) || 0)}
             onFocus={(e) => e.target.select()}
             onKeyDown={handleInputKeyDown}
-            className="w-full p-2 bg-gray-600 border border-gray-500 rounded-lg text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             autoComplete="off"
           />
         </div>
         <div>
-          <label className="block text-sm font-medium text-gray-300 mb-2">Weight (lbs)</label>
-          <input
+          <Label htmlFor="set-weight" className="mb-2 block">
+            Weight (lbs)
+          </Label>
+          <Input
+            id="set-weight"
             type="number"
             inputMode="decimal"
             step="0.5"
@@ -248,18 +258,14 @@ export const SetInput: React.FC<SetInputProps> = ({
             onChange={(e) => setWeight(parseFloat(e.target.value) || 0)}
             onFocus={(e) => e.target.select()}
             onKeyDown={handleInputKeyDown}
-            className="w-full p-2 bg-gray-600 border border-gray-500 rounded-lg text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             autoComplete="off"
           />
         </div>
       </div>
-      <button
-        onClick={handleComplete}
-        className="w-full flex items-center justify-center space-x-2 bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-lg transition-colors"
-      >
-        <Check className="w-4 h-4" />
+      <Button onClick={handleComplete} size="lg" className="w-full">
+        <Check className="h-4 w-4" />
         <span>Complete Set</span>
-      </button>
+      </Button>
     </div>
   );
 };

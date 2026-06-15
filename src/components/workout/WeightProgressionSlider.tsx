@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { TrendingUp, Minus, TrendingDown } from 'lucide-react';
+import { Card } from '@/components/ui/card';
 
 interface WeightProgressionSliderProps {
   previousWeight: number;
@@ -83,24 +84,10 @@ export const WeightProgressionSlider: React.FC<WeightProgressionSliderProps> = (
     onWeightChange(newWeight);
   };
 
-  const getProgressionLabel = () => {
-    if (sliderValue < 40) return 'Deload';
-    if (sliderValue < 70) return 'Advanced';
-    if (sliderValue < 85) return 'Intermediate';
-    return 'Beginner';
-  };
-
-  const getProgressionColor = () => {
-    if (sliderValue < 40) return 'text-yellow-500';
-    if (sliderValue < 70) return 'text-purple-500';
-    if (sliderValue < 85) return 'text-blue-500';
-    return 'text-green-500';
-  };
-
   const getProgressionIcon = () => {
-    if (sliderValue < 40) return <TrendingDown className="w-4 h-4" />;
-    if (sliderValue < 60) return <Minus className="w-4 h-4" />;
-    return <TrendingUp className="w-4 h-4" />;
+    if (sliderValue < 40) return <TrendingDown className="w-4 h-4 text-warning" />;
+    if (sliderValue < 60) return <Minus className="w-4 h-4 text-ink-subtle" />;
+    return <TrendingUp className="w-4 h-4 text-success" />;
   };
 
   const weightDiff = recommendedWeight - previousWeight;
@@ -146,19 +133,25 @@ export const WeightProgressionSlider: React.FC<WeightProgressionSliderProps> = (
     { position: 100, label: `+${maxIncrease}` }
   ];
 
+  // Token-driven fill color for the progress track.
+  const fillClass =
+    sliderValue < 50 ? 'bg-warning' :
+    sliderValue < 70 ? 'bg-muscle-core' :
+    'bg-success';
+
   return (
-    <div className="bg-gray-800 rounded-lg p-4">
+    <Card className="p-4">
       <div className="flex items-center justify-between mb-3">
-        <div className="flex items-center space-x-2">
-          <span className="text-sm text-gray-400">Weight</span>
+        <div className="flex items-center gap-2">
+          <span className="text-body-sm text-ink-muted">Weight</span>
           {getProgressionIcon()}
         </div>
         <div className="text-right">
-          <div className="text-lg font-bold text-white">{recommendedWeight} lbs</div>
-          <div className={`text-xs ${
-            Math.abs(weightDiff) < 0.5 ? 'text-gray-400' :
-            weightDiff >= 0 ? 'text-green-500' :
-            (deloadApplied || (reasoning && reasoning.toLowerCase().includes('fatigue'))) ? 'text-orange-500' : 'text-yellow-500'
+          <div className="text-title font-bold text-ink font-tabular">{recommendedWeight} lbs</div>
+          <div className={`text-caption ${
+            Math.abs(weightDiff) < 0.5 ? 'text-ink-subtle' :
+            weightDiff >= 0 ? 'text-success' :
+            (deloadApplied || (reasoning && reasoning.toLowerCase().includes('fatigue'))) ? 'text-warning' : 'text-warning'
           }`}>
             {getWeightChangeDescription()}
           </div>
@@ -167,14 +160,10 @@ export const WeightProgressionSlider: React.FC<WeightProgressionSliderProps> = (
 
       <div className="relative">
         {/* Slider Track */}
-        <div className="relative h-2 bg-gray-700 rounded-full">
+        <div className="relative h-2 bg-surface-subtle rounded-full">
           {/* Progress Fill */}
           <div
-            className={`absolute left-0 top-0 h-2 rounded-full transition-all ${
-              sliderValue < 50 ? 'bg-gradient-to-r from-yellow-600 to-yellow-500' :
-              sliderValue < 70 ? 'bg-gradient-to-r from-purple-600 to-blue-500' :
-              'bg-gradient-to-r from-blue-500 to-green-500'
-            }`}
+            className={`absolute left-0 top-0 h-2 rounded-full transition-all duration-snap ${fillClass}`}
             style={{ width: `${sliderValue}%` }}
           />
 
@@ -182,7 +171,7 @@ export const WeightProgressionSlider: React.FC<WeightProgressionSliderProps> = (
           {stopPoints.map((point) => (
             <div
               key={point.position}
-              className="absolute top-1/2 -translate-y-1/2 w-1 h-4 bg-gray-600"
+              className="absolute top-1/2 -translate-y-1/2 w-1 h-4 bg-ink-subtle/40"
               style={{ left: `${point.position}%` }}
             />
           ))}
@@ -200,7 +189,7 @@ export const WeightProgressionSlider: React.FC<WeightProgressionSliderProps> = (
 
         {/* Slider Thumb */}
         <div
-          className="absolute top-1/2 -translate-y-1/2 w-5 h-5 bg-white rounded-full shadow-lg border-2 border-gray-600 pointer-events-none"
+          className="absolute top-1/2 -translate-y-1/2 w-5 h-5 bg-surface-raised rounded-full shadow-e1 border-2 border-border pointer-events-none"
           style={{ left: `calc(${sliderValue}% - 10px)` }}
         />
       </div>
@@ -210,12 +199,12 @@ export const WeightProgressionSlider: React.FC<WeightProgressionSliderProps> = (
         {stopPoints.map((point, index) => (
           <span
             key={point.position}
-            className={`absolute text-xs ${
-              index === 0 ? 'text-yellow-500' :
-              index === 1 ? 'text-gray-500' :
-              index === 2 ? 'text-purple-500' :
-              index === 3 ? 'text-blue-500' :
-              'text-green-500'
+            className={`absolute text-caption ${
+              index === 0 ? 'text-warning' :
+              index === 1 ? 'text-ink-subtle' :
+              index === 2 ? 'text-muscle-core' :
+              index === 3 ? 'text-accent' :
+              'text-success'
             }`}
             style={{
               left: `${point.position}%`,
@@ -229,41 +218,45 @@ export const WeightProgressionSlider: React.FC<WeightProgressionSliderProps> = (
       </div>
 
       {/* Clickable Progression Labels */}
-      <div className="flex justify-between mt-3 pt-2 border-t border-gray-700">
+      <div className="flex justify-between mt-3 pt-2 border-t border-border">
         <button
+          type="button"
           onClick={() => handleSliderChange(25)}
-          className={`text-xs px-2 py-1 rounded transition-colors ${
-            sliderValue < 40 ? 'bg-yellow-900 bg-opacity-30 text-yellow-500 font-semibold' : 'text-gray-500 hover:text-yellow-500'
+          className={`text-caption px-2 py-1 rounded transition-colors duration-snap ${
+            sliderValue < 40 ? 'bg-warning/15 text-warning font-semibold' : 'text-ink-subtle hover:text-warning'
           }`}
         >
           Deload
         </button>
         <button
+          type="button"
           onClick={() => handleSliderChange(100)}
-          className={`text-xs px-2 py-1 rounded transition-colors ${
-            sliderValue >= 85 ? 'bg-green-900 bg-opacity-30 text-green-500 font-semibold' : 'text-gray-500 hover:text-green-500'
+          className={`text-caption px-2 py-1 rounded transition-colors duration-snap ${
+            sliderValue >= 85 ? 'bg-success/15 text-success font-semibold' : 'text-ink-subtle hover:text-success'
           }`}
         >
           Beginner
         </button>
         <button
+          type="button"
           onClick={() => handleSliderChange(calculateStopPoint(5))}
-          className={`text-xs px-2 py-1 rounded transition-colors ${
-            sliderValue >= 70 && sliderValue < 85 ? 'bg-blue-900 bg-opacity-30 text-blue-500 font-semibold' : 'text-gray-500 hover:text-blue-500'
+          className={`text-caption px-2 py-1 rounded transition-colors duration-snap ${
+            sliderValue >= 70 && sliderValue < 85 ? 'bg-accent/15 text-accent font-semibold' : 'text-ink-subtle hover:text-accent'
           }`}
         >
           Intermediate
         </button>
         <button
+          type="button"
           onClick={() => handleSliderChange(calculateStopPoint(2.5))}
-          className={`text-xs px-2 py-1 rounded transition-colors ${
-            sliderValue >= 50 && sliderValue < 70 ? 'bg-purple-900 bg-opacity-30 text-purple-500 font-semibold' : 'text-gray-500 hover:text-purple-500'
+          className={`text-caption px-2 py-1 rounded transition-colors duration-snap ${
+            sliderValue >= 50 && sliderValue < 70 ? 'bg-muscle-core/15 text-muscle-core font-semibold' : 'text-ink-subtle hover:text-muscle-core'
           }`}
         >
           Advanced
         </button>
       </div>
-    </div>
+    </Card>
   );
 };
 

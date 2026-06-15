@@ -25,6 +25,23 @@ import { SharedWorkoutLoader } from '../components/SharedWorkoutLoader';
 import { ShareWorkoutModal } from '../components/ShareWorkoutModal';
 import { useParams } from 'react-router-dom';
 import { CreateSharedWorkoutData, SharedWorkout } from '../services/sharedWorkoutService';
+import {
+  AlertTriangle,
+  Loader2,
+  Redo2,
+  Save,
+  Share2,
+  Trash2,
+  Undo2,
+  Play,
+  LayoutGrid,
+  FileText,
+  Sparkles,
+} from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Card, CardBody } from '@/components/ui/card';
+import { Stack } from '@/components/ui/stack';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 
 // Component to handle shared workout build view with proper hooks
 interface SharedWorkoutBuildViewProps {
@@ -36,8 +53,6 @@ interface SharedWorkoutBuildViewProps {
   exerciseDatabase: Exercise[];
   debouncedAutoParse: (text: string) => void;
   textInputSection: React.ReactNode;
-  configurationSection: React.ReactNode;
-  showConfiguration: boolean;
   parseErrorsSection: React.ReactNode;
 }
 
@@ -50,8 +65,6 @@ const SharedWorkoutBuildView: React.FC<SharedWorkoutBuildViewProps> = ({
   exerciseDatabase,
   debouncedAutoParse,
   textInputSection,
-  configurationSection,
-  showConfiguration,
   parseErrorsSection
 }) => {
   console.log('🔗 SharedWorkoutBuildView rendering:', {
@@ -99,16 +112,16 @@ const SharedWorkoutBuildView: React.FC<SharedWorkoutBuildViewProps> = ({
   return (
     <div>
       {/* Show shared workout info banner */}
-      <div className="bg-gradient-to-r from-purple-600 to-blue-600 text-white p-4 mb-6">
+      <div className="bg-accent text-accent-fg p-4 mb-6">
         <div className="max-w-4xl mx-auto">
-          <h2 className="text-lg font-semibold mb-1">Viewing Shared Workout</h2>
-          <p className="text-sm text-purple-100">
+          <h2 className="text-title font-semibold mb-1">Viewing Shared Workout</h2>
+          <p className="text-body-sm opacity-90">
             "{sharedWorkout.workoutData.name}" by {sharedWorkout.creatorName}
           </p>
-          <p className="text-xs text-purple-200 mt-1">
+          <p className="text-caption opacity-80 mt-1">
             {sharedWorkout.metadata.viewCount} views • {sharedWorkout.metadata.useCount} uses
           </p>
-          <p className="text-xs text-purple-200 mt-1">
+          <p className="text-caption opacity-80 mt-1">
             Make changes and start your workout!
           </p>
         </div>
@@ -116,8 +129,6 @@ const SharedWorkoutBuildView: React.FC<SharedWorkoutBuildViewProps> = ({
 
       <BuildScreenLayout
         textInputSection={textInputSection}
-        configurationSection={configurationSection}
-        showConfiguration={showConfiguration}
         actionButtons={parseErrorsSection}
       />
     </div>
@@ -692,7 +703,7 @@ export default function BuildPage() {
 
       // Optionally reset the form or navigate to profile
       // navigate('/profile');
-    } catch (error) {
+    } catch (error: any) {
       console.error('❌ Error saving workout:', error);
       console.error('Error details:', {
         message: error?.message,
@@ -772,66 +783,8 @@ export default function BuildPage() {
   const isParseDisabled = !workoutText.trim() || !isParsingEnabled || isCurrentlyParsing;
 
   // Render the text input section
-  const textInputSection = (
-    <div className="space-y-6">
-      <EnhancedTextInput
-        workoutText={workoutText}
-        workoutName={workoutName}
-        onWorkoutTextChange={handleTextChange}
-        onWorkoutNameChange={handleWorkoutNameChange}
-        onParseWorkout={handleParseWorkout}
-        onLoadExample={handleLoadExample}
-        isParseDisabled={isParseDisabled}
-      />
-
-      {/* Real-time Preview */}
-      <RealtimePreview
-        workoutText={workoutText}
-        isCollapsed={isPreviewCollapsed}
-        onToggleCollapse={() => setIsPreviewCollapsed(!isPreviewCollapsed)}
-      />
-
-      {/* Undo/Redo Controls */}
-      <div className="bg-gray-800 rounded-lg p-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <span className="text-sm font-medium text-gray-300">History</span>
-            <span className="text-xs text-gray-500">
-              ({canUndoWorkoutText || canRedoWorkoutText ? 'Available' : 'No changes'})
-            </span>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <button
-              onClick={undoWorkoutText}
-              disabled={!canUndoWorkoutText}
-              className="flex items-center gap-1 px-3 py-2 bg-gray-700 hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm rounded transition-colors-smooth hover-lift btn-press focus-ring"
-              title="Undo (Ctrl+Z)"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
-              </svg>
-              Undo
-            </button>
-
-            <button
-              onClick={redoWorkoutText}
-              disabled={!canRedoWorkoutText}
-              className="flex items-center gap-1 px-3 py-2 bg-gray-700 hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm rounded transition-colors-smooth hover-lift btn-press focus-ring"
-              title="Redo (Ctrl+Y)"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 10h-10a8 8 0 00-8 8v2m18-10l-6 6m6-6l-6-6" />
-              </svg>
-              Redo
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-
-  // Render the configuration section with buttons
+  // Render the configuration section with action buttons. Declared before the
+  // mode-selector tabs because the Visual tab renders it.
   const configurationSection = showConfiguration ? (
     <div className="space-y-4">
       <ParsedWorkoutConfigurator
@@ -840,116 +793,222 @@ export default function BuildPage() {
         compactMode={true}
         showActionButtons={false}
       />
-      
+
       {/* Action Buttons directly under configurator */}
-      <div className="space-y-2 pt-4 border-t border-gray-700">
+      <Stack gap={2} className="pt-4 border-t border-border">
         {/* Save Workout Button */}
-        <button
+        <Button
+          variant="primary"
+          size="lg"
+          className="w-full bg-success text-ink-inverse hover:bg-success/90"
           onClick={handleSaveWorkout}
           disabled={isSaving || !user?.uid}
-          className="w-full bg-green-600 hover:bg-green-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white font-medium py-3 px-4 rounded-lg transition duration-200 flex items-center justify-center gap-2"
         >
           {isSaving ? (
             <>
-              <svg className="w-5 h-5 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-              </svg>
+              <Loader2 className="h-5 w-5 animate-spin" aria-hidden="true" />
               Saving...
             </>
           ) : (
             <>
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" />
-              </svg>
+              <Save className="h-5 w-5" aria-hidden="true" />
               {user?.uid ? 'Save Workout' : 'Login to Save'}
             </>
           )}
-        </button>
+        </Button>
 
         {/* Save Error Message */}
         {saveError && (
-          <div className="text-red-400 text-sm mt-2 flex items-center gap-2">
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
+          <Stack direction="row" align="center" gap={2} className="text-body-sm text-danger">
+            <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden="true" />
             {saveError}
-          </div>
+          </Stack>
         )}
 
         {/* Share Workout Button */}
         {!isViewingSharedWorkout && (
-          <button
+          <Button
+            variant="primary"
+            size="lg"
+            className="w-full"
             onClick={handleShareWorkout}
             disabled={!user?.uid}
-            className="w-full bg-purple-600 hover:bg-purple-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white font-medium py-3 px-4 rounded-lg transition duration-200 flex items-center justify-center gap-2"
           >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.367 2.684 3 3 0 00-5.367-2.684z" />
-            </svg>
+            <Share2 className="h-5 w-5" aria-hidden="true" />
             {user?.uid ? 'Share Workout' : 'Login to Share'}
-          </button>
+          </Button>
         )}
 
         {/* Start Workout Button */}
-        <button
+        <Button
+          variant="primary"
+          size="lg"
+          className="w-full"
           onClick={handleStartWorkout}
-          className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 px-4 rounded-lg transition duration-200 flex items-center justify-center gap-2"
         >
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.828 14.828a4 4 0 01-5.656 0M9 10h1m4 0h1m-6 4h1m4 0h1m-6-8h12a2 2 0 012 2v12a2 2 0 01-2 2H6a2 2 0 01-2-2V6a2 2 0 012-2z" />
-          </svg>
+          <Play className="h-5 w-5" aria-hidden="true" />
           Start Workout
-        </button>
+        </Button>
 
         {workoutNameError && (
-          <div className="text-red-400 text-sm mt-2 flex items-center gap-2">
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
+          <Stack direction="row" align="center" gap={2} className="text-body-sm text-danger">
+            <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden="true" />
             {workoutNameError}
-          </div>
+          </Stack>
         )}
-        
-        <button
+
+        <Button
+          variant="secondary"
+          size="lg"
+          className="w-full"
           onClick={handleClearWorkout}
-          className="w-full bg-gray-700 hover:bg-gray-600 text-white font-medium py-3 px-4 rounded-lg transition duration-200 flex items-center justify-center gap-2"
         >
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-          </svg>
+          <Trash2 className="h-5 w-5" aria-hidden="true" />
           Clear & Start Over
-        </button>
-      </div>
+        </Button>
+      </Stack>
     </div>
   ) : null;
 
+  // History (undo/redo) controls — shown under the Text editor tab.
+  const historyControls = (
+    <Card elevation={1}>
+      <CardBody className="p-4 pt-4">
+        <Stack direction="row" align="center" justify="between" gap={2}>
+          <Stack direction="row" align="center" gap={2}>
+            <span className="text-body-sm font-medium text-ink">History</span>
+            <span className="text-caption text-ink-subtle">
+              ({canUndoWorkoutText || canRedoWorkoutText ? 'Available' : 'No changes'})
+            </span>
+          </Stack>
+
+          <Stack direction="row" align="center" gap={2}>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={undoWorkoutText}
+              disabled={!canUndoWorkoutText}
+              title="Undo (Ctrl+Z)"
+            >
+              <Undo2 className="h-4 w-4" aria-hidden="true" />
+              Undo
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={redoWorkoutText}
+              disabled={!canRedoWorkoutText}
+              title="Redo (Ctrl+Y)"
+            >
+              <Redo2 className="h-4 w-4" aria-hidden="true" />
+              Redo
+            </Button>
+          </Stack>
+        </Stack>
+      </CardBody>
+    </Card>
+  );
+
+  // Mode selector: Text (natural-language editor) / Visual (parsed
+  // configurator) / Templates. Built on the Tabs primitive.
+  const textInputSection = (
+    <Tabs defaultValue="text" className="space-y-4">
+      <TabsList className="w-full">
+        <TabsTrigger value="text" className="flex-1 gap-1.5">
+          <FileText className="h-4 w-4" aria-hidden="true" />
+          Text
+        </TabsTrigger>
+        <TabsTrigger value="visual" className="flex-1 gap-1.5">
+          <LayoutGrid className="h-4 w-4" aria-hidden="true" />
+          Visual
+        </TabsTrigger>
+        <TabsTrigger value="templates" className="flex-1 gap-1.5">
+          <Sparkles className="h-4 w-4" aria-hidden="true" />
+          Templates
+        </TabsTrigger>
+      </TabsList>
+
+      <TabsContent value="text" className="space-y-6">
+        <EnhancedTextInput
+          workoutText={workoutText}
+          workoutName={workoutName}
+          onWorkoutTextChange={handleTextChange}
+          onWorkoutNameChange={handleWorkoutNameChange}
+          onParseWorkout={handleParseWorkout}
+          onLoadExample={handleLoadExample}
+          isParseDisabled={isParseDisabled}
+        />
+
+        {/* Real-time Preview */}
+        <RealtimePreview
+          workoutText={workoutText}
+          isCollapsed={isPreviewCollapsed}
+          onToggleCollapse={() => setIsPreviewCollapsed(!isPreviewCollapsed)}
+        />
+
+        {/* Undo/Redo Controls */}
+        {historyControls}
+      </TabsContent>
+
+      <TabsContent value="visual" className="space-y-4">
+        {showConfiguration ? (
+          configurationSection
+        ) : (
+          <Card elevation={1}>
+            <CardBody className="flex flex-col items-center gap-2 py-10 text-center">
+              <LayoutGrid className="h-8 w-8 text-ink-subtle" aria-hidden="true" />
+              <p className="text-body font-medium text-ink">Nothing to configure yet</p>
+              <p className="text-body-sm text-ink-muted">
+                Write your workout in the Text tab and parse it to configure
+                exercises here.
+              </p>
+            </CardBody>
+          </Card>
+        )}
+      </TabsContent>
+
+      <TabsContent value="templates" className="space-y-4">
+        <Card elevation={1}>
+          <CardBody className="flex flex-col items-center gap-2 py-10 text-center">
+            <Sparkles className="h-8 w-8 text-ink-subtle" aria-hidden="true" />
+            <p className="text-body font-medium text-ink">Templates</p>
+            <p className="text-body-sm text-ink-muted">
+              Saved and starter templates will appear here.
+            </p>
+            <Button variant="secondary" size="sm" className="mt-2" onClick={handleLoadExample}>
+              Load example workout
+            </Button>
+          </CardBody>
+        </Card>
+      </TabsContent>
+    </Tabs>
+  );
+
   // Render parse errors at bottom (only when there are errors)
   const parseErrorsSection = parseResult && !parseResult.success ? (
-    <div className="bg-gray-800 rounded-lg p-6">
-      <div className="flex items-center gap-2 mb-3">
-        <svg className="w-5 h-5 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
-        </svg>
-        <h3 className="text-lg font-medium text-white">
-          Parse Errors
-        </h3>
-      </div>
-      
-      <div className="space-y-2">
-        {parseResult.errors.map((error, index) => (
-          <div key={index} className="bg-red-900/20 border border-red-700 rounded p-3">
-            <div className="text-red-300 font-medium">
-              Line {error.line}: {error.message}
-            </div>
-            {error.suggestion && (
-              <div className="text-red-200 text-sm mt-1">
-                Suggestion: {error.suggestion}
+    <Card elevation={1}>
+      <CardBody className="p-6 pt-6">
+        <Stack direction="row" align="center" gap={2} className="mb-3">
+          <AlertTriangle className="h-5 w-5 text-danger" aria-hidden="true" />
+          <h3 className="text-title font-medium text-ink">Parse Errors</h3>
+        </Stack>
+
+        <Stack gap={2}>
+          {parseResult.errors.map((error, index) => (
+            <div key={index} className="rounded border border-danger bg-danger/10 p-3">
+              <div className="text-danger font-medium">
+                Line {error.line}: {error.message}
               </div>
-            )}
-          </div>
-        ))}
-      </div>
-    </div>
+              {error.suggestion && (
+                <div className="text-body-sm text-danger/80 mt-1">
+                  Suggestion: {error.suggestion}
+                </div>
+              )}
+            </div>
+          ))}
+        </Stack>
+      </CardBody>
+    </Card>
   ) : null;
 
   // If viewing a shared workout, wrap with SharedWorkoutLoader
@@ -968,8 +1027,6 @@ export default function BuildPage() {
             exerciseDatabase={exerciseDatabase}
             debouncedAutoParse={debouncedAutoParse}
             textInputSection={textInputSection}
-            configurationSection={configurationSection}
-            showConfiguration={showConfiguration}
             parseErrorsSection={parseErrorsSection}
           />
         )}
@@ -982,8 +1039,6 @@ export default function BuildPage() {
     <>
       <BuildScreenLayout
         textInputSection={textInputSection}
-        configurationSection={configurationSection}
-        showConfiguration={showConfiguration}
         actionButtons={parseErrorsSection}
       />
 

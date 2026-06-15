@@ -1,11 +1,32 @@
 import React from 'react';
 import type { ExperienceLevel } from '../../types/progression';
+import { Card } from '@/components/ui/card';
 
 interface ExperienceLevelButtonsProps {
   currentLevel: ExperienceLevel;
   onChange: (level: ExperienceLevel) => void;
   compact?: boolean;
 }
+
+type LevelTone = 'success' | 'accent' | 'core';
+
+const toneSelected: Record<LevelTone, string> = {
+  success: 'bg-success text-ink-inverse',
+  accent: 'bg-accent text-accent-fg',
+  core: 'bg-muscle-core text-ink-inverse',
+};
+
+const toneSelectedFull: Record<LevelTone, string> = {
+  success: 'border-success bg-success/10',
+  accent: 'border-accent bg-accent/10',
+  core: 'border-muscle-core bg-muscle-core/10',
+};
+
+const toneAccentText: Record<LevelTone, string> = {
+  success: 'text-success',
+  accent: 'text-accent',
+  core: 'text-muscle-core',
+};
 
 export const ExperienceLevelButtons: React.FC<ExperienceLevelButtonsProps> = ({
   currentLevel,
@@ -17,47 +38,44 @@ export const ExperienceLevelButtons: React.FC<ExperienceLevelButtonsProps> = ({
     label: string;
     description: string;
     increment: string;
-    color: string;
+    tone: LevelTone;
   }[] = [
     {
       value: 'aggressive',
       label: 'Aggressive',
       description: 'Beginners',
       increment: '+10 lbs',
-      color: 'green'
+      tone: 'success'
     },
     {
       value: 'standard',
       label: 'Standard',
       description: 'Intermediate',
       increment: '+5 lbs',
-      color: 'blue'
+      tone: 'accent'
     },
     {
       value: 'conservative',
       label: 'Conservative',
       description: 'Advanced',
       increment: '+2.5 lbs',
-      color: 'purple'
+      tone: 'core'
     }
   ];
 
   if (compact) {
     // Compact version - just buttons
     return (
-      <div className="flex space-x-2">
+      <div className="flex gap-2">
         {levels.map((level) => (
           <button
             key={level.value}
+            type="button"
             onClick={() => onChange(level.value)}
-            className={`px-3 py-1 rounded-lg text-xs font-medium transition-colors ${
+            className={`px-3 py-1 rounded-md text-caption font-medium transition-colors duration-snap ${
               currentLevel === level.value
-                ? level.color === 'green'
-                  ? 'bg-green-600 text-white'
-                  : level.color === 'blue'
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-purple-600 text-white'
-                : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
+                ? toneSelected[level.tone]
+                : 'bg-surface-subtle text-ink-subtle hover:bg-surface-raised'
             }`}
           >
             {level.label}
@@ -69,50 +87,44 @@ export const ExperienceLevelButtons: React.FC<ExperienceLevelButtonsProps> = ({
 
   // Full version with descriptions
   return (
-    <div className="bg-gray-800 rounded-lg p-3">
+    <Card className="p-3">
       <div className="flex items-center justify-between mb-2">
-        <h3 className="text-sm font-medium text-gray-300">Progression Rate</h3>
-        <span className="text-xs text-gray-500">Select your experience level</span>
+        <h3 className="text-body-sm font-medium text-ink-muted">Progression Rate</h3>
+        <span className="text-caption text-ink-subtle">Select your experience level</span>
       </div>
 
       <div className="grid grid-cols-3 gap-2">
-        {levels.map((level) => (
-          <button
-            key={level.value}
-            onClick={() => onChange(level.value)}
-            className={`p-3 rounded-lg border transition-all ${
-              currentLevel === level.value
-                ? level.color === 'green'
-                  ? 'border-green-500 bg-green-900 bg-opacity-20'
-                  : level.color === 'blue'
-                  ? 'border-blue-500 bg-blue-900 bg-opacity-20'
-                  : 'border-purple-500 bg-purple-900 bg-opacity-20'
-                : 'border-gray-700 bg-gray-850 hover:bg-gray-750 hover:border-gray-600'
-            }`}
-          >
-            <div className="text-center">
-              <div className={`text-sm font-semibold mb-1 ${
-                currentLevel === level.value ? 'text-white' : 'text-gray-300'
-              }`}>
-                {level.label}
+        {levels.map((level) => {
+          const selected = currentLevel === level.value;
+          return (
+            <button
+              key={level.value}
+              type="button"
+              onClick={() => onChange(level.value)}
+              className={`p-3 rounded-md border transition-colors duration-snap ${
+                selected
+                  ? toneSelectedFull[level.tone]
+                  : 'border-border bg-surface-subtle hover:bg-surface-raised'
+              }`}
+            >
+              <div className="text-center">
+                <div className={`text-body-sm font-semibold mb-1 ${
+                  selected ? 'text-ink' : 'text-ink-muted'
+                }`}>
+                  {level.label}
+                </div>
+                <div className="text-caption text-ink-subtle mb-1">{level.description}</div>
+                <div className={`text-caption font-medium ${
+                  selected ? toneAccentText[level.tone] : 'text-ink-subtle'
+                }`}>
+                  {level.increment}
+                </div>
               </div>
-              <div className="text-xs text-gray-500 mb-1">{level.description}</div>
-              <div className={`text-xs font-medium ${
-                currentLevel === level.value
-                  ? level.color === 'green'
-                    ? 'text-green-400'
-                    : level.color === 'blue'
-                    ? 'text-blue-400'
-                    : 'text-purple-400'
-                  : 'text-gray-400'
-              }`}>
-                {level.increment}
-              </div>
-            </div>
-          </button>
-        ))}
+            </button>
+          );
+        })}
       </div>
-    </div>
+    </Card>
   );
 };
 

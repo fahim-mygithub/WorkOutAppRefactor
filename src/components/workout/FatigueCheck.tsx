@@ -1,5 +1,7 @@
-import React, { useEffect, useState } from 'react';
-import { Battery, BatteryLow, X, TrendingDown, RefreshCw, Zap } from 'lucide-react';
+import React, { useState } from 'react';
+import { BatteryLow, TrendingDown, RefreshCw, Zap, Battery } from 'lucide-react';
+import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet';
+import { Button } from '@/components/ui/button';
 
 interface FatigueCheckProps {
   exerciseName: string;
@@ -20,110 +22,88 @@ export const FatigueCheck: React.FC<FatigueCheckProps> = ({
   onSwitchVariation,
   onClose
 }) => {
-  const [isVisible, setIsVisible] = useState(false);
+  // Sheet drives enter/exit animation; mirror open state + fire onClose on close.
+  const [open, setOpen] = useState(true);
 
-  useEffect(() => {
-    // Slide in animation
-    setTimeout(() => setIsVisible(true), 100);
-  }, []);
-
-  const handleClose = () => {
-    setIsVisible(false);
-    setTimeout(onClose, 300); // Wait for animation to complete
+  const handleOpenChange = (next: boolean) => {
+    setOpen(next);
+    if (!next) {
+      onClose();
+    }
   };
 
   const handleFatigued = () => {
     onFatigued();
-    handleClose();
+    handleOpenChange(false);
   };
 
   const handleNotFatigued = () => {
     onNotFatigued();
-    handleClose();
+    handleOpenChange(false);
   };
 
   const handleSwitchVariation = () => {
     if (onSwitchVariation) {
       onSwitchVariation();
     }
-    handleClose();
+    handleOpenChange(false);
   };
 
   const reducedWeight = Math.round(currentWeight * 0.9);
 
   return (
-    <div
-      className={`fixed bottom-20 right-4 z-50 transition-transform duration-300 ${
-        isVisible ? 'translate-x-0' : 'translate-x-[calc(100%+1rem)]'
-      }`}
-    >
-      <div className="w-80 rounded-lg shadow-lg border border-gray-700 bg-gray-800 p-4">
+    <Sheet open={open} onOpenChange={handleOpenChange}>
+      <SheetContent>
         {/* Header */}
-        <div className="flex items-start justify-between mb-3">
-          <div className="flex items-center space-x-2">
-            <BatteryLow className="w-5 h-5 text-yellow-500 flex-shrink-0" />
-            <h3 className="font-semibold text-white">Tough Set!</h3>
-          </div>
-          <button
-            onClick={handleClose}
-            className="text-gray-400 hover:text-gray-300 transition"
-          >
-            <X className="w-4 h-4" />
-          </button>
+        <div className="flex items-center gap-2 mb-3">
+          <BatteryLow className="w-5 h-5 text-warning flex-shrink-0" />
+          <SheetTitle className="text-title">Tough Set!</SheetTitle>
         </div>
 
         {/* Message */}
         <div className="space-y-3">
-          <p className="text-sm text-gray-300">
-            Set {setNumber} was challenging. How are you feeling?
+          <p className="text-body-sm text-ink-muted">
+            Set {setNumber} of {exerciseName} was challenging. How are you feeling?
           </p>
 
-          <div className="bg-gray-900 rounded-lg p-3">
-            <p className="text-xs text-gray-400 mb-2">Current: {currentWeight} lbs</p>
-            <p className="text-xs text-gray-500">
+          <div className="bg-surface-subtle rounded-md p-3">
+            <p className="text-caption text-ink-subtle mb-2">Current: {currentWeight} lbs</p>
+            <p className="text-caption text-ink-subtle">
               If fatigued, we'll reduce to {reducedWeight} lbs (-10%) for remaining sets
             </p>
           </div>
 
           {/* Options */}
           <div className="space-y-2">
-            <button
-              onClick={handleFatigued}
-              className="w-full px-4 py-3 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 transition flex items-center justify-center space-x-2"
-            >
+            <Button variant="primary" onClick={handleFatigued} className="w-full" size="lg">
               <Battery className="w-4 h-4" />
-              <span className="font-medium">Fatigued - Reduce Weight</span>
-            </button>
+              <span>Fatigued - Reduce Weight</span>
+            </Button>
 
-            <button
-              onClick={handleNotFatigued}
-              className="w-full px-4 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition flex items-center justify-center space-x-2"
-            >
+            <Button variant="secondary" onClick={handleNotFatigued} className="w-full" size="lg">
               <Zap className="w-4 h-4" />
-              <span className="font-medium">Good - Continue As Planned</span>
-            </button>
+              <span>Good - Continue As Planned</span>
+            </Button>
 
             {onSwitchVariation && (
-              <button
-                onClick={handleSwitchVariation}
-                className="w-full px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition flex items-center justify-center space-x-2"
-              >
+              <Button variant="ghost" onClick={handleSwitchVariation} className="w-full" size="lg">
                 <RefreshCw className="w-4 h-4" />
-                <span className="font-medium">Switch to Easier Variation</span>
-              </button>
+                <span>Switch to Easier Variation</span>
+              </Button>
             )}
           </div>
 
           {/* Tips */}
-          <div className="bg-gray-900 rounded-lg p-2">
-            <p className="text-xs text-gray-400">
-              <span className="font-semibold text-gray-300">Tip:</span> If this is set 1 or 2, consider reducing weight.
+          <div className="bg-surface-subtle rounded-md p-2 flex items-start gap-2">
+            <TrendingDown className="w-4 h-4 text-ink-subtle flex-shrink-0 mt-0.5" />
+            <p className="text-caption text-ink-subtle">
+              <span className="font-semibold text-ink-muted">Tip:</span> If this is set 1 or 2, consider reducing weight.
               If it's set 3+, you might just need longer rest.
             </p>
           </div>
         </div>
-      </div>
-    </div>
+      </SheetContent>
+    </Sheet>
   );
 };
 

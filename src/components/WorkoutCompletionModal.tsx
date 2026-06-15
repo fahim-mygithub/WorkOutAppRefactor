@@ -4,7 +4,15 @@ import { useAppDispatch, useAppSelector } from '../store/hooks';
 import { useAuth } from '../contexts/AuthContext';
 import { endWorkout, setShowCompletionModal } from '../store/slices/workoutSlice';
 import { WorkoutStorageService } from '../services/workoutStorageService';
-import { Trophy, Clock, Target, TrendingUp, X, Check, Edit3 } from 'lucide-react';
+import { Trophy, Clock, Target, TrendingUp, Check, Edit3 } from 'lucide-react';
+import {
+  Sheet,
+  SheetContent,
+  SheetTitle,
+  SheetDescription,
+} from '@/components/ui/sheet';
+import { Button } from '@/components/ui/button';
+import { Stack } from '@/components/ui/stack';
 
 interface WorkoutCompletionModalProps {
   isOpen: boolean;
@@ -29,8 +37,6 @@ export const WorkoutCompletionModal: React.FC<WorkoutCompletionModalProps> = ({
       return () => clearTimeout(timer);
     }
   }, [isOpen]);
-
-  if (!isOpen || !activeWorkout) return null;
 
   const formatTime = (seconds: number): string => {
     const hours = Math.floor(seconds / 3600);
@@ -100,16 +106,23 @@ export const WorkoutCompletionModal: React.FC<WorkoutCompletionModalProps> = ({
 
   const stats = calculateStats();
 
+  if (!activeWorkout) return null;
+
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-gray-800 rounded-lg max-w-md w-full mx-auto relative overflow-hidden">
+    <Sheet
+      open={isOpen}
+      onOpenChange={(next) => {
+        if (!next) onClose();
+      }}
+    >
+      <SheetContent className="max-w-md overflow-hidden sm:mx-auto">
         {/* Confetti Effect */}
         {showConfetti && (
-          <div className="absolute inset-0 pointer-events-none overflow-hidden">
+          <div className="pointer-events-none absolute inset-0 overflow-hidden">
             {Array.from({ length: 50 }).map((_, i) => (
               <div
                 key={i}
-                className="absolute w-2 h-2 bg-gradient-to-r from-yellow-400 via-red-500 to-pink-500 rounded animate-bounce"
+                className="absolute h-2 w-2 animate-bounce rounded bg-accent"
                 style={{
                   left: `${Math.random() * 100}%`,
                   top: `${Math.random() * 100}%`,
@@ -122,92 +135,90 @@ export const WorkoutCompletionModal: React.FC<WorkoutCompletionModalProps> = ({
         )}
 
         {/* Header */}
-        <div className="relative bg-gradient-to-r from-green-600 to-blue-600 text-white p-6 text-center">
-          <button
-            onClick={onClose}
-            className="absolute top-4 right-4 text-white hover:text-gray-200 transition-colors"
-          >
-            <X className="w-5 h-5" />
-          </button>
-
-          <div className="mb-4">
-            <Trophy className="w-16 h-16 mx-auto mb-2 text-yellow-300 animate-pulse" />
-            <h2 className="text-2xl font-bold mb-1">Workout Complete!</h2>
-            <p className="text-green-100">Congratulations on finishing your workout</p>
-          </div>
+        <div className="mb-6 text-center">
+          <Trophy className="mx-auto mb-2 h-16 w-16 animate-pulse text-warning" aria-hidden="true" />
+          <SheetTitle className="text-title">Workout Complete!</SheetTitle>
+          <SheetDescription>
+            Congratulations on finishing your workout
+          </SheetDescription>
         </div>
 
         {/* Workout Summary */}
-        <div className="p-6">
-          <h3 className="text-xl font-bold text-white mb-4">{activeWorkout.name}</h3>
+        <h3 className="mb-4 text-body font-bold text-ink">{activeWorkout.name}</h3>
 
-          <div className="grid grid-cols-2 gap-4 mb-6">
-            <div className="bg-gray-700 rounded-lg p-4 text-center">
-              <Clock className="w-6 h-6 mx-auto mb-2 text-blue-400" />
-              <div className="text-sm text-gray-400">Duration</div>
-              <div className="text-lg font-bold text-white">{formatTime(activeWorkout.duration)}</div>
-            </div>
-
-            <div className="bg-gray-700 rounded-lg p-4 text-center">
-              <Target className="w-6 h-6 mx-auto mb-2 text-green-400" />
-              <div className="text-sm text-gray-400">Sets Completed</div>
-              <div className="text-lg font-bold text-white">{stats.completedSets}/{stats.totalSets}</div>
-            </div>
-
-            <div className="bg-gray-700 rounded-lg p-4 text-center">
-              <TrendingUp className="w-6 h-6 mx-auto mb-2 text-purple-400" />
-              <div className="text-sm text-gray-400">Total Reps</div>
-              <div className="text-lg font-bold text-white">{stats.totalReps.toLocaleString()}</div>
-            </div>
-
-            <div className="bg-gray-700 rounded-lg p-4 text-center">
-              <Trophy className="w-6 h-6 mx-auto mb-2 text-yellow-400" />
-              <div className="text-sm text-gray-400">Volume</div>
-              <div className="text-lg font-bold text-white">{stats.totalVolume.toLocaleString()} lbs</div>
-            </div>
+        <div className="mb-6 grid grid-cols-2 gap-4">
+          <div className="rounded-lg bg-surface-subtle p-4 text-center">
+            <Clock className="mx-auto mb-2 h-6 w-6 text-accent" aria-hidden="true" />
+            <div className="text-body-sm text-ink-subtle">Duration</div>
+            <div className="text-body font-bold text-ink">{formatTime(activeWorkout.duration)}</div>
           </div>
 
-          {/* Exercises Summary */}
-          <div className="mb-6">
-            <h4 className="text-lg font-semibold text-white mb-3">Exercises Completed</h4>
-            <div className="space-y-2 max-h-32 overflow-y-auto">
-              {activeWorkout.exercises.map((exercise, index) => {
-                const completedSets = exercise.sets.filter(set => set.completed).length;
-                return (
-                  <div key={exercise.id} className="flex justify-between items-center bg-gray-700 rounded p-2">
-                    <span className="text-white text-sm">{exercise.exercise.name}</span>
-                    <span className="text-gray-400 text-xs">{completedSets}/{exercise.sets.length} sets</span>
-                  </div>
-                );
-              })}
-            </div>
+          <div className="rounded-lg bg-surface-subtle p-4 text-center">
+            <Target className="mx-auto mb-2 h-6 w-6 text-success" aria-hidden="true" />
+            <div className="text-body-sm text-ink-subtle">Sets Completed</div>
+            <div className="text-body font-bold text-ink">{stats.completedSets}/{stats.totalSets}</div>
           </div>
 
-          {/* Action Buttons */}
-          <div className="flex space-x-3">
-            <button
-              onClick={handleContinueEditing}
-              className="flex-1 flex items-center justify-center space-x-2 bg-gray-600 hover:bg-gray-700 text-white px-4 py-3 rounded-lg transition-colors"
-            >
-              <Edit3 className="w-5 h-5" />
-              <span>Continue Editing</span>
-            </button>
+          <div className="rounded-lg bg-surface-subtle p-4 text-center">
+            <TrendingUp className="mx-auto mb-2 h-6 w-6 text-accent" aria-hidden="true" />
+            <div className="text-body-sm text-ink-subtle">Total Reps</div>
+            <div className="text-body font-bold text-ink">{stats.totalReps.toLocaleString()}</div>
+          </div>
 
-            <button
-              onClick={handleCompleteWorkout}
-              disabled={isCompleting}
-              className="flex-1 flex items-center justify-center space-x-2 bg-green-600 hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed text-white px-4 py-3 rounded-lg transition-colors"
-            >
-              {isCompleting ? (
-                <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-              ) : (
-                <Check className="w-5 h-5" />
-              )}
-              <span>{isCompleting ? 'Saving...' : 'Complete Workout'}</span>
-            </button>
+          <div className="rounded-lg bg-surface-subtle p-4 text-center">
+            <Trophy className="mx-auto mb-2 h-6 w-6 text-warning" aria-hidden="true" />
+            <div className="text-body-sm text-ink-subtle">Volume</div>
+            <div className="text-body font-bold text-ink">{stats.totalVolume.toLocaleString()} lbs</div>
           </div>
         </div>
-      </div>
-    </div>
+
+        {/* Exercises Summary */}
+        <div className="mb-6">
+          <h4 className="mb-3 text-body font-semibold text-ink">Exercises Completed</h4>
+          <div className="max-h-32 space-y-2 overflow-y-auto">
+            {activeWorkout.exercises.map((exercise) => {
+              const completedSets = exercise.sets.filter(set => set.completed).length;
+              return (
+                <Stack
+                  key={exercise.id}
+                  direction="row"
+                  align="center"
+                  justify="between"
+                  className="rounded bg-surface-subtle p-2"
+                >
+                  <span className="text-body-sm text-ink">{exercise.exercise.name}</span>
+                  <span className="text-caption text-ink-subtle">{completedSets}/{exercise.sets.length} sets</span>
+                </Stack>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Action Buttons */}
+        <Stack direction="row" gap={3}>
+          <Button
+            variant="secondary"
+            className="flex-1"
+            onClick={handleContinueEditing}
+          >
+            <Edit3 className="h-5 w-5" aria-hidden="true" />
+            <span>Continue Editing</span>
+          </Button>
+
+          <Button
+            className="flex-1 bg-success hover:bg-success/90 text-ink-inverse"
+            onClick={handleCompleteWorkout}
+            disabled={isCompleting}
+          >
+            {isCompleting ? (
+              <span className="h-5 w-5 animate-spin rounded-full border-2 border-ink-inverse border-t-transparent" />
+            ) : (
+              <Check className="h-5 w-5" aria-hidden="true" />
+            )}
+            <span>{isCompleting ? 'Saving...' : 'Complete Workout'}</span>
+          </Button>
+        </Stack>
+      </SheetContent>
+    </Sheet>
   );
 };
