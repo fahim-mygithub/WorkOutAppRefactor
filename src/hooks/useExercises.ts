@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { useAppDispatch, useAppSelector } from '../store/hooks';
 import { setExercises, setLoading, setError } from '../store/slices/exerciseSlice';
-import { loadExercisesFromCSV } from '../utils/exercises';
+import { loadExercises } from '../utils/loadExercises';
 import { loadCustomExercises, selectCustomExercises } from '../store/slices/customExerciseSlice';
 import { CustomExerciseService } from '../services/customExerciseService';
 import { useAuth } from '../contexts/AuthContext';
@@ -16,10 +16,10 @@ export const useExercises = () => {
   useEffect(() => {
     // Load database exercises if we haven't loaded them yet
     if (exercises.length === 0 && !lastUpdated) {
-      const loadExercises = async () => {
+      const loadExerciseDatabase = async () => {
         dispatch(setLoading(true));
         try {
-          const loadedExercises = await loadExercisesFromCSV();
+          const loadedExercises = await loadExercises();
           dispatch(setExercises(loadedExercises));
         } catch (error) {
           console.error('Failed to load exercises:', error);
@@ -29,7 +29,7 @@ export const useExercises = () => {
         }
       };
 
-      loadExercises();
+      loadExerciseDatabase();
     }
   }, [dispatch, exercises.length, lastUpdated]);
 

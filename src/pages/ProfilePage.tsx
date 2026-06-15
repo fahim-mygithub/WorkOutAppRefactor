@@ -228,6 +228,12 @@ export default function ProfilePage() {
     </button>
   );
 
+  // Guard against a null auth user (e.g. sign-out while the profile is mounted).
+  // Everything below dereferences `user.uid`, so narrow it here.
+  if (!user) {
+    return null;
+  }
+
   return (
     <div className="min-h-full bg-gray-900 text-white p-4">
       <div className="max-w-6xl mx-auto">

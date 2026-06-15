@@ -6,9 +6,15 @@ import { CustomExerciseBadge } from '../components/workout/CustomExerciseBadge';
 import { Exercise } from '../types/exercise';
 import { selectCustomExercises } from '../store/slices/customExerciseSlice';
 import { scrollAppToTop } from '../lib/scroll';
+import { useExercises } from '../hooks/useExercises';
 
 export default function ExercisesPage() {
   const dispatch = useAppDispatch();
+  // Trigger the lazy exercise-database load for this route. Previously the
+  // Directory free-rode on the eager useExercises() call in AppRouter; that
+  // root call was removed for cold-start perf, so the load now lives here.
+  // The hook's return is unused: this page reads state.exercise via selector.
+  useExercises();
   const { filteredExercises, exercises, selectedExercise, isLoading, error } = useAppSelector((state) => state.exercise);
   const customExercises = useAppSelector(selectCustomExercises);
   const [searchTerm, setSearchTerm] = useState('');

@@ -23,7 +23,7 @@ import {
   ProgressMetrics
 } from '../types/exerciseHistory';
 import { WorkoutExercise, ActiveWorkout } from '../types/exercise';
-import { serializeFirestoreData } from '../utils/firestoreHelpers';
+import { fromFirestore } from '../firestore/serde';
 
 export class ExerciseHistoryService {
   private static readonly EXERCISE_HISTORY_COLLECTION = 'exercise_history';
@@ -245,11 +245,12 @@ export class ExerciseHistoryService {
       const history: ExerciseHistory[] = [];
       querySnapshot.forEach((doc) => {
         const data = doc.data();
-        history.push({
+        const serializedData = fromFirestore({
           id: doc.id,
           ...data,
           workoutDate: data.workoutDate?.toDate().toISOString() || new Date().toISOString(),
-        } as ExerciseHistory);
+        });
+        history.push(serializedData as ExerciseHistory);
       });
 
       return history;
@@ -310,11 +311,12 @@ export class ExerciseHistoryService {
       const history: ExerciseHistory[] = [];
       querySnapshot.forEach((doc) => {
         const data = doc.data();
-        history.push({
+        const serializedData = fromFirestore({
           id: doc.id,
           ...data,
           workoutDate: data.workoutDate?.toDate().toISOString() || new Date().toISOString(),
-        } as ExerciseHistory);
+        });
+        history.push(serializedData as ExerciseHistory);
       });
 
       return history;
@@ -371,7 +373,7 @@ export class ExerciseHistoryService {
     const history: ExerciseHistory[] = [];
     querySnapshot.forEach((doc) => {
       const data = doc.data();
-      const serializedData = serializeFirestoreData({
+      const serializedData = fromFirestore({
         id: doc.id,
         ...data,
         workoutDate: data.workoutDate?.toDate().toISOString() || new Date().toISOString(),
@@ -402,7 +404,7 @@ export class ExerciseHistoryService {
     const history: ExerciseHistory[] = [];
     querySnapshot.forEach((doc) => {
       const data = doc.data();
-      const serializedData = serializeFirestoreData({
+      const serializedData = fromFirestore({
         id: doc.id,
         ...data,
         workoutDate: data.workoutDate?.toDate().toISOString() || new Date().toISOString(),
@@ -452,7 +454,7 @@ export class ExerciseHistoryService {
 
       if (docSnap.exists()) {
         const data = docSnap.data();
-        const serializedData = serializeFirestoreData({
+        const serializedData = fromFirestore({
           ...data,
           lastPerformed: data.lastPerformed?.toDate().toISOString() || new Date().toISOString(),
           firstPerformed: data.firstPerformed?.toDate().toISOString() || new Date().toISOString(),
@@ -498,7 +500,7 @@ export class ExerciseHistoryService {
 
       querySnapshot.forEach((doc) => {
         const data = doc.data();
-        const serializedData = serializeFirestoreData({
+        const serializedData = fromFirestore({
           id: doc.id,
           ...data,
           startTime: data.startTime?.toDate().toISOString() || new Date().toISOString(),
@@ -941,7 +943,7 @@ export class ExerciseHistoryService {
 
       querySnapshot.forEach((doc) => {
         const data = doc.data();
-        const serializedData = serializeFirestoreData({
+        const serializedData = fromFirestore({
           id: doc.id,
           ...data,
           workoutDate: data.workoutDate?.toDate().toISOString() || new Date().toISOString(),
@@ -975,7 +977,7 @@ export class ExerciseHistoryService {
 
           querySnapshot.forEach((doc) => {
             const data = doc.data();
-            const serializedData = serializeFirestoreData({
+            const serializedData = fromFirestore({
               id: doc.id,
               ...data,
               workoutDate: data.workoutDate?.toDate().toISOString() || new Date().toISOString(),
@@ -1009,7 +1011,7 @@ export class ExerciseHistoryService {
 
       if (docSnap.exists()) {
         const data = docSnap.data();
-        const serializedData = serializeFirestoreData({
+        const serializedData = fromFirestore({
           id: docSnap.id,
           ...data,
           startTime: data.startTime?.toDate().toISOString() || new Date().toISOString(),

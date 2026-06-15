@@ -44,7 +44,7 @@ import { DeloadSuggestion } from '../components/workout/DeloadSuggestion';
 import { FatigueCheck } from '../components/workout/FatigueCheck';
 import { useProgressionRecommendation } from '../hooks/useProgressionRecommendation';
 import { Play, Pause, SkipForward, SkipBack, Plus, Check, X, Edit } from 'lucide-react';
-import { WorkoutExercise, WorkoutSet } from '../types/exercise';
+import { Exercise, WorkoutExercise, WorkoutSet } from '../types/exercise';
 
 // Helper interface for grouped exercise display
 interface ExerciseDisplayGroup {
@@ -224,7 +224,9 @@ export default function WorkoutPage() {
 
   // Initialize progression recommendation hook for current exercise (always call this hook)
   const progressionHook = useProgressionRecommendation({
-    exercise: currentExercise?.exercise,
+    // The hook internally guards `if (!exercise)`, so an undefined exercise is
+    // tolerated; the cast satisfies the (too-narrow) param type without changing behavior.
+    exercise: currentExercise?.exercise as Exercise,
     currentSets: currentExercise?.sets.length || 0,
     userId: user?.uid,
     configuredReps: currentExercise?.sets?.[0]?.reps // Pass configured reps from first set
@@ -276,6 +278,26 @@ export default function WorkoutPage() {
         <div className="text-center">
           <h1 className="text-2xl font-bold text-white mb-4">No Active Workout</h1>
           <p className="text-gray-400 mb-6">Start a workout from the Build page</p>
+          <button
+            onClick={() => navigate('/build')}
+            className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg transition-colors"
+          >
+            Go to Build Page
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Guard against an out-of-bounds currentExerciseIndex (empty/short exercises
+  // array, or a stale index after removing an exercise). This narrows
+  // `currentExercise` to a defined value for the rest of the render.
+  if (!currentExercise) {
+    return (
+      <div className="min-h-full bg-gray-900 flex items-center justify-center">
+        <div className="text-center">
+          <h1 className="text-2xl font-bold text-white mb-4">No Exercise Selected</h1>
+          <p className="text-gray-400 mb-6">This workout has no current exercise.</p>
           <button
             onClick={() => navigate('/build')}
             className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg transition-colors"
@@ -491,7 +513,7 @@ export default function WorkoutPage() {
       }
 
       // More comprehensive check for input elements
-      const target = event.target as Element;
+      const target = event.target as HTMLElement;
       if (target && (
         target.tagName === 'INPUT' ||
         target.tagName === 'TEXTAREA' ||

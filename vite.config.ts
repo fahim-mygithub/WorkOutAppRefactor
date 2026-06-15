@@ -1,12 +1,22 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
+import { visualizer } from 'rollup-plugin-visualizer'
 import path from 'node:path'
 
-export default defineConfig({
+export default defineConfig(({ command, mode }) => {
+  // Gate the bundle visualizer behind an explicit mode so normal builds are
+  // unaffected. Enable via `vite build --mode analyze` (the `analyze` script).
+  const analyze = mode === 'analyze'
+
+  return {
   resolve: {
     alias: { '@': path.resolve(__dirname, './src') },
   },
+  // Strip console.* and debugger statements from production builds only.
+  // Source keeps console.* calls intact for readability; esbuild drops them
+  // at build time, so `vite build` ships a clean bundle while dev is unchanged.
+  esbuild: command === 'build' ? { drop: ['console', 'debugger'] } : {},
   plugins: [
     react(),
     VitePWA({
@@ -15,7 +25,7 @@ export default defineConfig({
         enabled: true
       },
       workbox: {
-        globPatterns: ['**/*.{js,css,html,ico,png,svg}'],
+        globPatterns: ['**/*.{js,css,html,ico,png,svg,json}'],
         navigateFallback: '/index.html',
         navigateFallbackDenylist: [/^\/api/],
         runtimeCaching: [
@@ -74,7 +84,16 @@ export default defineConfig({
           }
         ]
       }
-    })
+    }),
+    // Only emit the bundle treemap in `--mode analyze`; otherwise it is
+    // omitted entirely so normal/CI builds are not slowed or altered.
+    analyze &&
+      visualizer({
+        filename: 'dist/stats.html',
+        template: 'treemap',
+        gzipSize: true,
+        brotliSize: true,
+      }),
   ],
   server: {
     port: 5173,
@@ -98,5 +117,6 @@ export default defineConfig({
         },
       }
     }
+  }
   }
 })

@@ -5,7 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "data:build": "node scripts/build-exercises.mjs",
     "build": "tsc -b && vite build",
+    "analyze": "vite build --mode analyze",
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "vitest",
@@ -53,6 +55,7 @@
     "globals": "^16.0.0",
     "jsdom": "^29.1.0",
     "postcss": "^8.5.5",
+    "rollup-plugin-visualizer": "^6.0.4",
     "tailwind-merge": "^3.3.1",
     "tailwindcss": "^3.4.17",
     "typescript": "~5.8.3",

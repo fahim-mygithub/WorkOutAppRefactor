@@ -4,6 +4,7 @@ import {
   getDoc,
   setDoc,
   updateDoc,
+  deleteDoc,
   query,
   where,
   orderBy,
@@ -12,23 +13,7 @@ import {
   Timestamp,
   increment
 } from 'firebase/firestore';
-
-// Helper function to safely convert Firestore timestamps to ISO string
-const safeTimestampToISOString = (timestamp: any): string => {
-  if (!timestamp) {
-    return new Date().toISOString();
-  }
-  if (timestamp instanceof Timestamp) {
-    return timestamp.toDate().toISOString();
-  }
-  if (timestamp.toDate && typeof timestamp.toDate === 'function') {
-    return timestamp.toDate().toISOString();
-  }
-  if (typeof timestamp === 'string') {
-    return timestamp; // Already a string, assume it's valid
-  }
-  return new Date().toISOString();
-};
+import { fromFirestore, toFirestore, timestampToISOString } from '../firestore/serde';
 import { db } from '../firebase/config';
 import { generateShareId, isValidShareId } from '../utils/shareIdGenerator';
 import { ParsedWorkout } from '../parser/types';
@@ -79,33 +64,6 @@ export class SharedWorkoutService {
   private static readonly MAX_RETRIES = 3;
 
   /**
-   * Clean data object by removing undefined values recursively
-   * Firestore doesn't allow undefined values
-   */
-  private static cleanDataForFirestore(obj: any): any {
-    if (obj === null || obj === undefined) {
-      return null;
-    }
-
-    if (Array.isArray(obj)) {
-      return obj.map(item => this.cleanDataForFirestore(item));
-    }
-
-    if (typeof obj === 'object') {
-      const cleaned: any = {};
-      Object.keys(obj).forEach(key => {
-        const value = obj[key];
-        if (value !== undefined) {
-          cleaned[key] = this.cleanDataForFirestore(value);
-        }
-      });
-      return cleaned;
-    }
-
-    return obj;
-  }
-
-  /**
    * Create a new shared workout
    */
   static async createSharedWorkout(
@@ -136,7 +94,16 @@ export class SharedWorkoutService {
     } while (retryCount < this.MAX_RETRIES);
 
     const now = new Date();
-    const sharedWorkout: Omit<SharedWorkout, 'id'> = {
+    // Write-side shape uses Date for metadata timestamps; these are coerced to
+    // Firestore Timestamps below. The SharedWorkout (read) type stores ISO strings.
+    const sharedWorkout: Omit<SharedWorkout, 'id' | 'metadata'> & {
+      metadata: {
+        createdAt: Date;
+        viewCount: number;
+        useCount: number;
+        lastAccessed: Date;
+      };
+    } = {
       shareId,
       creatorId,
       creatorName,
@@ -161,7 +128,7 @@ export class SharedWorkoutService {
     const docRef = doc(collection(db, this.COLLECTION_NAME));
 
     // Clean the data to remove any undefined values before saving to Firestore
-    const dataToSave = this.cleanDataForFirestore({
+    const dataToSave = toFirestore({
       ...sharedWorkout,
       metadata: {
         ...sharedWorkout.metadata,
@@ -237,10 +204,10 @@ export class SharedWorkoutService {
         creatorName: data.creatorName,
         workoutData: data.workoutData,
         metadata: {
-          createdAt: safeTimestampToISOString(data.metadata?.createdAt),
+          createdAt: timestampToISOString(data.metadata?.createdAt),
           viewCount: data.metadata?.viewCount || 0,
           useCount: data.metadata?.useCount || 0,
-          lastAccessed: safeTimestampToISOString(data.metadata?.lastAccessed)
+          lastAccessed: timestampToISOString(data.metadata?.lastAccessed)
         },
         settings: {
           allowAnonymous: data.settings?.allowAnonymous ?? true
@@ -350,10 +317,10 @@ export class SharedWorkoutService {
           creatorName: data.creatorName,
           workoutData: data.workoutData,
           metadata: {
-            createdAt: data.metadata.createdAt.toDate(),
+            createdAt: timestampToISOString(data.metadata?.createdAt),
             viewCount: data.metadata.viewCount,
             useCount: data.metadata.useCount,
-            lastAccessed: data.metadata.lastAccessed.toDate()
+            lastAccessed: timestampToISOString(data.metadata?.lastAccessed)
           },
           settings: {
             allowAnonymous: data.settings.allowAnonymous
@@ -391,7 +358,7 @@ export class SharedWorkoutService {
       }
 
       const docRef = querySnapshot.docs[0].ref;
-      await docRef.delete();
+      await deleteDoc(docRef);
 
       console.log('✅ Shared workout deleted successfully:', shareId);
     } catch (error) {
