@@ -40,7 +40,7 @@ export const AppShell: React.FC<AppShellProps> = ({
     needsManualResize && height > 0 ? { height: `${height}px` } : undefined;
 
   return (
-    <div className="flex flex-col h-[100svh] bg-gray-900" style={shellStyle}>
+    <div className="flex flex-col h-[100svh] bg-surface" style={shellStyle}>
       {header && (
         <header className="shrink-0 pt-[env(safe-area-inset-top)]">
           {header}

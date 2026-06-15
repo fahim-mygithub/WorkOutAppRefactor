@@ -194,7 +194,7 @@ export const ExerciseVideo: React.FC<ExerciseVideoProps> = ({
   }
 
   return (
-    <div className={`relative bg-gray-900 rounded-lg overflow-hidden group ${className}`}>
+    <div className={`relative bg-surface rounded-lg overflow-hidden group ${className}`}>
       <video
         ref={videoRef}
         muted={isMuted}
@@ -215,16 +215,16 @@ export const ExerciseVideo: React.FC<ExerciseVideoProps> = ({
       />
 
       {isLoading && (
-        <div className={`absolute inset-0 bg-gray-800 flex flex-col items-center justify-center ${
+        <div className={`absolute inset-0 bg-surface-subtle flex flex-col items-center justify-center ${
           compact
             ? isMobile
               ? 'aspect-video' // Match video aspect ratio on mobile
               : 'h-32'
             : 'h-64'
         }`}>
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mb-2"></div>
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-accent mb-2"></div>
           {retryCount > 0 && (
-            <p className="text-white text-xs">Trying source {retryCount + 1}...</p>
+            <p className="text-ink text-xs">Trying source {retryCount + 1}...</p>
           )}
         </div>
       )}
@@ -275,7 +275,7 @@ export const ExerciseVideo: React.FC<ExerciseVideoProps> = ({
       {isLoading && (
         <div className="absolute top-2 right-2">
           <div className="bg-black bg-opacity-50 rounded-full p-2">
-            <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+            <div className="w-4 h-4 border-2 border-accent border-t-transparent rounded-full animate-spin"></div>
           </div>
         </div>
       )}

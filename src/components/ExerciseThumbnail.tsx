@@ -72,7 +72,7 @@ export const ExerciseThumbnail: React.FC<ExerciseThumbnailProps> = ({
   return (
     <div
       ref={containerRef}
-      className={`relative bg-gray-900 rounded-lg overflow-hidden cursor-pointer group aspect-video ${className}`}
+      className={`relative bg-surface rounded-lg overflow-hidden cursor-pointer group aspect-video ${className}`}
       onClick={handleClick}
     >
       {/* Video Thumbnail */}
@@ -95,15 +95,15 @@ export const ExerciseThumbnail: React.FC<ExerciseThumbnailProps> = ({
 
           {/* Loading state while video loads */}
           {!videoLoaded && (
-            <div className="absolute inset-0 bg-gray-800 flex items-center justify-center">
-              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-500"></div>
+            <div className="absolute inset-0 bg-surface-subtle flex items-center justify-center">
+              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-accent"></div>
             </div>
           )}
         </>
       ) : (
         /* Fallback when no video or error */
-        <div className="absolute inset-0 bg-gray-800 flex items-center justify-center">
-          <Dumbbell className="w-8 h-8 text-gray-500" />
+        <div className="absolute inset-0 bg-surface-subtle flex items-center justify-center">
+          <Dumbbell className="w-8 h-8 text-ink-subtle" />
         </div>
       )}
 
@@ -126,8 +126,8 @@ export const ExerciseThumbnail: React.FC<ExerciseThumbnailProps> = ({
 
       {/* Loading placeholder when lazy loading */}
       {!isIntersecting && lazy && (
-        <div className="absolute inset-0 bg-gray-800 flex items-center justify-center">
-          <div className="w-6 h-6 bg-gray-700 rounded animate-pulse"></div>
+        <div className="absolute inset-0 bg-surface-subtle flex items-center justify-center">
+          <div className="w-6 h-6 bg-surface-raised rounded animate-pulse"></div>
         </div>
       )}
     </div>

@@ -14,11 +14,9 @@ import { AuthPromptBanner } from '../components/AuthPromptBanner';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 
 // Shared full-screen loader; reused for auth-loading and Suspense fallback.
-// NOTE: bg-gray-900 is a raw gray that design §4 wants tokenized eventually;
-// kept as-is here to match existing style (token unification is a separate Phase-1 task).
 const FullScreenLoader = () => (
-  <div className="flex items-center justify-center h-[100svh] bg-gray-900">
-    <div className="text-white text-lg">Loading...</div>
+  <div className="flex items-center justify-center h-[100svh] bg-surface">
+    <div className="text-ink text-lg">Loading...</div>
   </div>
 );
 

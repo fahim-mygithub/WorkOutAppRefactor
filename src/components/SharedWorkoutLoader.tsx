@@ -93,14 +93,14 @@ export const SharedWorkoutLoader: React.FC<SharedWorkoutLoaderProps> = ({
 // Loading state component
 const SharedWorkoutLoadingState: React.FC = () => {
   return (
-    <div className="min-h-full bg-gray-900 flex items-center justify-center">
+    <div className="min-h-full bg-surface flex items-center justify-center">
       <div className="text-center">
-        <div className="w-16 h-16 bg-gray-800 rounded-full flex items-center justify-center mx-auto mb-4">
-          <Loader2 className="w-8 h-8 text-blue-400 animate-spin" />
+        <div className="w-16 h-16 bg-surface-raised rounded-full flex items-center justify-center mx-auto mb-4">
+          <Loader2 className="w-8 h-8 text-accent animate-spin" />
         </div>
-        <h2 className="text-xl font-bold text-white mb-2">Loading Shared Workout</h2>
-        <p className="text-gray-400">Please wait while we fetch the workout...</p>
-        <div className="mt-8 flex items-center justify-center space-x-2 text-sm text-gray-500">
+        <h2 className="text-xl font-bold text-ink mb-2">Loading Shared Workout</h2>
+        <p className="text-ink-muted">Please wait while we fetch the workout...</p>
+        <div className="mt-8 flex items-center justify-center space-x-2 text-sm text-ink-subtle">
           <Share className="w-4 h-4" />
           <span>Shared workout</span>
         </div>
@@ -130,30 +130,30 @@ const SharedWorkoutNotFoundError: React.FC<SharedWorkoutNotFoundErrorProps> = ({
   };
 
   return (
-    <div className="min-h-full bg-gray-900 flex items-center justify-center p-4">
+    <div className="min-h-full bg-surface flex items-center justify-center p-4">
       <div className="text-center max-w-md">
-        <div className="w-16 h-16 bg-red-900 rounded-full flex items-center justify-center mx-auto mb-4">
-          <AlertCircle className="w-8 h-8 text-red-400" />
+        <div className="w-16 h-16 bg-danger/10 rounded-full flex items-center justify-center mx-auto mb-4">
+          <AlertCircle className="w-8 h-8 text-danger" />
         </div>
 
-        <h2 className="text-2xl font-bold text-white mb-2">Workout Not Found</h2>
+        <h2 className="text-2xl font-bold text-ink mb-2">Workout Not Found</h2>
 
-        <p className="text-gray-400 mb-6">
+        <p className="text-ink-muted mb-6">
           {message}
         </p>
 
         {shareId && (
-          <div className="bg-gray-800 rounded-lg p-3 mb-6">
-            <p className="text-xs text-gray-500 mb-1">Share ID:</p>
-            <p className="text-sm text-gray-300 font-mono break-all">{shareId}</p>
+          <div className="bg-surface-raised rounded-lg p-3 mb-6">
+            <p className="text-xs text-ink-subtle mb-1">Share ID:</p>
+            <p className="text-sm text-ink-muted font-mono break-all">{shareId}</p>
           </div>
         )}
 
         <div className="space-y-3">
-          <p className="text-sm text-gray-500">
+          <p className="text-sm text-ink-subtle">
             This could happen if:
           </p>
-          <ul className="text-sm text-gray-400 text-left space-y-1">
+          <ul className="text-sm text-ink-muted text-left space-y-1">
             <li>• The workout link is invalid or corrupted</li>
             <li>• The workout has been deleted by its creator</li>
             <li>• The workout link has expired</li>
@@ -164,7 +164,7 @@ const SharedWorkoutNotFoundError: React.FC<SharedWorkoutNotFoundErrorProps> = ({
         <div className="flex space-x-3 mt-8">
           <button
             onClick={handleGoBack}
-            className="flex-1 flex items-center justify-center space-x-2 bg-gray-700 hover:bg-gray-600 text-white px-4 py-3 rounded-lg transition-colors"
+            className="flex-1 flex items-center justify-center space-x-2 bg-surface-raised hover:bg-surface-raised/90 text-ink px-4 py-3 rounded-lg transition-colors"
           >
             <ArrowLeft className="w-4 h-4" />
             <span>Go Back</span>
@@ -172,13 +172,13 @@ const SharedWorkoutNotFoundError: React.FC<SharedWorkoutNotFoundErrorProps> = ({
 
           <button
             onClick={handleGoHome}
-            className="flex-1 bg-blue-600 hover:bg-blue-700 text-white px-4 py-3 rounded-lg transition-colors"
+            className="flex-1 bg-accent hover:bg-accent/90 text-accent-fg px-4 py-3 rounded-lg transition-colors"
           >
             Go to Home
           </button>
         </div>
 
-        <div className="mt-6 text-xs text-gray-500">
+        <div className="mt-6 text-xs text-ink-subtle">
           <p>Need help? Contact the person who shared this workout with you.</p>
         </div>
       </div>

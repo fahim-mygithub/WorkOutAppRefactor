@@ -195,7 +195,7 @@ export const DualViewVideo: React.FC<DualViewVideoProps> = ({
   const isLoading = frontVideoState.isLoading || sideVideoState.isLoading;
 
   return (
-    <div className={`relative bg-gray-900 rounded-lg overflow-hidden group ${className}`}>
+    <div className={`relative bg-surface rounded-lg overflow-hidden group ${className}`}>
       {/* Video Container */}
       <div className={`flex ${showBothViews ? 'space-x-1' : ''} ${videoHeight}`}>
         {/* Front View Video */}
@@ -243,9 +243,9 @@ export const DualViewVideo: React.FC<DualViewVideoProps> = ({
 
       {/* Loading Overlay */}
       {isLoading && (
-        <div className={`absolute inset-0 bg-gray-800 flex flex-col items-center justify-center ${videoHeight}`}>
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mb-2"></div>
-          <p className="text-white text-xs">Loading videos...</p>
+        <div className={`absolute inset-0 bg-surface-subtle flex flex-col items-center justify-center ${videoHeight}`}>
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-accent mb-2"></div>
+          <p className="text-ink text-xs">Loading videos...</p>
         </div>
       )}
 
@@ -295,7 +295,7 @@ export const DualViewVideo: React.FC<DualViewVideoProps> = ({
       {isLoading && (
         <div className="absolute top-2 right-2">
           <div className="bg-black bg-opacity-50 rounded-full p-2">
-            <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+            <div className="w-4 h-4 border-2 border-accent border-t-transparent rounded-full animate-spin"></div>
           </div>
         </div>
       )}

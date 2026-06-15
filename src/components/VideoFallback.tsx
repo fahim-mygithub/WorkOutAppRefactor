@@ -44,7 +44,7 @@ export const VideoFallback: React.FC<VideoFallbackProps> = ({
   };
 
   return (
-    <div className={`bg-gray-700 rounded-lg flex flex-col ${compact ? 'h-32 p-3' : 'h-64 p-6'} ${className}`}>
+    <div className={`bg-surface-raised rounded-lg flex flex-col ${compact ? 'h-32 p-3' : 'h-64 p-6'} ${className}`}>
       {/* Header with icon and exercise name */}
       <div className="flex items-center justify-center flex-1">
         <div className="text-center">
@@ -52,25 +52,25 @@ export const VideoFallback: React.FC<VideoFallbackProps> = ({
             {getPlaceholderIcon()}
           </div>
           
-          <h3 className={`font-semibold text-white ${compact ? 'text-sm' : 'text-lg'} mb-2`}>
+          <h3 className={`font-semibold text-ink ${compact ? 'text-sm' : 'text-lg'} mb-2`}>
             {exerciseName}
           </h3>
-          
+
           {errorMessage && (
-            <p className={`text-gray-400 ${compact ? 'text-xs' : 'text-sm'} mb-2`}>
+            <p className={`text-ink-muted ${compact ? 'text-xs' : 'text-sm'} mb-2`}>
               {errorMessage}
             </p>
           )}
 
           {retryCount > 0 && (
-            <p className="text-gray-500 text-xs mb-2">
+            <p className="text-ink-subtle text-xs mb-2">
               Tried {retryCount + 1} source{retryCount > 0 ? 's' : ''}
             </p>
           )}
 
           {/* Show first instruction if not compact */}
           {!compact && instructions.length > 0 && (
-            <p className="text-gray-300 text-sm mb-3 line-clamp-2">
+            <p className="text-ink-muted text-sm mb-3 line-clamp-2">
               {instructions[0]}
             </p>
           )}
@@ -82,7 +82,7 @@ export const VideoFallback: React.FC<VideoFallbackProps> = ({
         {onRetry && (
           <button
             onClick={onRetry}
-            className={`flex items-center space-x-1 bg-blue-600 hover:bg-blue-700 text-white rounded transition-colors ${
+            className={`flex items-center space-x-1 bg-accent hover:bg-accent/90 text-accent-fg rounded transition-colors ${
               compact ? 'px-2 py-1 text-xs' : 'px-3 py-2 text-sm'
             }`}
             title="Try loading video again"
@@ -94,7 +94,7 @@ export const VideoFallback: React.FC<VideoFallbackProps> = ({
         
         <button
           onClick={handleSearchYouTube}
-          className={`flex items-center space-x-1 bg-gray-600 hover:bg-gray-500 text-white rounded transition-colors ${
+          className={`flex items-center space-x-1 bg-surface-subtle hover:bg-surface-subtle/80 text-ink rounded transition-colors ${
             compact ? 'px-2 py-1 text-xs' : 'px-3 py-2 text-sm'
           }`}
           title="Search for exercise tutorial on YouTube"
@@ -106,20 +106,20 @@ export const VideoFallback: React.FC<VideoFallbackProps> = ({
 
       {/* Additional instructions for non-compact view */}
       {!compact && instructions.length > 1 && (
-        <div className="mt-3 pt-3 border-t border-gray-600">
-          <details className="text-xs text-gray-400">
-            <summary className="cursor-pointer hover:text-gray-300 transition-colors">
+        <div className="mt-3 pt-3 border-t border-border">
+          <details className="text-xs text-ink-muted">
+            <summary className="cursor-pointer hover:text-ink transition-colors">
               View Instructions
             </summary>
             <ol className="mt-2 space-y-1 ml-3">
               {instructions.slice(0, 3).map((instruction, index) => (
                 <li key={index} className="flex">
-                  <span className="text-blue-400 mr-2">{index + 1}.</span>
+                  <span className="text-accent mr-2">{index + 1}.</span>
                   <span>{instruction}</span>
                 </li>
               ))}
               {instructions.length > 3 && (
-                <li className="text-gray-500 italic">
+                <li className="text-ink-subtle italic">
                   +{instructions.length - 3} more steps...
                 </li>
               )}

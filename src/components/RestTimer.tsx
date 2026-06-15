@@ -239,32 +239,32 @@ export const RestTimer: React.FC<RestTimerProps> = ({
       <div className={`grid grid-cols-4 gap-2 ${className}`}>
         <button
           onClick={() => handleSetDuration(30)}
-          className={`px-3 py-2 text-white text-sm rounded transition-colors ${
-            isPresetActive(30) ? 'bg-green-600 hover:bg-green-700' : 'bg-blue-600 hover:bg-blue-700'
+          className={`px-3 py-2 text-accent-fg text-sm rounded transition-colors ${
+            isPresetActive(30) ? 'bg-success hover:bg-success/90' : 'bg-accent hover:bg-accent/90'
           }`}
         >
           30s
         </button>
         <button
           onClick={() => handleSetDuration(60)}
-          className={`px-3 py-2 text-white text-sm rounded transition-colors ${
-            isPresetActive(60) ? 'bg-green-600 hover:bg-green-700' : 'bg-blue-600 hover:bg-blue-700'
+          className={`px-3 py-2 text-accent-fg text-sm rounded transition-colors ${
+            isPresetActive(60) ? 'bg-success hover:bg-success/90' : 'bg-accent hover:bg-accent/90'
           }`}
         >
           1m
         </button>
         <button
           onClick={() => handleSetDuration(120)}
-          className={`px-3 py-2 text-white text-sm rounded transition-colors ${
-            isPresetActive(120) ? 'bg-green-600 hover:bg-green-700' : 'bg-blue-600 hover:bg-blue-700'
+          className={`px-3 py-2 text-accent-fg text-sm rounded transition-colors ${
+            isPresetActive(120) ? 'bg-success hover:bg-success/90' : 'bg-accent hover:bg-accent/90'
           }`}
         >
           2m
         </button>
         <button
           onClick={() => handleSetDuration(180)}
-          className={`px-3 py-2 text-white text-sm rounded transition-colors ${
-            isPresetActive(180) ? 'bg-green-600 hover:bg-green-700' : 'bg-blue-600 hover:bg-blue-700'
+          className={`px-3 py-2 text-accent-fg text-sm rounded transition-colors ${
+            isPresetActive(180) ? 'bg-success hover:bg-success/90' : 'bg-accent hover:bg-accent/90'
           }`}
         >
           3m
@@ -274,13 +274,13 @@ export const RestTimer: React.FC<RestTimerProps> = ({
   }
 
   return (
-    <div className={`bg-gray-800 rounded-lg p-4 ${className}`}>
+    <div className={`bg-surface-raised rounded-lg p-4 ${className}`}>
       <div className="flex items-center justify-between mb-4">
-        <h3 className="text-lg font-semibold text-white">Rest Timer</h3>
+        <h3 className="text-lg font-semibold text-ink">Rest Timer</h3>
         {restTimer.isActive && (
           <button
             onClick={handleStop}
-            className="p-2 text-gray-400 hover:text-white transition-colors"
+            className="p-2 text-ink-muted hover:text-ink transition-colors"
             aria-label="Stop timer"
           >
             <X className="w-4 h-4" />
@@ -292,31 +292,31 @@ export const RestTimer: React.FC<RestTimerProps> = ({
       <div className="text-center mb-4">
         <div className={`font-mono font-bold transition-all duration-200 ${
           restTimer.timeRemaining <= 3 && restTimer.isActive
-            ? 'text-red-400 animate-bounce text-5xl'
+            ? 'text-danger animate-bounce text-5xl'
             : restTimer.timeRemaining <= 10 && restTimer.isActive
-            ? 'text-orange-400 animate-pulse'
-            : 'text-white'
+            ? 'text-warning animate-pulse'
+            : 'text-ink'
         } ${compact ? 'text-2xl' : 'text-4xl'}`}>
           {formatTime(restTimer.timeRemaining)}
         </div>
 
         {/* Countdown Visual Effect */}
         {restTimer.timeRemaining <= 3 && restTimer.timeRemaining > 0 && restTimer.isActive && (
-          <div className="mt-2 text-red-400 font-bold text-lg animate-pulse">
+          <div className="mt-2 text-danger font-bold text-lg animate-pulse">
             GET READY!
           </div>
         )}
-        
+
         {/* Progress Bar */}
         {restTimer.duration > 0 && (
-          <div className="w-full bg-gray-700 rounded-full h-2 mt-2">
+          <div className="w-full bg-surface-subtle rounded-full h-2 mt-2">
             <div
               className={`h-2 rounded-full transition-all duration-1000 ${
                 restTimer.timeRemaining <= 3 && restTimer.isActive
-                  ? 'bg-red-500 animate-pulse'
+                  ? 'bg-danger animate-pulse'
                   : restTimer.timeRemaining <= 10 && restTimer.isActive
-                  ? 'bg-orange-500'
-                  : 'bg-blue-500'
+                  ? 'bg-warning'
+                  : 'bg-accent'
               }`}
               style={{ width: `${progress}%` }}
             />
@@ -329,7 +329,7 @@ export const RestTimer: React.FC<RestTimerProps> = ({
         {!restTimer.isActive ? (
           <button
             onClick={handleStart}
-            className="flex items-center space-x-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors"
+            className="flex items-center space-x-2 px-4 py-2 bg-success hover:bg-success/90 text-accent-fg rounded-lg transition-colors"
           >
             <Play className="w-4 h-4" />
             <span>Start</span>
@@ -337,7 +337,7 @@ export const RestTimer: React.FC<RestTimerProps> = ({
         ) : (
           <button
             onClick={handleStop}
-            className="flex items-center space-x-2 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors"
+            className="flex items-center space-x-2 px-4 py-2 bg-danger hover:bg-danger/90 text-ink-inverse rounded-lg transition-colors"
           >
             <Pause className="w-4 h-4" />
             <span>Stop</span>
@@ -346,7 +346,7 @@ export const RestTimer: React.FC<RestTimerProps> = ({
 
         <button
           onClick={handleReset}
-          className="flex items-center space-x-2 px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg transition-colors"
+          className="flex items-center space-x-2 px-4 py-2 bg-surface-subtle hover:bg-surface-subtle/80 text-ink rounded-lg transition-colors"
         >
           <RotateCcw className="w-4 h-4" />
           <span>Reset</span>
@@ -357,9 +357,9 @@ export const RestTimer: React.FC<RestTimerProps> = ({
       {!compact && (
         <div className="mt-4">
           <div className="flex items-center justify-between mb-2">
-            <p className="text-sm text-gray-400">Quick Start:</p>
+            <p className="text-sm text-ink-muted">Quick Start:</p>
             {currentExercise?.restTime && (
-              <p className="text-xs text-green-400">
+              <p className="text-xs text-success">
                 Default: {Math.floor(currentExercise.restTime / 60)}:{(currentExercise.restTime % 60).toString().padStart(2, '0')}
               </p>
             )}
@@ -368,48 +368,48 @@ export const RestTimer: React.FC<RestTimerProps> = ({
           <div className="grid grid-cols-3 gap-2 mb-3">
             <button
               onClick={() => handleSetDuration(30)}
-              className={`px-3 py-2 text-white text-sm rounded transition-colors ${
-                isPresetActive(30) ? 'bg-green-600 hover:bg-green-700' : 'bg-gray-700 hover:bg-gray-600'
+              className={`px-3 py-2 text-sm rounded transition-colors ${
+                isPresetActive(30) ? 'bg-success hover:bg-success/90 text-accent-fg' : 'bg-surface-subtle hover:bg-surface-subtle/80 text-ink'
               }`}
             >
               30s
             </button>
             <button
               onClick={() => handleSetDuration(60)}
-              className={`px-3 py-2 text-white text-sm rounded transition-colors ${
-                isPresetActive(60) ? 'bg-green-600 hover:bg-green-700' : 'bg-gray-700 hover:bg-gray-600'
+              className={`px-3 py-2 text-sm rounded transition-colors ${
+                isPresetActive(60) ? 'bg-success hover:bg-success/90 text-accent-fg' : 'bg-surface-subtle hover:bg-surface-subtle/80 text-ink'
               }`}
             >
               1m
             </button>
             <button
               onClick={() => handleSetDuration(90)}
-              className={`px-3 py-2 text-white text-sm rounded transition-colors ${
-                isPresetActive(90) ? 'bg-green-600 hover:bg-green-700' : 'bg-gray-700 hover:bg-gray-600'
+              className={`px-3 py-2 text-sm rounded transition-colors ${
+                isPresetActive(90) ? 'bg-success hover:bg-success/90 text-accent-fg' : 'bg-surface-subtle hover:bg-surface-subtle/80 text-ink'
               }`}
             >
               1.5m
             </button>
             <button
               onClick={() => handleSetDuration(120)}
-              className={`px-3 py-2 text-white text-sm rounded transition-colors ${
-                isPresetActive(120) ? 'bg-green-600 hover:bg-green-700' : 'bg-gray-700 hover:bg-gray-600'
+              className={`px-3 py-2 text-sm rounded transition-colors ${
+                isPresetActive(120) ? 'bg-success hover:bg-success/90 text-accent-fg' : 'bg-surface-subtle hover:bg-surface-subtle/80 text-ink'
               }`}
             >
               2m
             </button>
             <button
               onClick={() => handleSetDuration(180)}
-              className={`px-3 py-2 text-white text-sm rounded transition-colors ${
-                isPresetActive(180) ? 'bg-green-600 hover:bg-green-700' : 'bg-gray-700 hover:bg-gray-600'
+              className={`px-3 py-2 text-sm rounded transition-colors ${
+                isPresetActive(180) ? 'bg-success hover:bg-success/90 text-accent-fg' : 'bg-surface-subtle hover:bg-surface-subtle/80 text-ink'
               }`}
             >
               3m
             </button>
             <button
               onClick={() => handleSetDuration(300)}
-              className={`px-3 py-2 text-white text-sm rounded transition-colors ${
-                isPresetActive(300) ? 'bg-green-600 hover:bg-green-700' : 'bg-gray-700 hover:bg-gray-600'
+              className={`px-3 py-2 text-sm rounded transition-colors ${
+                isPresetActive(300) ? 'bg-success hover:bg-success/90 text-accent-fg' : 'bg-surface-subtle hover:bg-surface-subtle/80 text-ink'
               }`}
             >
               5m
@@ -417,30 +417,30 @@ export const RestTimer: React.FC<RestTimerProps> = ({
           </div>
 
           {/* Custom Timer Section */}
-          <div className="border-t border-gray-700 pt-3">
+          <div className="border-t border-line pt-3">
             {!showCustomInput ? (
               <button
                 onClick={() => setShowCustomInput(true)}
-                className="flex items-center space-x-2 mx-auto px-3 py-1 bg-blue-700 hover:bg-blue-600 text-white text-sm rounded transition-colors"
+                className="flex items-center space-x-2 mx-auto px-3 py-1 bg-accent hover:bg-accent/90 text-accent-fg text-sm rounded transition-colors"
               >
                 <Edit3 className="w-3 h-3" />
                 <span>Custom</span>
               </button>
             ) : (
               <div className="space-y-2">
-                <p className="text-xs text-gray-400 text-center">Custom Timer</p>
+                <p className="text-xs text-ink-muted text-center">Custom Timer</p>
                 <div className="flex items-center justify-center space-x-2">
                   <div className="flex items-center space-x-1">
                     <button
                       onClick={() => adjustCustomTime(-1, 0)}
-                      className="p-1 bg-gray-700 hover:bg-gray-600 rounded text-white"
+                      className="p-1 bg-surface-subtle hover:bg-surface-subtle/80 rounded text-ink"
                     >
                       <Minus className="w-3 h-3" />
                     </button>
-                    <span className="w-8 text-center text-white text-sm">{customMinutes}m</span>
+                    <span className="w-8 text-center text-ink text-sm">{customMinutes}m</span>
                     <button
                       onClick={() => adjustCustomTime(1, 0)}
-                      className="p-1 bg-gray-700 hover:bg-gray-600 rounded text-white"
+                      className="p-1 bg-surface-subtle hover:bg-surface-subtle/80 rounded text-ink"
                     >
                       <Plus className="w-3 h-3" />
                     </button>
@@ -449,14 +449,14 @@ export const RestTimer: React.FC<RestTimerProps> = ({
                   <div className="flex items-center space-x-1">
                     <button
                       onClick={() => adjustCustomTime(0, -15)}
-                      className="p-1 bg-gray-700 hover:bg-gray-600 rounded text-white"
+                      className="p-1 bg-surface-subtle hover:bg-surface-subtle/80 rounded text-ink"
                     >
                       <Minus className="w-3 h-3" />
                     </button>
-                    <span className="w-8 text-center text-white text-sm">{customSeconds}s</span>
+                    <span className="w-8 text-center text-ink text-sm">{customSeconds}s</span>
                     <button
                       onClick={() => adjustCustomTime(0, 15)}
-                      className="p-1 bg-gray-700 hover:bg-gray-600 rounded text-white"
+                      className="p-1 bg-surface-subtle hover:bg-surface-subtle/80 rounded text-ink"
                     >
                       <Plus className="w-3 h-3" />
                     </button>
@@ -466,13 +466,13 @@ export const RestTimer: React.FC<RestTimerProps> = ({
                 <div className="flex justify-center space-x-2">
                   <button
                     onClick={handleCustomTimer}
-                    className="px-4 py-1 bg-green-600 hover:bg-green-700 text-white text-sm rounded transition-colors"
+                    className="px-4 py-1 bg-success hover:bg-success/90 text-accent-fg text-sm rounded transition-colors"
                   >
                     Start {customMinutes}:{customSeconds.toString().padStart(2, '0')}
                   </button>
                   <button
                     onClick={() => setShowCustomInput(false)}
-                    className="px-3 py-1 bg-gray-600 hover:bg-gray-700 text-white text-sm rounded transition-colors"
+                    className="px-3 py-1 bg-surface-subtle hover:bg-surface-subtle/80 text-ink text-sm rounded transition-colors"
                   >
                     <X className="w-3 h-3" />
                   </button>
@@ -485,7 +485,7 @@ export const RestTimer: React.FC<RestTimerProps> = ({
 
       {/* Timer Complete Notification */}
       {restTimer.timeRemaining === 0 && !restTimer.isActive && restTimer.duration > 0 && (
-        <div className="mt-4 p-3 bg-green-600 text-white text-center rounded-lg animate-pulse">
+        <div className="mt-4 p-3 bg-success text-accent-fg text-center rounded-lg animate-pulse">
           <p className="font-semibold">Rest Complete!</p>
           <p className="text-sm">Auto-advancing to next set...</p>
         </div>
