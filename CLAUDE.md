@@ -1,11 +1,8 @@
 # Claude Code Instructions
 
 ## Testing Policy
-**IMPORTANT**: Do NOT run `npm run dev` or any development server commands automatically.
-Instead, inform the user to manually run the testing commands when needed.
-
-When testing is required, simply tell the user:
-"Please test the changes by running `npm run dev` in your terminal."
+The dev server MAY be run for verification, but **only in the background** (e.g. `run_in_background`) so it never blocks the session — never as a blocking foreground command. Prefer an explicit reserved port with `--strictPort` (e.g. `npx vite --port 5290 --strictPort`): ports 5173–5175 are often taken by another local project ("Babo Violent 3"), and a plain `npm run dev` can silently land on the wrong app.
+Pair the background server with browser automation to actually observe behavior, then stop the server when done. Device/visual checks that require sign-in still need the user (credentials must never be entered by the agent).
 
 ## Project Context
 This is a React workout tracking application with Firebase integration.
