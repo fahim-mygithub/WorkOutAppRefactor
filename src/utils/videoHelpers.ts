@@ -3,20 +3,22 @@
  */
 
 /**
- * Transforms external video URLs to use local proxy in development
- * This helps bypass CORS issues when loading videos from external sources
+ * Returns the video URL to load.
+ *
+ * Historically this rewrote media.musclewiki.com URLs to a local `/api/video`
+ * Vite proxy in dev "to avoid CORS issues". That proxy is now actively broken:
+ * media.musclewiki.com sits behind Cloudflare, which fingerprints the TLS
+ * client and 403-blocks Node's HTTPS stack (what the Vite proxy uses) even with
+ * a perfect browser User-Agent. A real browser loading the URL directly has an
+ * allowed fingerprint and gets 200 — verified in-browser (readyState 4, 1280x720).
+ *
+ * `<video src>` plays cross-origin media without CORS (we never read pixels via
+ * canvas or fetch() the bytes), so we load the CDN URL directly in both dev and
+ * prod. This is also exactly what production already did. The trailing `#t=0.1`
+ * media fragment in the source URLs is preserved (it just seeks the poster frame).
  */
 export const transformVideoUrl = (originalUrl: string): string => {
-  const cleanUrl = originalUrl.trim();
-  
-  // Only transform in development mode
-  if (import.meta.env.DEV && cleanUrl.includes('media.musclewiki.com')) {
-    // Transform https://media.musclewiki.com/path/video.mp4 to /api/video/path/video.mp4
-    const urlPath = cleanUrl.replace('https://media.musclewiki.com', '');
-    return `/api/video${urlPath}`;
-  }
-  
-  return cleanUrl;
+  return originalUrl.trim();
 };
 
 /**

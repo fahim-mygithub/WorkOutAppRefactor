@@ -89,21 +89,13 @@ export default defineConfig(({ command, mode }) => {
             },
           },
           {
+            // Exercise videos load directly from the MuscleWiki CDN in both dev
+            // and prod (the old /api/video dev proxy was removed — Cloudflare
+            // 403-blocks Node's TLS fingerprint; a real browser loads fine).
             urlPattern: /^https:\/\/media\.musclewiki\.com\/.*\.mp4$/i,
             handler: 'NetworkFirst',
             options: {
               cacheName: 'exercise-videos-cache',
-              expiration: {
-                maxEntries: 50,
-                maxAgeSeconds: 60 * 60 * 24 * 30,
-              },
-            },
-          },
-          {
-            urlPattern: /^\/api\/video\/.*\.mp4$/i,
-            handler: 'NetworkFirst',
-            options: {
-              cacheName: 'proxied-videos-cache',
               expiration: {
                 maxEntries: 50,
                 maxAgeSeconds: 60 * 60 * 24 * 30,
@@ -146,25 +138,10 @@ export default defineConfig(({ command, mode }) => {
   server: {
     port: 5173,
     host: '0.0.0.0',
-    proxy: {
-      // Proxy MuscleWiki video requests to avoid CORS issues in development
-      '/api/video': {
-        target: 'https://media.musclewiki.com',
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api\/video/, ''),
-        configure: (proxy, _options) => {
-          proxy.on('error', (err, _req, _res) => {
-            console.log('proxy error', err);
-          });
-          proxy.on('proxyReq', (proxyReq, req, _res) => {
-            console.log('Sending Request to the Target:', req.method, req.url);
-          });
-          proxy.on('proxyRes', (proxyRes, req, _res) => {
-            console.log('Received Response from the Target:', proxyRes.statusCode, req.url);
-          });
-        },
-      }
-    }
+    // No /api/video proxy: exercise videos load directly from the MuscleWiki
+    // CDN. The former dev proxy routed through Node's HTTPS stack, whose TLS
+    // fingerprint Cloudflare 403-blocks regardless of headers; the browser
+    // loads the same URLs directly without issue (and prod never used a proxy).
   }
   }
 })
