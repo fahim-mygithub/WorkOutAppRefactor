@@ -1,8 +1,12 @@
 import { useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { Play, Plus, BookOpen, Calendar } from 'lucide-react';
+import { Play, Plus, BookOpen, Calendar, Flame } from 'lucide-react';
 import { useAppSelector } from '../../store/hooks';
 import type { LastWorkoutStats } from '../../hooks/useWorkoutStats';
+import { Card, CardBody } from '../ui/card';
+import { Skeleton } from '../ui/skeleton';
+import { Stack } from '../ui/stack';
+import { Button } from '../ui/button';
 
 interface WelcomeHeroProps {
   lastWorkoutStats: LastWorkoutStats | null;
@@ -31,92 +35,79 @@ export function WelcomeHero({ lastWorkoutStats, currentStreak, isLoading }: Welc
 
   if (isLoading) {
     return (
-      <div className="bg-gradient-to-r from-blue-600 to-purple-600 rounded-2xl p-6 mb-6">
-        <div className="animate-pulse">
-          <div className="h-8 bg-white/20 rounded mb-2 w-64"></div>
-          <div className="h-5 bg-white/20 rounded mb-6 w-80"></div>
-          <div className="flex gap-3">
+      <Card className="mb-6" aria-busy="true">
+        <CardBody className="p-6 pt-6">
+          <Skeleton className="mb-2 h-8 w-64" />
+          <Skeleton className="mb-6 h-5 w-80" />
+          <Stack direction="row" gap={3} wrap>
             {[1, 2, 3].map(i => (
-              <div key={i} className="h-12 bg-white/20 rounded-lg w-32"></div>
+              <Skeleton key={i} className="h-12 w-32" />
             ))}
-          </div>
-        </div>
-      </div>
+          </Stack>
+        </CardBody>
+      </Card>
     );
   }
 
   return (
-    <div className="bg-gradient-to-r from-blue-600 to-purple-600 rounded-2xl p-6 mb-6 text-white">
-      {/* Greeting Section */}
-      <div className="mb-6">
-        <h1 className="text-2xl md:text-3xl font-bold mb-2">
-          {greeting.main}
-        </h1>
-        <p className="text-blue-100 text-sm md:text-base opacity-90">
-          {greeting.sub}
-        </p>
-      </div>
-
-      {/* Quick Action Buttons */}
-      <div className="flex flex-wrap gap-3">
-        {lastWorkoutStats && (
-          <Link
-            to="/workout"
-            className="flex items-center gap-2 bg-white/20 hover:bg-white/30 backdrop-blur-sm rounded-lg px-4 py-3 transition-all duration-200 hover:scale-105"
-          >
-            <Play size={18} />
-            <span className="font-medium">Resume Last</span>
-          </Link>
-        )}
-
-        <Link
-          to="/build"
-          className="flex items-center gap-2 bg-white/20 hover:bg-white/30 backdrop-blur-sm rounded-lg px-4 py-3 transition-all duration-200 hover:scale-105"
-        >
-          <Plus size={18} />
-          <span className="font-medium">New Workout</span>
-        </Link>
-
-        <Link
-          to="/profile"
-          className="flex items-center gap-2 bg-white/20 hover:bg-white/30 backdrop-blur-sm rounded-lg px-4 py-3 transition-all duration-200 hover:scale-105"
-        >
-          <BookOpen size={18} />
-          <span className="font-medium">My Workouts</span>
-        </Link>
-
-        <Link
-          to="/exercises"
-          className="flex items-center gap-2 bg-white/20 hover:bg-white/30 backdrop-blur-sm rounded-lg px-4 py-3 transition-all duration-200 hover:scale-105"
-        >
-          <Calendar size={18} />
-          <span className="font-medium">Browse</span>
-        </Link>
-      </div>
-
-      {/* Streak Indicator */}
-      {currentStreak > 0 && (
-        <div className="mt-4 pt-4 border-t border-white/20">
-          <div className="flex items-center gap-2 text-sm text-blue-100">
-            <div className="flex">
-              {Array.from({ length: Math.min(currentStreak, 7) }).map((_, i) => (
-                <div
-                  key={i}
-                  className="w-2 h-2 bg-yellow-400 rounded-full mr-1 animate-pulse"
-                  style={{ animationDelay: `${i * 0.1}s` }}
-                />
-              ))}
-              {currentStreak > 7 && (
-                <span className="ml-1 font-medium">+{currentStreak - 7}</span>
-              )}
-            </div>
-            <span>
-              {currentStreak} day{currentStreak !== 1 ? 's' : ''} streak! Keep it going! 🔥
-            </span>
-          </div>
+    <Card className="mb-6">
+      <CardBody className="p-6 pt-6">
+        {/* Greeting Section */}
+        <div className="mb-6">
+          <h1 className="mb-2 text-display font-bold text-ink">
+            {greeting.main}
+          </h1>
+          <p className="text-body text-ink-muted">
+            {greeting.sub}
+          </p>
         </div>
-      )}
-    </div>
+
+        {/* Quick Action Buttons */}
+        <Stack direction="row" gap={3} wrap>
+          {lastWorkoutStats && (
+            <Button asChild variant="primary" size="md">
+              <Link to="/workout">
+                <Play size={18} />
+                <span>Resume Last</span>
+              </Link>
+            </Button>
+          )}
+
+          <Button asChild variant="secondary" size="md">
+            <Link to="/build">
+              <Plus size={18} />
+              <span>New Workout</span>
+            </Link>
+          </Button>
+
+          <Button asChild variant="secondary" size="md">
+            <Link to="/profile">
+              <BookOpen size={18} />
+              <span>My Workouts</span>
+            </Link>
+          </Button>
+
+          <Button asChild variant="secondary" size="md">
+            <Link to="/exercises">
+              <Calendar size={18} />
+              <span>Browse</span>
+            </Link>
+          </Button>
+        </Stack>
+
+        {/* Streak Indicator */}
+        {currentStreak > 0 && (
+          <div className="mt-4 border-t border-ink/10 pt-4">
+            <Stack direction="row" gap={2} align="center" className="text-body-sm text-ink-muted">
+              <Flame size={16} className="text-warning" aria-hidden="true" />
+              <span>
+                {currentStreak} day{currentStreak !== 1 ? 's' : ''} streak! Keep it going!
+              </span>
+            </Stack>
+          </div>
+        )}
+      </CardBody>
+    </Card>
   );
 }
 
@@ -138,7 +129,7 @@ function generateMotivationalMessage(
 
   // Current streak messages
   if (currentStreak >= 7) {
-    return `Amazing ${currentStreak}-day streak! You're unstoppable! 💪`;
+    return `Amazing ${currentStreak}-day streak! You're unstoppable!`;
   }
 
   if (currentStreak >= 3) {

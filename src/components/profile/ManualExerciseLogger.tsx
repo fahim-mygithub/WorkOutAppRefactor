@@ -1,7 +1,21 @@
 import React, { useState, useMemo } from 'react';
 import { Exercise } from '../../types/exercise';
 import { ExerciseHistoryService } from '../../services/exerciseHistoryService';
-import { X, Plus, Minus, Save, Search } from 'lucide-react';
+import { Plus, Minus, Save, Search } from 'lucide-react';
+import { Sheet, SheetContent, SheetTitle } from '../ui/sheet';
+import { Button } from '../ui/button';
+import { IconButton } from '../ui/icon-button';
+import { Input } from '../ui/input';
+import { Textarea } from '../ui/textarea';
+import { Label } from '../ui/label';
+import { Stack } from '../ui/stack';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '../ui/select';
 
 interface ManualExerciseLoggerProps {
   isOpen: boolean;
@@ -108,7 +122,7 @@ export const ManualExerciseLogger: React.FC<ManualExerciseLoggerProps> = ({
     setIsLoading(true);
 
     // Convert manual sets to PerformedSet format (moved outside try block)
-    const performedSets = sets.map((set, index) => ({
+    const performedSets = sets.map((set) => ({
       targetReps: set.reps,
       actualReps: set.reps,
       weight: set.weight,
@@ -166,40 +180,30 @@ export const ManualExerciseLogger: React.FC<ManualExerciseLoggerProps> = ({
     }
   };
 
-  const handleClose = () => {
-    if (!isLoading) {
+  const handleOpenChange = (open: boolean) => {
+    if (!open && !isLoading) {
       onClose();
     }
   };
 
-  if (!isOpen) return null;
-
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-gray-800 rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+    <Sheet open={isOpen} onOpenChange={handleOpenChange}>
+      <SheetContent className="max-w-2xl mx-auto">
         {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-gray-700">
-          <h2 className="text-xl font-bold text-white">Log Manual Exercise</h2>
-          <button
-            onClick={handleClose}
-            disabled={isLoading}
-            className="text-gray-400 hover:text-white transition-colors disabled:opacity-50"
-          >
-            <X className="w-6 h-6" />
-          </button>
-        </div>
+        <SheetTitle className="text-title mb-4">Log Manual Exercise</SheetTitle>
 
         {/* Content */}
-        <form onSubmit={handleSubmit} className="p-6 space-y-6">
+        <form onSubmit={handleSubmit} className="space-y-6">
           {/* Exercise Selection */}
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-2">
-              Exercise *
-            </label>
+          <Stack gap={2}>
+            <Label htmlFor="manual-exercise-search" required>
+              Exercise
+            </Label>
             <div className="relative">
               <div className="relative">
-                <Search className="h-4 w-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
-                <input
+                <Search className="h-4 w-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-ink-subtle" />
+                <Input
+                  id="manual-exercise-search"
                   type="text"
                   placeholder="Search for an exercise..."
                   value={exerciseSearchTerm}
@@ -211,38 +215,38 @@ export const ManualExerciseLogger: React.FC<ManualExerciseLoggerProps> = ({
                     }
                   }}
                   onFocus={() => setShowExerciseDropdown(true)}
-                  className="w-full pl-10 pr-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="pl-10"
                   required
                 />
               </div>
 
               {/* Exercise Dropdown */}
               {showExerciseDropdown && (
-                <div className="absolute z-10 w-full mt-1 bg-gray-700 border border-gray-600 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                <div className="absolute z-10 w-full mt-1 bg-surface-raised border border-border rounded-md shadow-e3 max-h-60 overflow-y-auto">
                   {filteredExercises && filteredExercises.length > 0 ? (
                     filteredExercises.map((exercise) => (
                       <button
                         key={exercise?.id || exercise?.name || Math.random()}
                         type="button"
                         onClick={() => handleExerciseSelect(exercise)}
-                        className="w-full text-left px-4 py-3 hover:bg-gray-600 transition-colors"
+                        className="w-full text-left px-4 py-3 hover:bg-surface-subtle transition-colors duration-snap"
                       >
-                        <div className="text-white font-medium">{exercise?.name || 'Unknown Exercise'}</div>
-                        <div className="text-sm text-gray-400">
+                        <div className="text-ink font-medium">{exercise?.name || 'Unknown Exercise'}</div>
+                        <div className="text-body-sm text-ink-muted">
                           {exercise?.muscleGroups ? exercise.muscleGroups.join(', ') : 'Unknown muscles'} • {exercise?.equipment || 'Unknown equipment'}
                         </div>
                       </button>
                     ))
                   ) : (
-                    <div className="px-4 py-3 text-center text-gray-400">
+                    <div className="px-4 py-3 text-center text-ink-muted">
                       {exerciseError ? (
-                        <div className="text-red-400">
+                        <div className="text-danger">
                           <div>Error loading exercises</div>
-                          <div className="text-xs mt-1">{exerciseError}</div>
+                          <div className="text-caption mt-1">{exerciseError}</div>
                         </div>
                       ) : isLoadingExercises || !exercises || exercises.length === 0 ? (
                         <div className="flex items-center justify-center gap-2">
-                          <div className="w-4 h-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin"></div>
+                          <div className="w-4 h-4 border-2 border-ink-subtle border-t-transparent rounded-full animate-spin"></div>
                           Loading exercises...
                         </div>
                       ) : exerciseSearchTerm ? (
@@ -255,102 +259,109 @@ export const ManualExerciseLogger: React.FC<ManualExerciseLoggerProps> = ({
                 </div>
               )}
             </div>
-          </div>
+          </Stack>
 
           {/* Workout Details */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
-                Workout Date *
-              </label>
-              <input
+            <Stack gap={2}>
+              <Label htmlFor="manual-workout-date" required>
+                Workout Date
+              </Label>
+              <Input
+                id="manual-workout-date"
                 type="date"
                 value={workoutDate}
                 onChange={(e) => setWorkoutDate(e.target.value)}
                 max={new Date().toISOString().split('T')[0]}
-                className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                 required
               />
-            </div>
+            </Stack>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
-                Workout Name
-              </label>
-              <input
+            <Stack gap={2}>
+              <Label htmlFor="manual-workout-name">Workout Name</Label>
+              <Input
+                id="manual-workout-name"
                 type="text"
                 value={workoutName}
                 onChange={(e) => setWorkoutName(e.target.value)}
                 placeholder="e.g., Push Day, Home Workout"
-                className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
-            </div>
+            </Stack>
           </div>
 
           {/* Sets */}
           <div>
-            <div className="flex items-center justify-between mb-3">
-              <label className="text-sm font-medium text-gray-300">
-                Sets *
-              </label>
-              <button
+            <Stack direction="row" align="center" justify="between" className="mb-3">
+              <Label>Sets *</Label>
+              <Button
                 type="button"
+                variant="ghost"
+                size="sm"
                 onClick={addSet}
-                className="flex items-center gap-1 text-blue-400 hover:text-blue-300 transition-colors"
+                className="text-accent"
               >
                 <Plus className="w-4 h-4" />
-                <span className="text-sm">Add Set</span>
-              </button>
-            </div>
+                Add Set
+              </Button>
+            </Stack>
 
             <div className="space-y-3">
               {sets.map((set, index) => (
-                <div key={set.id} className="flex items-center gap-3 p-3 bg-gray-700 rounded-lg">
-                  <span className="text-gray-300 font-medium min-w-12 text-sm">
+                <div key={set.id} className="flex items-center gap-3 p-3 bg-surface-subtle rounded-md">
+                  <span className="text-ink-muted font-medium min-w-12 text-body-sm">
                     Set {index + 1}:
                   </span>
 
-                  <input
+                  <Input
                     type="number"
                     placeholder="Reps"
                     value={set.reps || ''}
                     onChange={(e) => updateSet(set.id, 'reps', parseInt(e.target.value) || 0)}
                     min="1"
                     max="999"
-                    className="w-20 px-2 py-1 bg-gray-600 border border-gray-500 rounded text-white text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    size="sm"
+                    className="w-20"
                     required
                   />
 
-                  <span className="text-gray-400 text-sm">reps @</span>
+                  <span className="text-ink-muted text-body-sm">reps @</span>
 
-                  <input
+                  <Input
                     type="number"
                     placeholder="Weight"
                     value={set.weight || ''}
                     onChange={(e) => updateSet(set.id, 'weight', parseFloat(e.target.value) || 0)}
                     min="0"
                     step="0.5"
-                    className="w-20 px-2 py-1 bg-gray-600 border border-gray-500 rounded text-white text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    size="sm"
+                    className="w-20"
                     required
                   />
 
-                  <select
+                  <Select
                     value={set.unit}
-                    onChange={(e) => updateSet(set.id, 'unit', e.target.value as 'lbs' | 'kg')}
-                    className="px-2 py-1 bg-gray-600 border border-gray-500 rounded text-white text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    onValueChange={(value) => updateSet(set.id, 'unit', value as 'lbs' | 'kg')}
                   >
-                    <option value="lbs">lbs</option>
-                    <option value="kg">kg</option>
-                  </select>
+                    <SelectTrigger className="w-24">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="lbs">lbs</SelectItem>
+                      <SelectItem value="kg">kg</SelectItem>
+                    </SelectContent>
+                  </Select>
 
                   {sets.length > 1 && (
-                    <button
+                    <IconButton
                       type="button"
+                      variant="ghost"
+                      size="sm"
+                      aria-label={`Remove set ${index + 1}`}
                       onClick={() => removeSet(set.id)}
-                      className="p-1 text-red-600 hover:text-red-800 ml-auto"
+                      className="text-danger ml-auto"
                     >
                       <Minus className="w-4 h-4" />
-                    </button>
+                    </IconButton>
                   )}
                 </div>
               ))}
@@ -358,44 +369,42 @@ export const ManualExerciseLogger: React.FC<ManualExerciseLoggerProps> = ({
           </div>
 
           {/* Notes */}
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-2">
-              Notes (Optional)
-            </label>
-            <textarea
+          <Stack gap={2}>
+            <Label htmlFor="manual-notes">Notes (Optional)</Label>
+            <Textarea
+              id="manual-notes"
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               placeholder="Any additional notes about this exercise..."
               rows={3}
-              className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+              className="resize-none"
             />
-          </div>
+          </Stack>
 
           {/* Submit Button */}
-          <div className="flex justify-end gap-3 pt-4">
-            <button
+          <Stack direction="row" justify="end" gap={3} className="pt-4">
+            <Button
               type="button"
-              onClick={handleClose}
+              variant="secondary"
+              onClick={() => handleOpenChange(false)}
               disabled={isLoading}
-              className="px-6 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg transition-colors disabled:opacity-50"
             >
               Cancel
-            </button>
-            <button
+            </Button>
+            <Button
               type="submit"
               disabled={isLoading || !selectedExercise}
-              className="flex items-center gap-2 px-6 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-800 disabled:opacity-50 text-white rounded-lg transition-colors"
             >
               {isLoading ? (
-                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                <div className="w-4 h-4 border-2 border-accent-fg border-t-transparent rounded-full animate-spin" />
               ) : (
                 <Save className="w-4 h-4" />
               )}
               {isLoading ? 'Saving...' : 'Save Exercise'}
-            </button>
-          </div>
+            </Button>
+          </Stack>
         </form>
-      </div>
-    </div>
+      </SheetContent>
+    </Sheet>
   );
 };

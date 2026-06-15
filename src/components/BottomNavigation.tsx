@@ -1,7 +1,9 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
 import { Home, Dumbbell, Plus, List, User } from 'lucide-react';
-import { cn } from '../lib/utils';
+import { motion as fmotion } from 'framer-motion';
+import { cn } from '@/lib/utils';
+import { motion as motionTokens } from '@/lib/motion';
 
 interface NavItem {
   path: string;
@@ -47,47 +49,49 @@ export const BottomNavigation: React.FC<BottomNavigationProps> = ({ className })
       className={cn(
         // Plain flex sibling of the shell's scroll container — NOT fixed/absolute.
         'shrink-0',
-        'bg-black backdrop-blur-sm',
-        'px-4 pt-2 border-t border-gray-800',
-        'h-[calc(4.5rem+env(safe-area-inset-bottom))]',
+        'bg-surface',
+        'px-4 pt-2 border-t border-border',
         'pb-[env(safe-area-inset-bottom)]',
         className
       )}
     >
-      <div className="flex justify-around items-center mx-auto max-w-md">
+      <div className="flex justify-around items-stretch mx-auto max-w-md">
         {navItems.map((item) => (
           <NavLink
             key={item.path}
             to={item.path}
             className={({ isActive }) =>
               cn(
-                'relative flex flex-col items-center justify-center',
-                'px-3 py-2 rounded-xl',
-                'transition-all duration-200',
-                'min-w-[60px] flex-1',
+                'relative flex flex-col items-center justify-center gap-1',
+                'min-w-[60px] min-h-[48px] flex-1 px-3 py-2 rounded-lg',
+                'transition-colors duration-snap ease-spring-soft',
                 'active:scale-95 touch-manipulation',
-                'group',
-                isActive
-                  ? 'text-white'
-                  : 'text-gray-400 hover:text-gray-300'
+                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2',
+                isActive ? 'text-accent' : 'text-ink-subtle hover:text-ink-muted'
               )
             }
           >
             {({ isActive }) => (
               <>
-                <div className={cn(
-                  'relative mb-1 transition-all duration-200',
-                  isActive ? 'scale-110' : 'group-hover:scale-105'
-                )}>
-                  {item.icon}
-                  {isActive && (
-                    <div className="absolute -top-1 left-1/2 transform -translate-x-1/2 w-1 h-1 bg-blue-500 rounded-full" />
+                {/* Active indicator pill — animates between tabs via shared layoutId. */}
+                {isActive && (
+                  <fmotion.span
+                    layoutId="bottom-nav-indicator"
+                    aria-hidden="true"
+                    className="absolute inset-0 -z-10 rounded-lg bg-accent/10"
+                    transition={{
+                      duration: motionTokens.duration.smooth,
+                      ease: motionTokens.ease.springSoft,
+                    }}
+                  />
+                )}
+                <span className="relative">{item.icon}</span>
+                <span
+                  className={cn(
+                    'relative text-caption leading-none',
+                    isActive ? 'font-semibold' : 'font-medium'
                   )}
-                </div>
-                <span className={cn(
-                  'relative text-[10px] leading-none transition-all duration-200',
-                  isActive ? 'font-medium text-white' : 'font-normal'
-                )}>
+                >
                   {item.label}
                 </span>
               </>

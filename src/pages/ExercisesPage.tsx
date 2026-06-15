@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { useAppSelector, useAppDispatch } from '../store/hooks';
 import { searchExercises, filterByMuscleGroup, setSelectedExercise } from '../store/slices/exerciseSlice';
 import { ExerciseVideo } from '../components/ExerciseVideo';
@@ -7,6 +8,34 @@ import { Exercise } from '../types/exercise';
 import { selectCustomExercises } from '../store/slices/customExerciseSlice';
 import { scrollAppToTop } from '../lib/scroll';
 import { useExercises } from '../hooks/useExercises';
+import { Input } from '../components/ui/input';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '../components/ui/select';
+import { Card, CardBody } from '../components/ui/card';
+import { Skeleton } from '../components/ui/skeleton';
+import { IconButton } from '../components/ui/icon-button';
+import { Button } from '../components/ui/button';
+import { Stack } from '../components/ui/stack';
+import { Sheet, SheetContent, SheetTitle } from '../components/ui/sheet';
+
+// Difficulty labels map onto semantic state tokens so the same hue language is
+// reused everywhere (no raw red/yellow/green scales).
+const difficultyToneClass = (difficulty: Exercise['difficulty']): string => {
+  switch (difficulty) {
+    case 'Beginner':
+    case 'Novice':
+      return 'text-success';
+    case 'Intermediate':
+      return 'text-warning';
+    default:
+      return 'text-danger';
+  }
+};
 
 export default function ExercisesPage() {
   const dispatch = useAppDispatch();
@@ -62,58 +91,87 @@ export default function ExercisesPage() {
 
   if (isLoading) {
     return (
-      <div className="min-h-full bg-gray-900 p-4 flex items-center justify-center">
-        <div className="text-white text-lg">Loading exercises...</div>
+      <div className="min-h-full bg-surface p-4" aria-busy="true">
+        <div className="max-w-6xl mx-auto">
+          <div className="mb-8">
+            <Skeleton className="h-9 w-64 mb-2" />
+            <Skeleton className="h-5 w-80" />
+          </div>
+
+          <div className="mb-6 space-y-4 md:space-y-0 md:flex md:gap-4">
+            <Skeleton className="h-touch-min flex-1" />
+            <Skeleton className="h-touch-min w-full md:w-48" />
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {Array.from({ length: 6 }, (_, i) => (
+              <Card key={i} elevation={1}>
+                <CardBody className="space-y-4">
+                  <Skeleton className="aspect-video w-full" />
+                  <Skeleton className="h-6 w-3/4" />
+                  <div className="space-y-2">
+                    <Skeleton className="h-4 w-full" />
+                    <Skeleton className="h-4 w-2/3" />
+                  </div>
+                </CardBody>
+              </Card>
+            ))}
+          </div>
+        </div>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="min-h-full bg-gray-900 p-4 flex items-center justify-center">
-        <div className="text-red-400 text-lg">{error}</div>
+      <div className="min-h-full bg-surface p-4 flex items-center justify-center">
+        <p className="text-danger text-body">{error}</p>
       </div>
     );
   }
 
   return (
-    <div className="min-h-full bg-gray-900 p-4">
+    <div className="min-h-full bg-surface p-4">
       <div className="max-w-6xl mx-auto">
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-white mb-2">Exercise Database</h1>
-          <p className="text-gray-400">Browse {exercises.length} exercises with video demonstrations</p>
+          <h1 className="text-display font-bold text-ink mb-2">Exercise Database</h1>
+          <p className="text-ink-muted text-body">Browse {exercises.length} exercises with video demonstrations</p>
         </div>
 
         <div className="mb-6 space-y-4 md:space-y-0 md:flex md:gap-4">
-          <input
+          <Input
             type="text"
             placeholder="Search exercises..."
             value={searchTerm}
             onChange={(e) => handleSearch(e.target.value)}
-            className="flex-1 p-3 bg-gray-800 border border-gray-700 rounded-lg text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            className="flex-1"
+            aria-label="Search exercises"
           />
-          
-          <select
-            value={selectedMuscleGroup}
-            onChange={(e) => handleMuscleGroupFilter(e.target.value)}
-            className="w-full md:w-48 p-3 bg-gray-800 border border-gray-700 rounded-lg text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-          >
-            {muscleGroups.map(group => (
-              <option key={group} value={group}>
-                {group === 'all' ? 'All Muscle Groups' : group}
-              </option>
-            ))}
-          </select>
+
+          <div className="w-full md:w-48">
+            <Select value={selectedMuscleGroup} onValueChange={handleMuscleGroupFilter}>
+              <SelectTrigger aria-label="Filter by muscle group">
+                <SelectValue placeholder="All Muscle Groups" />
+              </SelectTrigger>
+              <SelectContent>
+                {muscleGroups.map(group => (
+                  <SelectItem key={group} value={group}>
+                    {group === 'all' ? 'All Muscle Groups' : group}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         </div>
 
         {filteredExercises.length === 0 ? (
           <div className="text-center py-12">
-            <p className="text-gray-400 text-lg">No exercises found matching your criteria</p>
+            <p className="text-ink-muted text-body">No exercises found matching your criteria</p>
           </div>
         ) : (
           <>
             {/* Results info */}
-            <div className="flex justify-between items-center mb-4 text-gray-400 text-sm">
+            <div className="flex justify-between items-center mb-4 text-ink-subtle text-body-sm">
               <p>
                 Showing {startIndex + 1}-{Math.min(endIndex, filteredExercises.length)} of {filteredExercises.length} exercises
               </p>
@@ -122,200 +180,207 @@ export default function ExercisesPage() {
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {currentExercises.map(exercise => (
-              <div 
-                key={exercise.id} 
-                className="bg-gray-800 rounded-lg p-6 cursor-pointer transition-colors hover:bg-gray-750 border border-gray-700"
-                onClick={() => handleExerciseClick(exercise)}
-              >
-                {exercise.videoLinks.length > 0 && (
-                  <div className="mb-4">
-                    <ExerciseVideo 
-                      key={`${exercise.id}-${exercise.videoLinks[0]}`}
-                      videoUrl={exercise.videoLinks[0]}
-                      exerciseName={exercise.name}
-                      autoPlay={false}
-                      muted={true}
-                      compact={true}
-                      fallbackVideoUrls={exercise.videoLinks.slice(1)}
-                      instructions={exercise.instructions}
-                    />
-                  </div>
-                )}
-                
-                <div className="flex items-start justify-between mb-2">
-                  <h3 className="text-xl font-semibold text-white">{exercise.name}</h3>
-                  {isCustomExercise(exercise.id) && (
-                    <CustomExerciseBadge size="sm" />
-                  )}
-                </div>
-                
-                <div className="space-y-2 text-sm">
-                  <div className="flex justify-between">
-                    <span className="text-gray-400">Muscle Group:</span>
-                    <span className="text-blue-400 font-medium">{exercise.muscleGroup}</span>
-                  </div>
-                  
-                  <div className="flex justify-between">
-                    <span className="text-gray-400">Equipment:</span>
-                    <span className="text-white">{exercise.equipment}</span>
-                  </div>
-                  
-                  <div className="flex justify-between">
-                    <span className="text-gray-400">Difficulty:</span>
-                    <span className={`font-medium ${
-                      exercise.difficulty === 'Beginner' ? 'text-green-400' :
-                      exercise.difficulty === 'Intermediate' ? 'text-yellow-400' :
-                      'text-red-400'
-                    }`}>
-                      {exercise.difficulty}
-                    </span>
-                  </div>
-                </div>
+                <Card
+                  key={exercise.id}
+                  elevation={1}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => handleExerciseClick(exercise)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      handleExerciseClick(exercise);
+                    }
+                  }}
+                  className="cursor-pointer transition-shadow duration-snap hover:shadow-e2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface"
+                >
+                  <CardBody className="pt-4">
+                    {exercise.videoLinks.length > 0 && (
+                      <div className="mb-4">
+                        <ExerciseVideo
+                          key={`${exercise.id}-${exercise.videoLinks[0]}`}
+                          videoUrl={exercise.videoLinks[0]}
+                          exerciseName={exercise.name}
+                          autoPlay={false}
+                          muted={true}
+                          compact={true}
+                          fallbackVideoUrls={exercise.videoLinks.slice(1)}
+                          instructions={exercise.instructions}
+                        />
+                      </div>
+                    )}
 
-                {exercise.instructions.length > 0 && (
-                  <div className="mt-4 pt-4 border-t border-gray-700">
-                    <p className="text-gray-300 text-sm line-clamp-2">
-                      {exercise.instructions[0]}
-                    </p>
-                  </div>
-                )}
-              </div>
-            ))}
+                    <div className="flex items-start justify-between gap-2 mb-2">
+                      <h3 className="text-title font-semibold text-ink">{exercise.name}</h3>
+                      {isCustomExercise(exercise.id) && (
+                        <CustomExerciseBadge size="sm" />
+                      )}
+                    </div>
+
+                    <div className="space-y-2 text-body-sm">
+                      <div className="flex justify-between">
+                        <span className="text-ink-muted">Muscle Group:</span>
+                        <span className="text-accent font-medium">{exercise.muscleGroup}</span>
+                      </div>
+
+                      <div className="flex justify-between">
+                        <span className="text-ink-muted">Equipment:</span>
+                        <span className="text-ink">{exercise.equipment}</span>
+                      </div>
+
+                      <div className="flex justify-between">
+                        <span className="text-ink-muted">Difficulty:</span>
+                        <span className={`font-medium ${difficultyToneClass(exercise.difficulty)}`}>
+                          {exercise.difficulty}
+                        </span>
+                      </div>
+                    </div>
+
+                    {exercise.instructions.length > 0 && (
+                      <div className="mt-4 pt-4 border-t border-border">
+                        <p className="text-ink-muted text-body-sm line-clamp-2">
+                          {exercise.instructions[0]}
+                        </p>
+                      </div>
+                    )}
+                  </CardBody>
+                </Card>
+              ))}
             </div>
 
             {/* Pagination Controls */}
             {totalPages > 1 && (
-              <div className="mt-8 flex justify-center items-center space-x-2">
-                <button
+              <Stack
+                direction="row"
+                align="center"
+                justify="center"
+                gap={2}
+                className="mt-8"
+              >
+                <IconButton
+                  variant="secondary"
+                  aria-label="Previous page"
                   onClick={() => handlePageChange(currentPage - 1)}
                   disabled={currentPage === 1}
-                  className="px-3 py-2 bg-gray-700 hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg transition-colors"
                 >
-                  ← Previous
-                </button>
-                
+                  <ChevronLeft className="h-5 w-5" aria-hidden />
+                </IconButton>
+
                 {/* Page numbers */}
-                <div className="flex space-x-1">
+                <div className="flex gap-1">
                   {/* First page */}
                   {currentPage > 3 && (
                     <>
-                      <button
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        className="w-10"
                         onClick={() => handlePageChange(1)}
-                        className="w-10 h-10 bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-colors"
                       >
                         1
-                      </button>
-                      {currentPage > 4 && <span className="px-2 py-2 text-gray-400">...</span>}
+                      </Button>
+                      {currentPage > 4 && <span className="px-2 py-2 text-ink-subtle">...</span>}
                     </>
                   )}
-                  
+
                   {/* Current page and surrounding */}
                   {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
                     const page = Math.max(1, Math.min(totalPages - 4, currentPage - 2)) + i;
                     if (page <= totalPages) {
                       return (
-                        <button
+                        <Button
                           key={page}
+                          variant={page === currentPage ? 'primary' : 'secondary'}
+                          size="sm"
+                          className="w-10"
                           onClick={() => handlePageChange(page)}
-                          className={`w-10 h-10 rounded-lg transition-colors ${
-                            page === currentPage
-                              ? 'bg-blue-600 text-white'
-                              : 'bg-gray-700 hover:bg-gray-600 text-white'
-                          }`}
+                          aria-current={page === currentPage ? 'page' : undefined}
                         >
                           {page}
-                        </button>
+                        </Button>
                       );
                     }
                     return null;
                   })}
-                  
+
                   {/* Last page */}
                   {currentPage < totalPages - 2 && (
                     <>
-                      {currentPage < totalPages - 3 && <span className="px-2 py-2 text-gray-400">...</span>}
-                      <button
+                      {currentPage < totalPages - 3 && <span className="px-2 py-2 text-ink-subtle">...</span>}
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        className="w-10"
                         onClick={() => handlePageChange(totalPages)}
-                        className="w-10 h-10 bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-colors"
                       >
                         {totalPages}
-                      </button>
+                      </Button>
                     </>
                   )}
                 </div>
-                
-                <button
+
+                <IconButton
+                  variant="secondary"
+                  aria-label="Next page"
                   onClick={() => handlePageChange(currentPage + 1)}
                   disabled={currentPage === totalPages}
-                  className="px-3 py-2 bg-gray-700 hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg transition-colors"
                 >
-                  Next →
-                </button>
-              </div>
+                  <ChevronRight className="h-5 w-5" aria-hidden />
+                </IconButton>
+              </Stack>
             )}
           </>
         )}
 
-        {/* Exercise Detail Modal */}
-        {selectedExercise && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-            <div className="bg-gray-800 rounded-lg max-w-4xl w-full max-h-[90vh] overflow-y-auto">
-              <div className="p-6">
-                <div className="flex justify-between items-start mb-6">
-                  <div>
-                    <div className="flex items-center gap-3 mb-2">
-                      <h2 className="text-2xl font-bold text-white">{selectedExercise.name}</h2>
-                      {isCustomExercise(selectedExercise.id) && (
-                        <CustomExerciseBadge size="md" />
-                      )}
-                    </div>
-                    <div className="flex gap-4 text-sm">
-                      <span className="text-blue-400">{selectedExercise.muscleGroup}</span>
-                      <span className="text-gray-400">•</span>
-                      <span className="text-white">{selectedExercise.equipment}</span>
-                      <span className="text-gray-400">•</span>
-                      <span className={
-                        selectedExercise.difficulty === 'Beginner' ? 'text-green-400' :
-                        selectedExercise.difficulty === 'Intermediate' ? 'text-yellow-400' :
-                        'text-red-400'
-                      }>
-                        {selectedExercise.difficulty}
-                      </span>
-                    </div>
-                  </div>
-                  
-                  <button
-                    onClick={() => dispatch(setSelectedExercise(null))}
-                    className="text-gray-400 hover:text-white transition-colors"
-                  >
-                    ×
-                  </button>
+        {/* Exercise Detail Sheet */}
+        <Sheet
+          open={!!selectedExercise}
+          onOpenChange={(open) => {
+            if (!open) dispatch(setSelectedExercise(null));
+          }}
+        >
+          <SheetContent className="max-w-4xl mx-auto">
+            {selectedExercise && (
+              <div className="space-y-6">
+                <div className="flex items-center gap-3">
+                  <SheetTitle className="text-display">{selectedExercise.name}</SheetTitle>
+                  {isCustomExercise(selectedExercise.id) && (
+                    <CustomExerciseBadge size="md" />
+                  )}
+                </div>
+
+                <div className="flex flex-wrap gap-3 text-body-sm">
+                  <span className="text-accent">{selectedExercise.muscleGroup}</span>
+                  <span className="text-ink-subtle">•</span>
+                  <span className="text-ink">{selectedExercise.equipment}</span>
+                  <span className="text-ink-subtle">•</span>
+                  <span className={difficultyToneClass(selectedExercise.difficulty)}>
+                    {selectedExercise.difficulty}
+                  </span>
                 </div>
 
                 {selectedExercise.videoLinks.length > 0 && (
-                  <div className="mb-6">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      {selectedExercise.videoLinks.slice(0, 2).map((videoUrl, index) => (
-                        <ExerciseVideo
-                          key={index}
-                          videoUrl={videoUrl}
-                          exerciseName={`${selectedExercise.name} - ${index === 0 ? 'Front' : 'Side'} View`}
-                          autoPlay={index === 0}
-                          muted={true}
-                          fallbackVideoUrls={selectedExercise.videoLinks.slice(index + 1)}
-                          instructions={selectedExercise.instructions}
-                        />
-                      ))}
-                    </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {selectedExercise.videoLinks.slice(0, 2).map((videoUrl, index) => (
+                      <ExerciseVideo
+                        key={index}
+                        videoUrl={videoUrl}
+                        exerciseName={`${selectedExercise.name} - ${index === 0 ? 'Front' : 'Side'} View`}
+                        autoPlay={index === 0}
+                        muted={true}
+                        fallbackVideoUrls={selectedExercise.videoLinks.slice(index + 1)}
+                        instructions={selectedExercise.instructions}
+                      />
+                    ))}
                   </div>
                 )}
 
                 {selectedExercise.instructions.length > 0 && (
                   <div>
-                    <h3 className="text-lg font-semibold text-white mb-3">Instructions</h3>
+                    <h3 className="text-title font-semibold text-ink mb-3">Instructions</h3>
                     <ol className="list-decimal list-inside space-y-2">
                       {selectedExercise.instructions.map((instruction, index) => (
-                        <li key={index} className="text-gray-300">
+                        <li key={index} className="text-ink-muted text-body">
                           {instruction}
                         </li>
                       ))}
@@ -323,9 +388,9 @@ export default function ExercisesPage() {
                   </div>
                 )}
               </div>
-            </div>
-          </div>
-        )}
+            )}
+          </SheetContent>
+        </Sheet>
       </div>
     </div>
   );

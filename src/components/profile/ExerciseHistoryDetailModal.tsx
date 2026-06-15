@@ -3,7 +3,12 @@ import { ExerciseHistory } from '../../types/exerciseHistory';
 import { Exercise } from '../../types/exercise';
 import { ExerciseHistoryService } from '../../services/exerciseHistoryService';
 import { ExerciseHistoryEditModal } from './ExerciseHistoryEditModal';
-import { X, Edit, Trash2, Calendar, Weight, BarChart3, Trophy, Plus } from 'lucide-react';
+import { Edit, Trash2, Calendar, BarChart3, Trophy } from 'lucide-react';
+import { Sheet, SheetContent, SheetTitle } from '../ui/sheet';
+import { IconButton } from '../ui/icon-button';
+import { Skeleton } from '../ui/skeleton';
+import { Card, CardBody } from '../ui/card';
+import { Stack } from '../ui/stack';
 
 interface ExerciseGroup {
   exerciseId: string;
@@ -120,196 +125,192 @@ export const ExerciseHistoryDetailModal: React.FC<ExerciseHistoryDetailModalProp
     return `${weight} ${unit}`;
   };
 
-  if (!isOpen) return null;
+  const handleOpenChange = (open: boolean) => {
+    if (!open) {
+      onClose();
+    }
+  };
 
   return (
     <>
-      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-        <div className="bg-gray-800 rounded-lg max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+      <Sheet open={isOpen} onOpenChange={handleOpenChange}>
+        <SheetContent className="max-w-4xl mx-auto">
           {/* Header */}
-          <div className="flex items-center justify-between p-6 border-b border-gray-700">
-            <div>
-              <h2 className="text-xl font-bold text-white">
-                {exerciseGroup.exerciseName}
-              </h2>
-              <p className="text-blue-400 font-medium">
-                {exerciseGroup.configuration}
-              </p>
-            </div>
-            <button
-              onClick={onClose}
-              className="text-gray-400 hover:text-white transition-colors"
-            >
-              <X className="w-6 h-6" />
-            </button>
+          <div className="mb-4">
+            <SheetTitle className="text-title">{exerciseGroup.exerciseName}</SheetTitle>
+            <p className="text-accent font-medium">{exerciseGroup.configuration}</p>
           </div>
 
           {/* Summary Stats */}
-          <div className="p-6 border-b border-gray-700">
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <div className="text-center">
-                <div className="text-2xl font-bold text-blue-400">{exerciseGroup.timesPerformed}</div>
-                <div className="text-gray-400 text-sm">Times Performed</div>
-              </div>
-              <div className="text-center">
-                <div className="text-2xl font-bold text-green-400">{formatWeight(exerciseGroup.maxWeight)}</div>
-                <div className="text-gray-400 text-sm">Max Weight</div>
-              </div>
-              <div className="text-center">
-                <div className="text-2xl font-bold text-purple-400">{exerciseGroup.totalVolume.toLocaleString()}</div>
-                <div className="text-gray-400 text-sm">Total Volume</div>
-              </div>
-              <div className="text-center">
-                <div className="text-2xl font-bold text-orange-400">{exerciseGroup.avgVolume.toLocaleString()}</div>
-                <div className="text-gray-400 text-sm">Avg Volume</div>
-              </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 pb-6 mb-6 border-b border-border">
+            <div className="text-center">
+              <div className="text-display font-bold text-accent">{exerciseGroup.timesPerformed}</div>
+              <div className="text-ink-muted text-body-sm">Times Performed</div>
+            </div>
+            <div className="text-center">
+              <div className="text-display font-bold text-success">{formatWeight(exerciseGroup.maxWeight)}</div>
+              <div className="text-ink-muted text-body-sm">Max Weight</div>
+            </div>
+            <div className="text-center">
+              <div className="text-display font-bold text-muscle-core">{exerciseGroup.totalVolume.toLocaleString()}</div>
+              <div className="text-ink-muted text-body-sm">Total Volume</div>
+            </div>
+            <div className="text-center">
+              <div className="text-display font-bold text-muscle-legs">{exerciseGroup.avgVolume.toLocaleString()}</div>
+              <div className="text-ink-muted text-body-sm">Avg Volume</div>
             </div>
           </div>
 
           {/* Content */}
-          <div className="p-6">
+          <div>
             {isLoading ? (
               <div className="space-y-4">
                 {Array.from({ length: 5 }).map((_, i) => (
-                  <div key={i} className="animate-pulse bg-gray-700 h-24 rounded-lg"></div>
+                  <Skeleton key={i} className="h-24 rounded-lg" />
                 ))}
               </div>
             ) : detailedEntries.length > 0 ? (
               <div className="space-y-4">
                 <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-lg font-semibold text-gray-100">
+                  <h3 className="text-body font-semibold text-ink">
                     Performance History ({detailedEntries.length} entries)
                   </h3>
                 </div>
 
                 {detailedEntries.map((entry) => (
-                  <div key={entry.id} className="bg-gray-700 rounded-lg p-4">
-                    {/* Entry Header */}
-                    <div className="flex items-center justify-between mb-3">
-                      <div className="flex items-center gap-3">
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <Calendar className="h-4 w-4 text-gray-400" />
-                            <span className="font-medium text-white">
-                              {formatDate(entry.workoutDate)}
-                            </span>
-                            {entry.personalRecords && Object.keys(entry.personalRecords).length > 0 && (
-                              <Trophy className="h-4 w-4 text-yellow-500" aria-label="Personal Record" />
+                  <Card key={entry.id} elevation={0} className="bg-surface-subtle">
+                    <CardBody className="p-4">
+                      {/* Entry Header */}
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-3">
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <Calendar className="h-4 w-4 text-ink-subtle" />
+                              <span className="font-medium text-ink">
+                                {formatDate(entry.workoutDate)}
+                              </span>
+                              {entry.personalRecords && Object.keys(entry.personalRecords).length > 0 && (
+                                <Trophy className="h-4 w-4 text-warning" aria-label="Personal Record" />
+                              )}
+                            </div>
+                            {entry.workoutName && (
+                              <div className="text-body-sm text-ink-muted">
+                                Workout: {entry.workoutName}
+                              </div>
                             )}
                           </div>
-                          {entry.workoutName && (
-                            <div className="text-sm text-gray-400">
-                              Workout: {entry.workoutName}
-                            </div>
-                          )}
+                        </div>
+
+                        <Stack direction="row" align="center" gap={2}>
+                          <IconButton
+                            variant="ghost"
+                            size="sm"
+                            aria-label="Edit entry"
+                            onClick={() => handleEdit(entry)}
+                            className="text-accent"
+                          >
+                            <Edit className="w-4 h-4" />
+                          </IconButton>
+                          <IconButton
+                            variant="ghost"
+                            size="sm"
+                            aria-label="Delete entry"
+                            onClick={() => handleDelete(entry)}
+                            className="text-danger"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </IconButton>
+                        </Stack>
+                      </div>
+
+                      {/* Sets Information */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-3">
+                        <div>
+                          <h4 className="text-body-sm font-medium text-ink-muted mb-2">Sets & Reps</h4>
+                          <div className="space-y-1">
+                            {entry.sets.map((set, setIndex) => (
+                              <div key={setIndex} className="flex items-center justify-between text-body-sm">
+                                <span className="text-ink-subtle">Set {setIndex + 1}:</span>
+                                <span className="text-ink">
+                                  {set.actualReps} reps × {formatWeight(set.weight, set.unit)}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between text-body-sm">
+                            <span className="text-ink-subtle">Total Volume:</span>
+                            <span className="text-ink">{entry.totalVolume?.toLocaleString() ?? '0'}</span>
+                          </div>
+                          <div className="flex items-center justify-between text-body-sm">
+                            <span className="text-ink-subtle">Max Weight:</span>
+                            <span className="text-ink">
+                              {formatWeight(Math.max(...entry.sets.map(s => s.weight)), entry.sets[0]?.unit)}
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between text-body-sm">
+                            <span className="text-ink-subtle">Total Reps:</span>
+                            <span className="text-ink">
+                              {entry.sets.reduce((total, set) => total + set.actualReps, 0)}
+                            </span>
+                          </div>
                         </div>
                       </div>
 
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => handleEdit(entry)}
-                          className="p-2 text-blue-400 hover:text-blue-300 hover:bg-gray-600 rounded transition-colors"
-                          title="Edit entry"
-                        >
-                          <Edit className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => handleDelete(entry)}
-                          className="p-2 text-red-400 hover:text-red-300 hover:bg-gray-600 rounded transition-colors"
-                          title="Delete entry"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </div>
+                      {/* Notes */}
+                      {entry.notes && (
+                        <div className="mt-3 p-2 bg-surface-raised rounded text-body-sm">
+                          <span className="text-ink-subtle">Notes: </span>
+                          <span className="text-ink-muted">{entry.notes}</span>
+                        </div>
+                      )}
 
-                    {/* Sets Information */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-3">
-                      <div>
-                        <h4 className="text-sm font-medium text-gray-300 mb-2">Sets & Reps</h4>
-                        <div className="space-y-1">
-                          {entry.sets.map((set, setIndex) => (
-                            <div key={setIndex} className="flex items-center justify-between text-sm">
-                              <span className="text-gray-400">Set {setIndex + 1}:</span>
-                              <span className="text-gray-200">
-                                {set.actualReps} reps × {formatWeight(set.weight, set.unit)}
-                              </span>
-                            </div>
-                          ))}
+                      {/* Personal Records */}
+                      {entry.personalRecords && Object.keys(entry.personalRecords).length > 0 && (
+                        <div className="mt-3 p-2 bg-warning/10 border border-warning/30 rounded">
+                          <div className="flex items-center gap-2 mb-1">
+                            <Trophy className="h-4 w-4 text-warning" />
+                            <span className="text-body-sm font-medium text-warning">Personal Records</span>
+                          </div>
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-2 text-caption">
+                            {entry.personalRecords?.maxWeight && (
+                              <div className="text-warning">
+                                Weight PR: {formatWeight(entry.personalRecords.maxWeight.weight ?? 0)}
+                              </div>
+                            )}
+                            {entry.personalRecords?.maxReps && (
+                              <div className="text-accent">
+                                Reps PR: {entry.personalRecords.maxReps.reps ?? 0} reps
+                              </div>
+                            )}
+                            {entry.personalRecords?.maxVolume && (
+                              <div className="text-success">
+                                Volume PR: {entry.personalRecords.maxVolume.volume?.toLocaleString() ?? '0'}
+                              </div>
+                            )}
+                          </div>
                         </div>
-                      </div>
-
-                      <div className="space-y-2">
-                        <div className="flex items-center justify-between text-sm">
-                          <span className="text-gray-400">Total Volume:</span>
-                          <span className="text-gray-200">{entry.totalVolume?.toLocaleString() ?? '0'}</span>
-                        </div>
-                        <div className="flex items-center justify-between text-sm">
-                          <span className="text-gray-400">Max Weight:</span>
-                          <span className="text-gray-200">
-                            {formatWeight(Math.max(...entry.sets.map(s => s.weight)), entry.sets[0]?.unit)}
-                          </span>
-                        </div>
-                        <div className="flex items-center justify-between text-sm">
-                          <span className="text-gray-400">Total Reps:</span>
-                          <span className="text-gray-200">
-                            {entry.sets.reduce((total, set) => total + set.actualReps, 0)}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Notes */}
-                    {entry.notes && (
-                      <div className="mt-3 p-2 bg-gray-600 rounded text-sm">
-                        <span className="text-gray-400">Notes: </span>
-                        <span className="text-gray-300">{entry.notes}</span>
-                      </div>
-                    )}
-
-                    {/* Personal Records */}
-                    {entry.personalRecords && Object.keys(entry.personalRecords).length > 0 && (
-                      <div className="mt-3 p-2 bg-gradient-to-r from-yellow-900/20 to-orange-900/20 border border-yellow-600/30 rounded">
-                        <div className="flex items-center gap-2 mb-1">
-                          <Trophy className="h-4 w-4 text-yellow-500" />
-                          <span className="text-sm font-medium text-yellow-400">Personal Records</span>
-                        </div>
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-2 text-xs">
-                          {entry.personalRecords?.maxWeight && (
-                            <div className="text-yellow-300">
-                              Weight PR: {formatWeight(entry.personalRecords.maxWeight.weight ?? 0)}
-                            </div>
-                          )}
-                          {entry.personalRecords?.maxReps && (
-                            <div className="text-blue-300">
-                              Reps PR: {entry.personalRecords.maxReps.reps ?? 0} reps
-                            </div>
-                          )}
-                          {entry.personalRecords?.maxVolume && (
-                            <div className="text-green-300">
-                              Volume PR: {entry.personalRecords.maxVolume.volume?.toLocaleString() ?? '0'}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    )}
-                  </div>
+                      )}
+                    </CardBody>
+                  </Card>
                 ))}
               </div>
             ) : (
               <div className="text-center py-8">
-                <BarChart3 className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                <h3 className="text-lg font-medium text-gray-300 mb-2">
+                <BarChart3 className="h-12 w-12 text-ink-subtle mx-auto mb-4" />
+                <h3 className="text-body font-medium text-ink-muted mb-2">
                   No entries found
                 </h3>
-                <p className="text-gray-400">
+                <p className="text-ink-muted">
                   No performance history available for this exercise configuration.
                 </p>
               </div>
             )}
           </div>
-        </div>
-      </div>
+        </SheetContent>
+      </Sheet>
 
       {/* Edit Modal */}
       {editingEntry && (

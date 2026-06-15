@@ -4,6 +4,17 @@ import { ExerciseHistoryService } from '../../services/exerciseHistoryService';
 import { Search, Plus, Calendar, Weight, Trophy, BarChart3, TrendingUp } from 'lucide-react';
 import { ExerciseHistoryDetailModal } from './ExerciseHistoryDetailModal';
 import { Exercise } from '../../types/exercise';
+import { Card, CardBody } from '../ui/card';
+import { Button } from '../ui/button';
+import { Input } from '../ui/input';
+import { Skeleton } from '../ui/skeleton';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '../ui/select';
 
 interface AllExercisesHistoryProps {
   userId: string;
@@ -169,67 +180,67 @@ export const AllExercisesHistory: React.FC<AllExercisesHistoryProps> = ({
 
   if (isLoading) {
     return (
-      <div className="bg-gray-800 rounded-lg p-6">
-        <div className="animate-pulse space-y-4">
-          <div className="h-6 bg-gray-600 rounded w-1/3"></div>
+      <Card elevation={1} aria-busy="true">
+        <CardBody className="p-6 space-y-4">
+          <Skeleton className="h-6 w-1/3" />
           <div className="space-y-3">
             {Array.from({ length: 6 }).map((_, i) => (
-              <div key={i} className="h-20 bg-gray-600 rounded"></div>
+              <Skeleton key={i} className="h-20" />
             ))}
           </div>
-        </div>
-      </div>
+        </CardBody>
+      </Card>
     );
   }
 
   if (exerciseGroups.length === 0) {
     return (
-      <div className="bg-gray-800 rounded-lg p-6">
-        <div className="text-center py-8">
-          <BarChart3 className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-          <h3 className="text-lg font-medium text-gray-100 mb-2">
-            No Exercise History
-          </h3>
-          <p className="text-gray-400 mb-4">
-            This exercise hasn't been performed yet. Start a workout to build your history!
-          </p>
-          {onManualAddClick && (
-            <button
-              onClick={onManualAddClick}
-              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors"
-            >
-              Log Manual Exercise
-            </button>
-          )}
-        </div>
-      </div>
+      <Card elevation={1}>
+        <CardBody className="p-6">
+          <div className="text-center py-8">
+            <BarChart3 className="h-12 w-12 text-ink-subtle mx-auto mb-4" />
+            <h3 className="text-body font-medium text-ink mb-2">
+              No Exercise History
+            </h3>
+            <p className="text-ink-muted mb-4">
+              This exercise hasn't been performed yet. Start a workout to build your history!
+            </p>
+            {onManualAddClick && (
+              <Button onClick={onManualAddClick}>
+                Log Manual Exercise
+              </Button>
+            )}
+          </div>
+        </CardBody>
+      </Card>
     );
   }
 
   return (
-    <div className="bg-gray-800 rounded-lg p-6">
+    <Card elevation={1}>
+      <CardBody className="p-6">
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
-        <h3 className="text-lg font-semibold text-gray-100">
+        <h3 className="text-body font-semibold text-ink">
           Exercise Performance History
         </h3>
         <div className="flex items-center gap-4">
-          <span className="text-sm text-gray-400">
+          <span className="text-body-sm text-ink-muted">
             {exerciseGroups.length} unique exercise{exerciseGroups.length !== 1 ? 's' : ''}
           </span>
           {onManualAddClick && (
-            <button
+            <Button
+              size="sm"
               onClick={onManualAddClick}
               disabled={isLoadingExercises}
-              className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-800 disabled:opacity-50 text-white px-4 py-2 rounded-lg text-sm transition-colors"
             >
               {isLoadingExercises ? (
-                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                <div className="w-4 h-4 border-2 border-accent-fg border-t-transparent rounded-full animate-spin" />
               ) : (
                 <Plus className="h-4 w-4" />
               )}
               {isLoadingExercises ? 'Loading...' : 'Add Exercise'}
-            </button>
+            </Button>
           )}
         </div>
       </div>
@@ -238,36 +249,40 @@ export const AllExercisesHistory: React.FC<AllExercisesHistoryProps> = ({
       <div className="flex flex-col sm:flex-row gap-4 mb-6">
         {/* Search */}
         <div className="relative flex-1">
-          <Search className="h-4 w-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
-          <input
+          <Search className="h-4 w-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-ink-subtle z-10" />
+          <Input
             type="text"
             placeholder="Search exercises..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="pl-10"
           />
         </div>
 
         {/* Sort */}
         <div className="flex items-center gap-2">
-          <span className="text-sm text-gray-400">Sort by:</span>
-          <select
+          <span className="text-body-sm text-ink-muted shrink-0">Sort by:</span>
+          <Select
             value={sortBy}
-            onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
-            className="px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            onValueChange={(value) => setSortBy(value as typeof sortBy)}
           >
-            <option value="lastPerformed">Last Performed</option>
-            <option value="timesPerformed">Times Performed</option>
-            <option value="maxWeight">Max Weight</option>
-            <option value="totalVolume">Total Volume</option>
-          </select>
+            <SelectTrigger className="w-44">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="lastPerformed">Last Performed</SelectItem>
+              <SelectItem value="timesPerformed">Times Performed</SelectItem>
+              <SelectItem value="maxWeight">Max Weight</SelectItem>
+              <SelectItem value="totalVolume">Total Volume</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
       </div>
 
       {/* Results Summary */}
       {searchTerm && (
         <div className="mb-4">
-          <p className="text-sm text-gray-400">
+          <p className="text-body-sm text-ink-muted">
             Showing {filteredGroups.length} of {exerciseGroups.length} exercises
           </p>
         </div>
@@ -280,61 +295,61 @@ export const AllExercisesHistory: React.FC<AllExercisesHistoryProps> = ({
             <div
               key={group.key}
               onClick={() => handleGroupClick(group)}
-              className="bg-gray-700 rounded-lg p-4 hover:bg-gray-650 transition-colors cursor-pointer"
+              className="bg-surface-subtle rounded-md p-4 hover:bg-surface-raised transition-colors duration-snap cursor-pointer"
             >
               {/* Exercise Header */}
               <div className="flex items-start justify-between mb-3">
                 <div className="flex-1 min-w-0">
-                  <h4 className="font-medium text-white truncate">
+                  <h4 className="font-medium text-ink truncate">
                     {group.exerciseName}
                   </h4>
-                  <p className="text-sm text-blue-400 font-medium">
+                  <p className="text-body-sm text-accent font-medium">
                     {group.configuration}
                   </p>
                 </div>
                 {group.hasPersonalRecords && (
-                  <Trophy className="h-4 w-4 text-yellow-500 flex-shrink-0 ml-2" aria-label="Has Personal Records" />
+                  <Trophy className="h-4 w-4 text-warning flex-shrink-0 ml-2" aria-label="Has Personal Records" />
                 )}
               </div>
 
               {/* Stats Grid */}
-              <div className="grid grid-cols-2 gap-3 text-sm">
+              <div className="grid grid-cols-2 gap-3 text-body-sm">
                 <div className="flex items-center gap-2">
-                  <Calendar className="h-3 w-3 text-gray-400" />
+                  <Calendar className="h-3 w-3 text-ink-subtle" />
                   <div>
-                    <div className="text-gray-300">{formatDate(group.lastPerformed)}</div>
-                    <div className="text-xs text-gray-400">Last performed</div>
+                    <div className="text-ink-muted">{formatDate(group.lastPerformed)}</div>
+                    <div className="text-caption text-ink-subtle">Last performed</div>
                   </div>
                 </div>
 
                 <div className="flex items-center gap-2">
-                  <TrendingUp className="h-3 w-3 text-gray-400" />
+                  <TrendingUp className="h-3 w-3 text-ink-subtle" />
                   <div>
-                    <div className="text-gray-300">{group.timesPerformed}x</div>
-                    <div className="text-xs text-gray-400">Times performed</div>
+                    <div className="text-ink-muted">{group.timesPerformed}x</div>
+                    <div className="text-caption text-ink-subtle">Times performed</div>
                   </div>
                 </div>
 
                 <div className="flex items-center gap-2">
-                  <Weight className="h-3 w-3 text-gray-400" />
+                  <Weight className="h-3 w-3 text-ink-subtle" />
                   <div>
-                    <div className="text-gray-300">{formatWeight(group.maxWeight)}</div>
-                    <div className="text-xs text-gray-400">Max weight</div>
+                    <div className="text-ink-muted">{formatWeight(group.maxWeight)}</div>
+                    <div className="text-caption text-ink-subtle">Max weight</div>
                   </div>
                 </div>
 
                 <div className="flex items-center gap-2">
-                  <BarChart3 className="h-3 w-3 text-gray-400" />
+                  <BarChart3 className="h-3 w-3 text-ink-subtle" />
                   <div>
-                    <div className="text-gray-300">{group.totalVolume.toLocaleString()}</div>
-                    <div className="text-xs text-gray-400">Total volume</div>
+                    <div className="text-ink-muted">{group.totalVolume.toLocaleString()}</div>
+                    <div className="text-caption text-ink-subtle">Total volume</div>
                   </div>
                 </div>
               </div>
 
               {/* Click Hint */}
-              <div className="mt-3 pt-3 border-t border-gray-600">
-                <p className="text-xs text-gray-400 text-center">
+              <div className="mt-3 pt-3 border-t border-border">
+                <p className="text-caption text-ink-subtle text-center">
                   Click to view detailed history
                 </p>
               </div>
@@ -343,10 +358,11 @@ export const AllExercisesHistory: React.FC<AllExercisesHistoryProps> = ({
         </div>
       ) : (
         <div className="text-center py-8">
-          <Search className="h-8 w-8 text-gray-400 mx-auto mb-2" />
-          <p className="text-gray-400">No exercises found matching "{searchTerm}"</p>
+          <Search className="h-8 w-8 text-ink-subtle mx-auto mb-2" />
+          <p className="text-ink-muted">No exercises found matching "{searchTerm}"</p>
         </div>
       )}
+      </CardBody>
 
       {/* Exercise Detail Modal */}
       {selectedGroup && (
@@ -362,6 +378,6 @@ export const AllExercisesHistory: React.FC<AllExercisesHistoryProps> = ({
           exercises={exercises}
         />
       )}
-    </div>
+    </Card>
   );
 };

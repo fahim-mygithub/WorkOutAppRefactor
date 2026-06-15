@@ -8,6 +8,8 @@ import { useWorkoutCalendar } from '../hooks/useWorkoutCalendar';
 import { useWorkoutStats } from '../hooks/useWorkoutStats';
 import { useHighlights } from '../hooks/useHighlights';
 import type { WorkoutCalendarDay } from '../utils/statsCalculator';
+import { Card, CardBody } from '../components/ui/card';
+import { Button } from '../components/ui/button';
 
 export default function HomePage() {
   const [selectedDay, setSelectedDay] = useState<WorkoutCalendarDay | null>(null);
@@ -50,20 +52,19 @@ export default function HomePage() {
   if (calendarError || statsError || highlightsError) {
     return (
       <div className="container mx-auto px-4 py-8">
-        <div className="bg-destructive/10 border border-destructive/20 rounded-xl p-6 text-center">
-          <h2 className="text-xl font-semibold text-destructive mb-2">
-            Unable to load dashboard
-          </h2>
-          <p className="text-muted-foreground mb-4">
-            {calendarError || statsError || highlightsError || 'An unexpected error occurred'}
-          </p>
-          <button
-            onClick={() => window.location.reload()}
-            className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90"
-          >
-            Retry
-          </button>
-        </div>
+        <Card className="border border-danger/20 bg-danger/10 text-center">
+          <CardBody className="p-6 pt-6">
+            <h2 className="mb-2 text-title font-semibold text-danger">
+              Unable to load dashboard
+            </h2>
+            <p className="mb-4 text-body-sm text-ink-muted">
+              {calendarError || statsError || highlightsError || 'An unexpected error occurred'}
+            </p>
+            <Button variant="primary" onClick={() => window.location.reload()}>
+              Retry
+            </Button>
+          </CardBody>
+        </Card>
       </div>
     );
   }

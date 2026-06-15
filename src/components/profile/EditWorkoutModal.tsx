@@ -1,7 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { WorkoutSummary } from '../../types/exerciseHistory';
 import { ExerciseHistoryService } from '../../services/exerciseHistoryService';
-import { X, Save, Calendar, Clock, Edit } from 'lucide-react';
+import { Save, Calendar, Clock, Edit } from 'lucide-react';
+import { Sheet, SheetContent, SheetTitle } from '../ui/sheet';
+import { Button } from '../ui/button';
+import { Input } from '../ui/input';
+import { Textarea } from '../ui/textarea';
+import { Label } from '../ui/label';
+import { Stack } from '../ui/stack';
+import { Card, CardBody } from '../ui/card';
 
 interface EditWorkoutModalProps {
   isOpen: boolean;
@@ -121,8 +128,8 @@ export const EditWorkoutModal: React.FC<EditWorkoutModalProps> = ({
     }
   };
 
-  const handleClose = () => {
-    if (!isLoading) {
+  const handleOpenChange = (open: boolean) => {
+    if (!open && !isLoading) {
       onClose();
     }
   };
@@ -136,139 +143,130 @@ export const EditWorkoutModal: React.FC<EditWorkoutModalProps> = ({
     return `${mins}m`;
   };
 
-  if (!isOpen) return null;
-
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-gray-800 rounded-lg max-w-lg w-full">
+    <Sheet open={isOpen} onOpenChange={handleOpenChange}>
+      <SheetContent className="max-w-lg mx-auto">
         {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-gray-700">
-          <div className="flex items-center gap-2">
-            <Edit className="w-5 h-5 text-blue-400" />
-            <h2 className="text-xl font-bold text-white">Edit Workout</h2>
-          </div>
-          <button
-            onClick={handleClose}
-            disabled={isLoading}
-            className="text-gray-400 hover:text-white transition-colors disabled:opacity-50"
-          >
-            <X className="w-6 h-6" />
-          </button>
-        </div>
+        <Stack direction="row" align="center" gap={2} className="mb-4">
+          <Edit className="w-5 h-5 text-accent" />
+          <SheetTitle className="text-title">Edit Workout</SheetTitle>
+        </Stack>
 
         {/* Content */}
-        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-4">
           {/* Workout Name */}
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-2">
-              Workout Name *
-            </label>
-            <input
+          <Stack gap={2}>
+            <Label htmlFor="edit-workout-name" required>
+              Workout Name
+            </Label>
+            <Input
+              id="edit-workout-name"
               type="text"
               value={workoutName}
               onChange={(e) => setWorkoutName(e.target.value)}
               placeholder="Enter workout name"
-              className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
               required
             />
-          </div>
+          </Stack>
 
           {/* Start Time */}
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-2">
-              <Calendar className="w-4 h-4 inline mr-1" />
+          <Stack gap={2}>
+            <Label htmlFor="edit-start-time">
+              <Calendar className="w-4 h-4" />
               Start Time
-            </label>
-            <input
+            </Label>
+            <Input
+              id="edit-start-time"
               type="datetime-local"
               value={startTime}
               onChange={(e) => setStartTime(e.target.value)}
-              className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
-          </div>
+          </Stack>
 
           {/* End Time */}
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-2">
-              <Calendar className="w-4 h-4 inline mr-1" />
+          <Stack gap={2}>
+            <Label htmlFor="edit-end-time">
+              <Calendar className="w-4 h-4" />
               End Time
-            </label>
-            <input
+            </Label>
+            <Input
+              id="edit-end-time"
               type="datetime-local"
               value={endTime}
               onChange={(e) => setEndTime(e.target.value)}
-              className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
-          </div>
+          </Stack>
 
           {/* Duration Display */}
           {startTime && endTime && (
-            <div className="p-3 bg-gray-700 rounded-lg">
-              <div className="flex items-center gap-2 text-sm text-gray-300">
-                <Clock className="w-4 h-4" />
-                <span>Duration: {formatDuration(calculateDuration())}</span>
-              </div>
-            </div>
+            <Card elevation={0} className="bg-surface-subtle">
+              <CardBody className="p-3">
+                <Stack direction="row" align="center" gap={2} className="text-body-sm text-ink-muted">
+                  <Clock className="w-4 h-4" />
+                  <span>Duration: {formatDuration(calculateDuration())}</span>
+                </Stack>
+              </CardBody>
+            </Card>
           )}
 
           {/* Current Stats Display */}
-          <div className="p-3 bg-gray-700 rounded-lg">
-            <h4 className="text-sm font-medium text-gray-300 mb-2">Workout Stats</h4>
-            <div className="grid grid-cols-3 gap-3 text-center text-sm">
-              <div>
-                <div className="font-bold text-white">{workout.totalExercises}</div>
-                <div className="text-gray-400">Exercises</div>
+          <Card elevation={0} className="bg-surface-subtle">
+            <CardBody className="p-3">
+              <h4 className="text-body-sm font-medium text-ink-muted mb-2">Workout Stats</h4>
+              <div className="grid grid-cols-3 gap-3 text-center text-body-sm">
+                <div>
+                  <div className="font-bold text-ink">{workout.totalExercises}</div>
+                  <div className="text-ink-muted">Exercises</div>
+                </div>
+                <div>
+                  <div className="font-bold text-ink">{workout.totalSets}</div>
+                  <div className="text-ink-muted">Sets</div>
+                </div>
+                <div>
+                  <div className="font-bold text-ink">{workout.totalVolume.toLocaleString()}</div>
+                  <div className="text-ink-muted">Volume</div>
+                </div>
               </div>
-              <div>
-                <div className="font-bold text-white">{workout.totalSets}</div>
-                <div className="text-gray-400">Sets</div>
-              </div>
-              <div>
-                <div className="font-bold text-white">{workout.totalVolume.toLocaleString()}</div>
-                <div className="text-gray-400">Volume</div>
-              </div>
-            </div>
-          </div>
+            </CardBody>
+          </Card>
 
           {/* Notes */}
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-2">
-              Notes (Optional)
-            </label>
-            <textarea
+          <Stack gap={2}>
+            <Label htmlFor="edit-notes">Notes (Optional)</Label>
+            <Textarea
+              id="edit-notes"
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               placeholder="Add notes about this workout..."
               rows={3}
-              className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+              className="resize-none"
             />
-          </div>
+          </Stack>
 
           {/* Submit Button */}
-          <div className="flex justify-end gap-3 pt-4">
-            <button
+          <Stack direction="row" justify="end" gap={3} className="pt-4">
+            <Button
               type="button"
-              onClick={handleClose}
+              variant="secondary"
+              onClick={() => handleOpenChange(false)}
               disabled={isLoading}
-              className="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg transition-colors disabled:opacity-50"
             >
               Cancel
-            </button>
-            <button
+            </Button>
+            <Button
               type="submit"
               disabled={isLoading || !workoutName.trim()}
-              className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-800 disabled:opacity-50 text-white rounded-lg transition-colors"
             >
               {isLoading ? (
-                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                <div className="w-4 h-4 border-2 border-accent-fg border-t-transparent rounded-full animate-spin" />
               ) : (
                 <Save className="w-4 h-4" />
               )}
               {isLoading ? 'Saving...' : 'Save Changes'}
-            </button>
-          </div>
+            </Button>
+          </Stack>
         </form>
-      </div>
-    </div>
+      </SheetContent>
+    </Sheet>
   );
 };

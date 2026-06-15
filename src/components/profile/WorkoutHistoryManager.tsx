@@ -12,6 +12,12 @@ import {
   Filter,
   RotateCcw
 } from 'lucide-react';
+import { Button } from '../ui/button';
+import { IconButton } from '../ui/icon-button';
+import { Input } from '../ui/input';
+import { Label } from '../ui/label';
+import { Card } from '../ui/card';
+import { Stack } from '../ui/stack';
 
 interface WorkoutHistoryManagerProps {
   isOpen: boolean;
@@ -180,98 +186,98 @@ export const WorkoutHistoryManager: React.FC<WorkoutHistoryManagerProps> = ({
   const filteredWorkouts = filterWorkoutsByDateRange();
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-gray-800 rounded-lg max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+    <div className="fixed inset-0 bg-ink/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      <Card elevation={3} className="max-w-4xl w-full max-h-[90vh] overflow-y-auto">
         {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-gray-700">
-          <h2 className="text-xl font-bold text-white">Manage Workout History</h2>
-          <button
+        <div className="flex items-center justify-between p-6 border-b border-border">
+          <h2 className="text-title font-bold text-ink">Manage Workout History</h2>
+          <IconButton
+            variant="ghost"
+            aria-label="Close"
             onClick={onClose}
-            className="text-gray-400 hover:text-white transition-colors"
           >
             <X className="w-6 h-6" />
-          </button>
+          </IconButton>
         </div>
 
         {confirmationStep === 'none' ? (
           <>
             {/* Controls */}
-            <div className="p-6 border-b border-gray-700">
+            <div className="p-6 border-b border-border">
               {/* Date Range Filter */}
               <div className="mb-4">
-                <h3 className="text-sm font-medium text-gray-300 mb-2 flex items-center gap-2">
+                <h3 className="text-body-sm font-medium text-ink-muted mb-2 flex items-center gap-2">
                   <Filter className="w-4 h-4" />
                   Filter by Date Range
                 </h3>
                 <div className="flex gap-3">
-                  <div>
-                    <label className="block text-xs text-gray-400 mb-1">Start Date</label>
-                    <input
+                  <Stack gap={1}>
+                    <Label htmlFor="manager-start-date" size="sm">Start Date</Label>
+                    <Input
+                      id="manager-start-date"
                       type="date"
+                      size="sm"
                       value={startDate}
                       onChange={(e) => setStartDate(e.target.value)}
-                      className="px-3 py-2 bg-gray-700 border border-gray-600 rounded text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
-                  </div>
-                  <div>
-                    <label className="block text-xs text-gray-400 mb-1">End Date</label>
-                    <input
+                  </Stack>
+                  <Stack gap={1}>
+                    <Label htmlFor="manager-end-date" size="sm">End Date</Label>
+                    <Input
+                      id="manager-end-date"
                       type="date"
+                      size="sm"
                       value={endDate}
                       onChange={(e) => setEndDate(e.target.value)}
-                      className="px-3 py-2 bg-gray-700 border border-gray-600 rounded text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
-                  </div>
+                  </Stack>
                   <div className="flex items-end">
-                    <button
+                    <Button
+                      variant="secondary"
+                      size="sm"
                       onClick={() => {
                         setStartDate('');
                         setEndDate('');
                       }}
-                      className="px-3 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded text-sm transition-colors flex items-center gap-1"
                     >
                       <RotateCcw className="w-4 h-4" />
                       Clear
-                    </button>
+                    </Button>
                   </div>
                 </div>
               </div>
 
               {/* Action Buttons */}
               <div className="flex flex-wrap gap-3">
-                <button
-                  onClick={exportWorkouts}
-                  className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm transition-colors"
-                >
+                <Button size="sm" onClick={exportWorkouts}>
                   <Download className="w-4 h-4" />
                   Export {selectedWorkouts.size > 0 ? `Selected (${selectedWorkouts.size})` : 'All'}
-                </button>
+                </Button>
 
-                <button
+                <Button
+                  variant="danger"
+                  size="sm"
                   onClick={handleBulkDelete}
                   disabled={selectedWorkouts.size === 0}
-                  className="flex items-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-700 disabled:bg-red-800 disabled:opacity-50 text-white rounded-lg text-sm transition-colors"
                 >
                   <Trash2 className="w-4 h-4" />
                   Delete Selected ({selectedWorkouts.size})
-                </button>
+                </Button>
 
-                <button
+                <Button
+                  size="sm"
                   onClick={handleDeleteByDateRange}
                   disabled={!startDate || !endDate}
-                  className="flex items-center gap-2 px-4 py-2 bg-orange-600 hover:bg-orange-700 disabled:bg-orange-800 disabled:opacity-50 text-white rounded-lg text-sm transition-colors"
+                  className="bg-warning text-ink-inverse hover:bg-warning/90"
                 >
                   <Calendar className="w-4 h-4" />
                   Delete Date Range
-                </button>
+                </Button>
 
-                <button
-                  onClick={handleDeleteAll}
-                  className="flex items-center gap-2 px-4 py-2 bg-red-700 hover:bg-red-800 text-white rounded-lg text-sm transition-colors"
-                >
+                <Button variant="danger" size="sm" onClick={handleDeleteAll}>
                   <AlertTriangle className="w-4 h-4" />
                   Delete All History
-                </button>
+                </Button>
               </div>
             </div>
 
@@ -281,7 +287,7 @@ export const WorkoutHistoryManager: React.FC<WorkoutHistoryManagerProps> = ({
                 <div className="flex items-center gap-3">
                   <button
                     onClick={handleSelectAll}
-                    className="flex items-center gap-2 text-sm text-gray-300 hover:text-white transition-colors"
+                    className="flex items-center gap-2 text-body-sm text-ink-muted hover:text-ink transition-colors duration-snap"
                   >
                     {selectedWorkouts.size === filteredWorkouts.length ? (
                       <CheckSquare className="w-4 h-4" />
@@ -291,7 +297,7 @@ export const WorkoutHistoryManager: React.FC<WorkoutHistoryManagerProps> = ({
                     Select All
                   </button>
                 </div>
-                <div className="text-sm text-gray-400">
+                <div className="text-body-sm text-ink-muted">
                   {filteredWorkouts.length} workout{filteredWorkouts.length !== 1 ? 's' : ''} shown
                 </div>
               </div>
@@ -300,27 +306,27 @@ export const WorkoutHistoryManager: React.FC<WorkoutHistoryManagerProps> = ({
                 {filteredWorkouts.map((workout) => (
                   <div
                     key={workout.id}
-                    className={`flex items-center gap-3 p-3 rounded-lg border transition-colors cursor-pointer ${
+                    className={`flex items-center gap-3 p-3 rounded-md border transition-colors duration-snap cursor-pointer ${
                       selectedWorkouts.has(workout.id)
-                        ? 'bg-blue-900/30 border-blue-600'
-                        : 'bg-gray-700 border-gray-600 hover:bg-gray-650'
+                        ? 'bg-accent/10 border-accent'
+                        : 'bg-surface-subtle border-border hover:bg-surface-raised'
                     }`}
                     onClick={() => handleSelectWorkout(workout.id)}
                   >
                     <div className="flex-shrink-0">
                       {selectedWorkouts.has(workout.id) ? (
-                        <CheckSquare className="w-5 h-5 text-blue-400" />
+                        <CheckSquare className="w-5 h-5 text-accent" />
                       ) : (
-                        <Square className="w-5 h-5 text-gray-400" />
+                        <Square className="w-5 h-5 text-ink-subtle" />
                       )}
                     </div>
 
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between">
-                        <h4 className="font-medium text-white truncate">{workout.name}</h4>
-                        <span className="text-sm text-gray-400">{formatDate(workout.endTime)}</span>
+                        <h4 className="font-medium text-ink truncate">{workout.name}</h4>
+                        <span className="text-body-sm text-ink-muted">{formatDate(workout.endTime)}</span>
                       </div>
-                      <div className="text-sm text-gray-400">
+                      <div className="text-body-sm text-ink-muted">
                         {workout.totalExercises} exercises • {workout.totalSets} sets • {workout.totalVolume.toLocaleString()} lbs
                       </div>
                     </div>
@@ -333,8 +339,8 @@ export const WorkoutHistoryManager: React.FC<WorkoutHistoryManagerProps> = ({
           /* Confirmation Step */
           <div className="p-6">
             <div className="text-center">
-              <AlertTriangle className="w-16 h-16 text-red-500 mx-auto mb-4" />
-              <h3 className="text-lg font-bold text-white mb-4">
+              <AlertTriangle className="w-16 h-16 text-danger mx-auto mb-4" />
+              <h3 className="text-body font-bold text-ink mb-4">
                 {confirmationStep === 'bulk' && `Delete ${selectedWorkouts.size} Selected Workouts?`}
                 {confirmationStep === 'all' && 'Delete ALL Workout History?'}
                 {confirmationStep === 'range' && 'Delete Workouts in Date Range?'}
@@ -342,23 +348,23 @@ export const WorkoutHistoryManager: React.FC<WorkoutHistoryManagerProps> = ({
 
               {confirmationStep === 'all' ? (
                 <div className="mb-6">
-                  <p className="text-gray-300 mb-4">
+                  <p className="text-ink-muted mb-4">
                     This will permanently delete ALL {workouts.length} workout{workouts.length !== 1 ? 's' : ''} from your history.
                     This action cannot be undone.
                   </p>
-                  <p className="text-red-400 text-sm mb-4">
+                  <p className="text-danger text-body-sm mb-4">
                     Type "DELETE ALL WORKOUTS" to confirm:
                   </p>
-                  <input
+                  <Input
                     type="text"
                     value={confirmationText}
                     onChange={(e) => setConfirmationText(e.target.value)}
                     placeholder="DELETE ALL WORKOUTS"
-                    className="w-full max-w-md px-3 py-2 bg-gray-700 border border-gray-600 rounded text-white text-center focus:outline-none focus:ring-2 focus:ring-red-500"
+                    className="max-w-md mx-auto text-center"
                   />
                 </div>
               ) : (
-                <p className="text-gray-300 mb-6">
+                <p className="text-ink-muted mb-6">
                   {confirmationStep === 'bulk' &&
                     `This will permanently delete ${selectedWorkouts.size} selected workout${selectedWorkouts.size !== 1 ? 's' : ''}.`
                   }
@@ -370,29 +376,29 @@ export const WorkoutHistoryManager: React.FC<WorkoutHistoryManagerProps> = ({
                 </p>
               )}
 
-              <div className="flex justify-center gap-3">
-                <button
+              <Stack direction="row" justify="center" gap={3}>
+                <Button
+                  variant="secondary"
                   onClick={() => {
                     setConfirmationStep('none');
                     setConfirmationText('');
                   }}
                   disabled={isLoading}
-                  className="px-6 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg transition-colors disabled:opacity-50"
                 >
                   Cancel
-                </button>
-                <button
+                </Button>
+                <Button
+                  variant="danger"
                   onClick={() => executeDelete(confirmationStep)}
                   disabled={isLoading || (confirmationStep === 'all' && confirmationText !== 'DELETE ALL WORKOUTS')}
-                  className="px-6 py-2 bg-red-600 hover:bg-red-700 disabled:bg-red-800 disabled:opacity-50 text-white rounded-lg transition-colors"
                 >
                   {isLoading ? 'Deleting...' : 'Delete Permanently'}
-                </button>
-              </div>
+                </Button>
+              </Stack>
             </div>
           </div>
         )}
-      </div>
+      </Card>
     </div>
   );
 };

@@ -2,7 +2,17 @@ import React, { useState, useEffect } from 'react';
 import { ExerciseHistory, ExerciseStats } from '../../types/exerciseHistory';
 import { useAppDispatch, useAppSelector } from '../../store/hooks';
 import { loadExerciseHistory, loadExerciseStats } from '../../store/slices/exerciseHistorySlice';
-import { Trophy, TrendingUp, Calendar, Weight, Repeat, BarChart3, ChevronDown, ChevronUp } from 'lucide-react';
+import { Trophy, Calendar, Weight, Repeat, BarChart3, ChevronDown, ChevronUp } from 'lucide-react';
+import { Card, CardBody } from '../ui/card';
+import { Button } from '../ui/button';
+import { Skeleton } from '../ui/skeleton';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '../ui/select';
 
 interface ExerciseHistoryTableProps {
   exerciseId?: string;
@@ -66,45 +76,47 @@ export const ExerciseHistoryTable: React.FC<ExerciseHistoryTableProps> = ({
 
   if (isLoadingHistory && exerciseHistory.length === 0) {
     return (
-      <div className="bg-white dark:bg-gray-800 rounded-lg p-6 border border-gray-200 dark:border-gray-700">
-        <div className="animate-pulse space-y-4">
-          <div className="h-6 bg-gray-300 dark:bg-gray-600 rounded w-1/3"></div>
+      <Card elevation={1} aria-busy="true">
+        <CardBody className="p-6 space-y-4">
+          <Skeleton className="h-6 w-1/3" />
           <div className="space-y-3">
             {Array.from({ length: 5 }).map((_, i) => (
-              <div key={i} className="h-12 bg-gray-300 dark:bg-gray-600 rounded"></div>
+              <Skeleton key={i} className="h-12" />
             ))}
           </div>
-        </div>
-      </div>
+        </CardBody>
+      </Card>
     );
   }
 
   if (exerciseHistory.length === 0) {
     return (
-      <div className="bg-white dark:bg-gray-800 rounded-lg p-6 border border-gray-200 dark:border-gray-700">
-        <div className="text-center py-8">
-          <BarChart3 className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-          <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100 mb-2">
-            No Exercise History
-          </h3>
-          <p className="text-gray-500 dark:text-gray-400">
-            {exerciseName || 'This exercise'} hasn't been performed yet. Start a workout to build your history!
-          </p>
-        </div>
-      </div>
+      <Card elevation={1}>
+        <CardBody className="p-6">
+          <div className="text-center py-8">
+            <BarChart3 className="h-12 w-12 text-ink-subtle mx-auto mb-4" />
+            <h3 className="text-body font-medium text-ink mb-2">
+              No Exercise History
+            </h3>
+            <p className="text-ink-muted">
+              {exerciseName || 'This exercise'} hasn't been performed yet. Start a workout to build your history!
+            </p>
+          </div>
+        </CardBody>
+      </Card>
     );
   }
 
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
+    <Card elevation={1}>
       {/* Header with Stats */}
-      <div className="p-6 border-b border-gray-200 dark:border-gray-700">
+      <div className="p-6 border-b border-border">
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+          <h3 className="text-body font-semibold text-ink">
             {exerciseName || 'Exercise History'}
           </h3>
           {stats && (
-            <div className="flex items-center gap-4 text-sm text-gray-600 dark:text-gray-400">
+            <div className="flex items-center gap-4 text-body-sm text-ink-muted">
               <div className="flex items-center gap-1">
                 <Calendar className="h-4 w-4" />
                 <span>{stats.totalSessions} sessions</span>
@@ -124,46 +136,50 @@ export const ExerciseHistoryTable: React.FC<ExerciseHistoryTableProps> = ({
         {/* Configuration Filter */}
         {configurations.length > 1 && (
           <div className="flex items-center gap-2 mb-4">
-            <span className="text-sm text-gray-600 dark:text-gray-400">Filter by:</span>
-            <select
+            <span className="text-body-sm text-ink-muted shrink-0">Filter by:</span>
+            <Select
               value={selectedConfiguration}
-              onChange={(e) => setSelectedConfiguration(e.target.value)}
-              className="px-3 py-1 border border-gray-300 dark:border-gray-600 rounded-md text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+              onValueChange={(value) => setSelectedConfiguration(value)}
             >
-              <option value="all">All Configurations</option>
-              {configurations.map(config => (
-                <option key={config} value={config}>{config}</option>
-              ))}
-            </select>
+              <SelectTrigger className="w-56">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Configurations</SelectItem>
+                {configurations.map(config => (
+                  <SelectItem key={config} value={config}>{config}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
         )}
 
         {/* Stats Overview */}
         {stats && (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 p-4 bg-gray-50 dark:bg-gray-700 rounded-lg">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 p-4 bg-surface-subtle rounded-md">
             <div className="text-center">
-              <div className="text-2xl font-bold text-gray-900 dark:text-gray-100">
+              <div className="text-display font-bold text-ink">
                 {formatWeight(stats.maxWeight)}
               </div>
-              <div className="text-xs text-gray-600 dark:text-gray-400">Max Weight</div>
+              <div className="text-caption text-ink-muted">Max Weight</div>
             </div>
             <div className="text-center">
-              <div className="text-2xl font-bold text-gray-900 dark:text-gray-100">
+              <div className="text-display font-bold text-ink">
                 {stats.maxReps}
               </div>
-              <div className="text-xs text-gray-600 dark:text-gray-400">Max Reps</div>
+              <div className="text-caption text-ink-muted">Max Reps</div>
             </div>
             <div className="text-center">
-              <div className="text-2xl font-bold text-gray-900 dark:text-gray-100">
+              <div className="text-display font-bold text-ink">
                 {stats.totalVolume.toLocaleString()}
               </div>
-              <div className="text-xs text-gray-600 dark:text-gray-400">Total Volume</div>
+              <div className="text-caption text-ink-muted">Total Volume</div>
             </div>
             <div className="text-center">
-              <div className="text-2xl font-bold text-gray-900 dark:text-gray-100">
+              <div className="text-display font-bold text-ink">
                 {formatDate(stats.lastPerformed)}
               </div>
-              <div className="text-xs text-gray-600 dark:text-gray-400">Last Performed</div>
+              <div className="text-caption text-ink-muted">Last Performed</div>
             </div>
           </div>
         )}
@@ -172,29 +188,29 @@ export const ExerciseHistoryTable: React.FC<ExerciseHistoryTableProps> = ({
       {/* History Table */}
       <div className="overflow-x-auto">
         <table className="w-full">
-          <thead className="bg-gray-50 dark:bg-gray-700">
+          <thead className="bg-surface-subtle">
             <tr>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+              <th className="px-6 py-3 text-left text-caption font-medium text-ink-subtle uppercase tracking-wider">
                 Date
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+              <th className="px-6 py-3 text-left text-caption font-medium text-ink-subtle uppercase tracking-wider">
                 Workout
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+              <th className="px-6 py-3 text-left text-caption font-medium text-ink-subtle uppercase tracking-wider">
                 Sets × Reps
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+              <th className="px-6 py-3 text-left text-caption font-medium text-ink-subtle uppercase tracking-wider">
                 Weight Range
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+              <th className="px-6 py-3 text-left text-caption font-medium text-ink-subtle uppercase tracking-wider">
                 Volume
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+              <th className="px-6 py-3 text-left text-caption font-medium text-ink-subtle uppercase tracking-wider">
                 PRs
               </th>
             </tr>
           </thead>
-          <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+          <tbody className="bg-surface-raised divide-y divide-border">
             {filteredHistory.slice(0, isExpanded ? filteredHistory.length : limit).map((history) => {
               const weights = history.sets.map(s => s.weight);
               const minWeight = Math.min(...weights);
@@ -204,32 +220,32 @@ export const ExerciseHistoryTable: React.FC<ExerciseHistoryTableProps> = ({
                 : `${formatWeight(minWeight, history.sets[0]?.unit)} - ${formatWeight(maxWeight, history.sets[0]?.unit)}`;
 
               return (
-                <tr key={history.id} className="hover:bg-gray-50 dark:hover:bg-gray-700">
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">
+                <tr key={history.id} className="hover:bg-surface-subtle transition-colors duration-snap">
+                  <td className="px-6 py-4 whitespace-nowrap text-body-sm text-ink">
                     {formatDate(history.workoutDate)}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 dark:text-gray-400">
+                  <td className="px-6 py-4 whitespace-nowrap text-body-sm text-ink-muted">
                     {history.workoutName || 'Quick Workout'}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-gray-100">
+                  <td className="px-6 py-4 whitespace-nowrap text-body-sm font-medium text-ink">
                     {history.configuration}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">
+                  <td className="px-6 py-4 whitespace-nowrap text-body-sm text-ink">
                     {weightRange}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">
+                  <td className="px-6 py-4 whitespace-nowrap text-body-sm text-ink">
                     {history.totalVolume.toLocaleString()}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm">
+                  <td className="px-6 py-4 whitespace-nowrap text-body-sm">
                     <div className="flex gap-1">
                       {history.personalRecords?.maxWeight && (
-                        <Trophy className="h-4 w-4 text-yellow-500" aria-label="Weight PR" />
+                        <Trophy className="h-4 w-4 text-warning" aria-label="Weight PR" />
                       )}
                       {history.personalRecords?.maxReps && (
-                        <Trophy className="h-4 w-4 text-blue-500" aria-label="Reps PR" />
+                        <Trophy className="h-4 w-4 text-accent" aria-label="Reps PR" />
                       )}
                       {history.personalRecords?.maxVolume && (
-                        <Trophy className="h-4 w-4 text-green-500" aria-label="Volume PR" />
+                        <Trophy className="h-4 w-4 text-success" aria-label="Volume PR" />
                       )}
                     </div>
                   </td>
@@ -242,10 +258,11 @@ export const ExerciseHistoryTable: React.FC<ExerciseHistoryTableProps> = ({
 
       {/* Expand/Collapse Button */}
       {filteredHistory.length > limit && (
-        <div className="p-4 border-t border-gray-200 dark:border-gray-700">
-          <button
+        <div className="p-4 border-t border-border">
+          <Button
+            variant="ghost"
             onClick={() => setIsExpanded(!isExpanded)}
-            className="w-full flex items-center justify-center gap-2 px-4 py-2 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 transition-colors"
+            className="w-full text-ink-muted"
           >
             {isExpanded ? (
               <>
@@ -258,15 +275,15 @@ export const ExerciseHistoryTable: React.FC<ExerciseHistoryTableProps> = ({
                 Show More ({filteredHistory.length - limit} more sessions)
               </>
             )}
-          </button>
+          </Button>
         </div>
       )}
 
       {isLoadingHistory && (
-        <div className="p-4 text-center text-sm text-gray-500 dark:text-gray-400">
+        <div className="p-4 text-center text-body-sm text-ink-muted">
           Loading more history...
         </div>
       )}
-    </div>
+    </Card>
   );
 };

@@ -1,7 +1,21 @@
 import React, { useState, useEffect } from 'react';
-import { X, Plus, Trash2, Save, Video, Info, Link } from 'lucide-react';
+import { Plus, Trash2, Save, Video, Info } from 'lucide-react';
 import { CustomExercise, SaveCustomExerciseData } from '../services/customExerciseService';
 import { ExerciseDifficulty } from '../types/exercise';
+import { Sheet, SheetContent, SheetTitle } from './ui/sheet';
+import { Button } from './ui/button';
+import { IconButton } from './ui/icon-button';
+import { Input } from './ui/input';
+import { Textarea } from './ui/textarea';
+import { Label } from './ui/label';
+import { Stack } from './ui/stack';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from './ui/select';
 
 interface CustomExerciseModalProps {
   isOpen: boolean;
@@ -162,243 +176,232 @@ export const CustomExerciseModal: React.FC<CustomExerciseModalProps> = ({
     setVideoUrls(newUrls.length > 0 ? newUrls : ['']);
   };
 
-  if (!isOpen) return null;
+  const handleOpenChange = (open: boolean) => {
+    if (!open && !isSubmitting) {
+      onClose();
+    }
+  };
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto">
-      <div className="flex min-h-full items-end justify-center p-4 text-center sm:items-center sm:p-0">
-        <div
-          className="fixed inset-0 bg-gray-900 bg-opacity-75 transition-opacity"
-          onClick={onClose}
-        />
+    <Sheet open={isOpen} onOpenChange={handleOpenChange}>
+      <SheetContent className="max-w-3xl mx-auto">
+        <form onSubmit={handleSubmit}>
+          {/* Header */}
+          <SheetTitle className="text-title mb-4">
+            {exercise ? 'Edit Custom Exercise' : 'Create Custom Exercise'}
+          </SheetTitle>
 
-        <div className="relative transform overflow-hidden rounded-lg bg-gray-800 text-left shadow-xl transition-all sm:my-8 sm:w-full sm:max-w-3xl">
-          <form onSubmit={handleSubmit}>
-            <div className="flex flex-col max-h-[90vh]">
-              {/* Header */}
-              <div className="flex items-center justify-between p-6 border-b border-gray-700">
-                <h3 className="text-xl font-semibold text-white">
-                  {exercise ? 'Edit Custom Exercise' : 'Create Custom Exercise'}
-                </h3>
-                <button
-                  type="button"
-                  onClick={onClose}
-                  className="p-2 text-gray-400 hover:text-white transition-colors"
-                >
-                  <X className="w-6 h-6" />
-                </button>
+          {/* Content */}
+          <div className="space-y-6">
+            {errors.general && (
+              <div className="bg-danger/10 border border-danger text-danger px-4 py-3 rounded-md">
+                {errors.general}
               </div>
+            )}
 
-              {/* Content */}
-              <div className="flex-1 overflow-y-auto p-6 space-y-6">
-                {errors.general && (
-                  <div className="bg-red-900/20 border border-red-500 text-red-400 px-4 py-3 rounded-lg">
-                    {errors.general}
-                  </div>
+            {/* Basic Info */}
+            <div className="space-y-4">
+              <h4 className="text-body font-medium text-ink flex items-center">
+                <Info className="w-5 h-5 mr-2" />
+                Basic Information
+              </h4>
+
+              <Stack gap={2}>
+                <Label htmlFor="custom-exercise-name" required>
+                  Exercise Name
+                </Label>
+                <Input
+                  id="custom-exercise-name"
+                  type="text"
+                  value={formData.name}
+                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                  aria-invalid={errors.name ? true : undefined}
+                  placeholder="e.g., Dumbbell Chest Fly"
+                />
+                {errors.name && (
+                  <p className="text-body-sm text-danger">{errors.name}</p>
                 )}
+              </Stack>
 
-                {/* Basic Info */}
-                <div className="space-y-4">
-                  <h4 className="text-lg font-medium text-white flex items-center">
-                    <Info className="w-5 h-5 mr-2" />
-                    Basic Information
-                  </h4>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">
-                      Exercise Name *
-                    </label>
-                    <input
-                      type="text"
-                      value={formData.name}
-                      onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                      className={`w-full p-3 bg-gray-700 border ${
-                        errors.name ? 'border-red-500' : 'border-gray-600'
-                      } rounded-lg text-white focus:ring-2 focus:ring-blue-500`}
-                      placeholder="e.g., Dumbbell Chest Fly"
-                    />
-                    {errors.name && (
-                      <p className="mt-1 text-sm text-red-400">{errors.name}</p>
-                    )}
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-300 mb-2">
-                        Muscle Group *
-                      </label>
-                      <select
-                        value={formData.muscleGroup}
-                        onChange={(e) => setFormData({ ...formData, muscleGroup: e.target.value })}
-                        className={`w-full p-3 bg-gray-700 border ${
-                          errors.muscleGroup ? 'border-red-500' : 'border-gray-600'
-                        } rounded-lg text-white focus:ring-2 focus:ring-blue-500`}
-                      >
-                        {muscleGroups.map(group => (
-                          <option key={group} value={group}>{group}</option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-medium text-gray-300 mb-2">
-                        Equipment *
-                      </label>
-                      <select
-                        value={formData.equipment}
-                        onChange={(e) => setFormData({ ...formData, equipment: e.target.value })}
-                        className={`w-full p-3 bg-gray-700 border ${
-                          errors.equipment ? 'border-red-500' : 'border-gray-600'
-                        } rounded-lg text-white focus:ring-2 focus:ring-blue-500`}
-                      >
-                        {equipmentOptions.map(equip => (
-                          <option key={equip} value={equip}>{equip}</option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-medium text-gray-300 mb-2">
-                        Difficulty
-                      </label>
-                      <select
-                        value={formData.difficulty}
-                        onChange={(e) => setFormData({
-                          ...formData,
-                          difficulty: e.target.value as ExerciseDifficulty
-                        })}
-                        className="w-full p-3 bg-gray-700 border border-gray-600 rounded-lg text-white focus:ring-2 focus:ring-blue-500"
-                      >
-                        {difficultyLevels.map(level => (
-                          <option key={level} value={level}>{level}</option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Video Links */}
-                <div className="space-y-4">
-                  <h4 className="text-lg font-medium text-white flex items-center">
-                    <Video className="w-5 h-5 mr-2" />
-                    Video Links
-                  </h4>
-
-                  {videoUrls.map((url, index) => (
-                    <div key={index} className="flex gap-2">
-                      <div className="flex-1">
-                        <input
-                          type="text"
-                          value={url}
-                          onChange={(e) => handleVideoUrlChange(index, e.target.value)}
-                          className="w-full p-3 bg-gray-700 border border-gray-600 rounded-lg text-white focus:ring-2 focus:ring-blue-500"
-                          placeholder="https://example.com/video.mp4"
-                        />
-                      </div>
-                      {videoUrls.length > 1 && (
-                        <button
-                          type="button"
-                          onClick={() => removeVideoUrl(index)}
-                          className="p-3 text-red-400 hover:text-red-300 transition-colors"
-                        >
-                          <Trash2 className="w-5 h-5" />
-                        </button>
-                      )}
-                    </div>
-                  ))}
-
-                  {errors.videoUrls && (
-                    <p className="text-sm text-red-400">{errors.videoUrls}</p>
-                  )}
-
-                  <button
-                    type="button"
-                    onClick={addVideoUrl}
-                    className="flex items-center space-x-2 text-blue-400 hover:text-blue-300 transition-colors"
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <Stack gap={2}>
+                  <Label htmlFor="custom-muscle-group" required>
+                    Muscle Group
+                  </Label>
+                  <Select
+                    value={formData.muscleGroup}
+                    onValueChange={(value) => setFormData({ ...formData, muscleGroup: value })}
                   >
-                    <Plus className="w-4 h-4" />
-                    <span>Add Video Link</span>
-                  </button>
-                </div>
+                    <SelectTrigger id="custom-muscle-group">
+                      <SelectValue placeholder="Select muscle group" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {muscleGroups.map(group => (
+                        <SelectItem key={group} value={group}>{group}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </Stack>
 
-                {/* Instructions */}
-                <div className="space-y-4">
-                  <h4 className="text-lg font-medium text-white">
-                    Instructions
-                  </h4>
-
-                  {formData.instructions.map((instruction, index) => (
-                    <div key={index} className="flex gap-2">
-                      <div className="flex-1">
-                        <textarea
-                          value={instruction}
-                          onChange={(e) => handleInstructionChange(index, e.target.value)}
-                          className="w-full p-3 bg-gray-700 border border-gray-600 rounded-lg text-white focus:ring-2 focus:ring-blue-500 resize-none"
-                          rows={2}
-                          placeholder={`Step ${index + 1}...`}
-                        />
-                      </div>
-                      {formData.instructions.length > 1 && (
-                        <button
-                          type="button"
-                          onClick={() => removeInstruction(index)}
-                          className="p-3 text-red-400 hover:text-red-300 transition-colors"
-                        >
-                          <Trash2 className="w-5 h-5" />
-                        </button>
-                      )}
-                    </div>
-                  ))}
-
-                  <button
-                    type="button"
-                    onClick={addInstruction}
-                    className="flex items-center space-x-2 text-blue-400 hover:text-blue-300 transition-colors"
+                <Stack gap={2}>
+                  <Label htmlFor="custom-equipment" required>
+                    Equipment
+                  </Label>
+                  <Select
+                    value={formData.equipment}
+                    onValueChange={(value) => setFormData({ ...formData, equipment: value })}
                   >
-                    <Plus className="w-4 h-4" />
-                    <span>Add Instruction Step</span>
-                  </button>
-                </div>
+                    <SelectTrigger id="custom-equipment">
+                      <SelectValue placeholder="Select equipment" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {equipmentOptions.map(equip => (
+                        <SelectItem key={equip} value={equip}>{equip}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </Stack>
 
-                {/* Notes */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">
-                    Additional Notes
-                  </label>
-                  <textarea
-                    value={formData.notes || ''}
-                    onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                    className="w-full p-3 bg-gray-700 border border-gray-600 rounded-lg text-white focus:ring-2 focus:ring-blue-500 resize-none"
-                    rows={3}
-                    placeholder="Any additional tips or notes..."
-                  />
-                </div>
-              </div>
-
-              {/* Footer */}
-              <div className="border-t border-gray-700 px-6 py-4">
-                <div className="flex justify-end space-x-3">
-                  <button
-                    type="button"
-                    onClick={onClose}
-                    className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition duration-200"
+                <Stack gap={2}>
+                  <Label htmlFor="custom-difficulty">Difficulty</Label>
+                  <Select
+                    value={formData.difficulty}
+                    onValueChange={(value) => setFormData({
+                      ...formData,
+                      difficulty: value as ExerciseDifficulty
+                    })}
                   >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={isSubmitting}
-                    className="flex items-center space-x-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded-lg transition duration-200"
-                  >
-                    <Save className="w-4 h-4" />
-                    <span>{isSubmitting ? 'Saving...' : (exercise ? 'Update' : 'Create')}</span>
-                  </button>
-                </div>
+                    <SelectTrigger id="custom-difficulty">
+                      <SelectValue placeholder="Select difficulty" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {difficultyLevels.map(level => (
+                        <SelectItem key={level} value={level}>{level}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </Stack>
               </div>
             </div>
-          </form>
-        </div>
-      </div>
-    </div>
+
+            {/* Video Links */}
+            <div className="space-y-4">
+              <h4 className="text-body font-medium text-ink flex items-center">
+                <Video className="w-5 h-5 mr-2" />
+                Video Links
+              </h4>
+
+              {videoUrls.map((url, index) => (
+                <div key={index} className="flex gap-2">
+                  <div className="flex-1">
+                    <Input
+                      type="text"
+                      value={url}
+                      onChange={(e) => handleVideoUrlChange(index, e.target.value)}
+                      placeholder="https://example.com/video.mp4"
+                    />
+                  </div>
+                  {videoUrls.length > 1 && (
+                    <IconButton
+                      type="button"
+                      variant="ghost"
+                      aria-label={`Remove video link ${index + 1}`}
+                      onClick={() => removeVideoUrl(index)}
+                      className="text-danger"
+                    >
+                      <Trash2 className="w-5 h-5" />
+                    </IconButton>
+                  )}
+                </div>
+              ))}
+
+              {errors.videoUrls && (
+                <p className="text-body-sm text-danger">{errors.videoUrls}</p>
+              )}
+
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={addVideoUrl}
+                className="text-accent"
+              >
+                <Plus className="w-4 h-4" />
+                Add Video Link
+              </Button>
+            </div>
+
+            {/* Instructions */}
+            <div className="space-y-4">
+              <h4 className="text-body font-medium text-ink">Instructions</h4>
+
+              {formData.instructions.map((instruction, index) => (
+                <div key={index} className="flex gap-2">
+                  <div className="flex-1">
+                    <Textarea
+                      value={instruction}
+                      onChange={(e) => handleInstructionChange(index, e.target.value)}
+                      rows={2}
+                      className="resize-none"
+                      placeholder={`Step ${index + 1}...`}
+                    />
+                  </div>
+                  {formData.instructions.length > 1 && (
+                    <IconButton
+                      type="button"
+                      variant="ghost"
+                      aria-label={`Remove instruction step ${index + 1}`}
+                      onClick={() => removeInstruction(index)}
+                      className="text-danger"
+                    >
+                      <Trash2 className="w-5 h-5" />
+                    </IconButton>
+                  )}
+                </div>
+              ))}
+
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={addInstruction}
+                className="text-accent"
+              >
+                <Plus className="w-4 h-4" />
+                Add Instruction Step
+              </Button>
+            </div>
+
+            {/* Notes */}
+            <Stack gap={2}>
+              <Label htmlFor="custom-notes">Additional Notes</Label>
+              <Textarea
+                id="custom-notes"
+                value={formData.notes || ''}
+                onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                rows={3}
+                className="resize-none"
+                placeholder="Any additional tips or notes..."
+              />
+            </Stack>
+          </div>
+
+          {/* Footer */}
+          <Stack direction="row" justify="end" gap={3} className="border-t border-border mt-6 pt-4">
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => handleOpenChange(false)}
+            >
+              Cancel
+            </Button>
+            <Button type="submit" disabled={isSubmitting}>
+              <Save className="w-4 h-4" />
+              {isSubmitting ? 'Saving...' : (exercise ? 'Update' : 'Create')}
+            </Button>
+          </Stack>
+        </form>
+      </SheetContent>
+    </Sheet>
   );
 };
