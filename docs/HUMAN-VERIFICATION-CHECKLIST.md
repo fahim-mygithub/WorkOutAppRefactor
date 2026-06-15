@@ -2,8 +2,8 @@
 
 **Branch:** `feat/pwa-hardening` · **Date:** 2026-06-15
 **Design:** `docs/plans/2026-06-14-pwa-hardening-design.md`
-**Run the app:** `npx vite --port 5290 --strictPort --host 127.0.0.1` → http://127.0.0.1:5290/
-(Ports 5173–5175 are taken by another project — use 5290.)
+**Run the app:** `npx vite --port 5290 --strictPort` → **http://localhost:5290/**
+(Ports 5173–5175 are taken by another project — use 5290. Use `localhost`, NOT `127.0.0.1`: Firebase Auth only authorizes `localhost` by default, so `127.0.0.1` throws `auth/unauthorized-domain` on sign-in.)
 
 ---
 
@@ -28,7 +28,7 @@
 
 ## ⚠️ Needs human verification — sign-in required
 
-I cannot log in (credentials are yours), so the **authenticated screens below were not visually/interaction tested by me** — only their logic via the 323 automated tests. Sign in at http://127.0.0.1:5290/ and verify:
+I cannot log in (credentials are yours), so the **authenticated screens below were not visually/interaction tested by me** — only their logic via the 323 automated tests. Sign in at **http://localhost:5290/** and verify:
 
 ### Milestone 0 — the glitches you reported
 - [ ] **Bottom nav does NOT drift** while scrolling a long page (Home/Exercises). It's now a flex sibling, not `position:fixed`.
@@ -67,7 +67,7 @@ I cannot log in (credentials are yours), so the **authenticated screens below we
 
 ## ⚠️ Known limitations / follow-ups
 
-1. **A few root components still use raw colors** (RestTimer, Toast, SharedWorkout pages, video fallback components) — not yet token-migrated. In **dark mode (default) everything is correct**; in light mode these specific surfaces may show dark-on-light. Auth pages (Login/SignUp/AuthPromptBanner) **were** migrated and verified correct in both themes. Follow-up: migrate the remaining root components.
+1. ~~A few root components still use raw colors~~ **RESOLVED.** All 11 remaining root components (RestTimer, Toast, SharedWorkout pages, video/thumbnail components, AppShell, ErrorBoundary, router) were migrated to semantic tokens (commit `c9611ba`). **0 raw colors remain in `src/`** (only two skeleton-shimmer gradient stops in `animations.css`, which are CSS keyframes, not theme surfaces). Light mode is now correct app-wide; re-verify the authenticated screens in light mode after sign-in.
 2. **AI layer is scaffolded but NOT deployed.** To enable it: `cd functions && npm install`, set `ANTHROPIC_API_KEY` (Functions config/secret), `firebase deploy --only functions`. See `functions/README.md`. Until then, the on-device deterministic parser fallback works; the chat UI (`src/components/ai/AiChatSheet.tsx`) shows a graceful "backend not configured" state and is **not yet mounted** into a page (mount it on the Build page when ready).
 3. **Backgrounded rest-timer alert** intentionally not built (would require server push / FCM with iOS 16.4+/installed constraints). Scoped to foreground+resume accuracy.
 4. **Remaining 46 TS errors** are pre-existing v1 type-noise (date-vs-string, possibly-undefined, interface-extends) tracked behind the strict-paths gate — not blockers, safe to clean incrementally.
