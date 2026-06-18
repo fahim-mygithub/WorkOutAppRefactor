@@ -47,7 +47,7 @@ export const SupersetExerciseCard: React.FC<SupersetExerciseCardProps> = ({
           <div className="flex items-center gap-2 rounded-full bg-accent px-3 py-1">
             <Link2 className="h-4 w-4 text-accent-fg" />
             <span className="text-body-sm font-medium text-accent-fg">
-              Superset ({currentSupersetIndex + 1}/{exercises.length})
+              Superset (<span className="font-num font-tabular">{currentSupersetIndex + 1}/{exercises.length}</span>)
             </span>
           </div>
         </div>
@@ -106,8 +106,8 @@ export const SupersetExerciseCard: React.FC<SupersetExerciseCardProps> = ({
 
       {/* Current Set Information */}
       <div className="mb-6 rounded-lg bg-surface-subtle p-4">
-        <h3 className="mb-2 text-title font-semibold text-ink">
-          Current Set: {currentSetIndex + 1} / {currentExercise.sets.length}
+        <h3 className="mb-2 text-title font-semibold text-ink font-marker">
+          Current Set: <span className="font-num font-tabular">{currentSetIndex + 1} / {currentExercise.sets.length}</span>
         </h3>
         <p className="mb-3 text-body-sm text-ink-subtle">
           Complete this set, then switch to the next exercise in the superset
@@ -116,20 +116,20 @@ export const SupersetExerciseCard: React.FC<SupersetExerciseCardProps> = ({
         {/* Current Set Details */}
         <div className="grid grid-cols-3 gap-4 text-center">
           <div className="rounded-md bg-surface-raised p-2">
-            <p className="text-caption text-ink-subtle">Target Reps</p>
-            <p className="text-title font-bold text-ink">
+            <p className="text-caption text-ink-subtle font-marker">Target Reps</p>
+            <p className="text-title font-bold text-ink font-num font-tabular">
               {currentExercise.sets[currentSetIndex]?.reps || 0}
             </p>
           </div>
           <div className="rounded-md bg-surface-raised p-2">
-            <p className="text-caption text-ink-subtle">Weight</p>
+            <p className="text-caption text-ink-subtle font-marker">Weight</p>
             <p className="text-title font-bold text-ink">
-              {currentExercise.sets[currentSetIndex]?.weight || 0} lbs
+              <span className="font-num font-tabular">{currentExercise.sets[currentSetIndex]?.weight || 0}</span> lbs
             </p>
           </div>
           <div className="rounded-md bg-surface-raised p-2">
-            <p className="text-caption text-ink-subtle">Exercise</p>
-            <p className="text-body-sm font-bold text-ink">
+            <p className="text-caption text-ink-subtle font-marker">Exercise</p>
+            <p className="text-body-sm font-bold text-ink font-num font-tabular">
               {currentSupersetIndex + 1}/{exercises.length}
             </p>
           </div>
@@ -161,7 +161,7 @@ export const SupersetExerciseCard: React.FC<SupersetExerciseCardProps> = ({
       {/* Other Exercises in Superset Preview */}
       {otherExercises.length > 0 && (
         <div className="mb-4">
-          <h4 className="mb-3 flex items-center text-body font-semibold text-ink">
+          <h4 className="mb-3 flex items-center text-body font-semibold text-ink font-marker">
             <span className="mr-2">Next in Superset:</span>
             <div className="h-px flex-1 bg-border"></div>
           </h4>
@@ -175,12 +175,12 @@ export const SupersetExerciseCard: React.FC<SupersetExerciseCardProps> = ({
                 >
                   <div className="flex items-center gap-3">
                     <div className="flex h-8 w-8 items-center justify-center rounded-full bg-surface-raised">
-                      <span className="text-body-sm font-medium text-ink">{actualIndex + 1}</span>
+                      <span className="text-body-sm font-medium text-ink font-num font-tabular">{actualIndex + 1}</span>
                     </div>
                     <div>
                       <p className="font-medium text-ink">{exercise.exercise.name}</p>
                       <p className="text-body-sm text-ink-subtle">
-                        {exercise.sets.length} sets
+                        <span className="font-num font-tabular">{exercise.sets.length}</span> sets
                       </p>
                     </div>
                   </div>
@@ -197,9 +197,9 @@ export const SupersetExerciseCard: React.FC<SupersetExerciseCardProps> = ({
       {/* Superset Progress */}
       <div className="rounded-lg bg-surface-subtle p-3">
         <div className="mb-2 flex items-center justify-between">
-          <span className="text-body-sm text-ink-subtle">Superset Progress</span>
+          <span className="text-body-sm text-ink-subtle font-marker">Superset Progress</span>
           <span className="text-body-sm font-medium text-accent">
-            Set {currentSetIndex + 1} of {currentExercise.sets.length}
+            Set <span className="font-num font-tabular">{currentSetIndex + 1}</span> of <span className="font-num font-tabular">{currentExercise.sets.length}</span>
           </span>
         </div>
         <div className="flex gap-1">
@@ -222,11 +222,11 @@ export const SupersetExerciseCard: React.FC<SupersetExerciseCardProps> = ({
       {/* Exercise Instructions */}
       {currentExercise.exercise.instructions.length > 0 && (
         <div className="mt-4 rounded-lg bg-surface-subtle p-4">
-          <h4 className="mb-2 text-body font-semibold text-ink">Instructions</h4>
+          <h4 className="mb-2 text-body font-semibold text-ink font-marker">Instructions</h4>
           <ol className="space-y-1">
             {currentExercise.exercise.instructions.map((instruction, index) => (
               <li key={index} className="text-body-sm text-ink-muted">
-                <span className="font-medium text-accent">{index + 1}.</span> {instruction}
+                <span className="font-medium text-accent font-num font-tabular">{index + 1}.</span> {instruction}
               </li>
             ))}
           </ol>

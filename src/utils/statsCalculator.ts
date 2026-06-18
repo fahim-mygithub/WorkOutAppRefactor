@@ -100,7 +100,10 @@ export function generateCalendarData(
 
   // Add days from previous month
   if (daysFromPrevMonth > 0) {
-    const prevMonth = new Date(year, month - 1, 0);
+    // Day 0 of the current month === the last day of the previous month.
+    // (Using `month - 1` here would land two months back and mis-size the
+    // leading days by the difference, e.g. April's 30 instead of May's 31.)
+    const prevMonth = new Date(year, month, 0);
     const prevMonthDays = prevMonth.getDate();
 
     for (let i = daysFromPrevMonth - 1; i >= 0; i--) {

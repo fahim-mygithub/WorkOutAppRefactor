@@ -1,5 +1,6 @@
 import React from 'react';
 import { BottomNavigation } from './BottomNavigation';
+import { BoardFilters } from './BoardFilters';
 import { useAppViewport } from '../hooks/useAppViewport';
 import { APP_SCROLL_ID } from '../lib/scroll';
 
@@ -41,6 +42,8 @@ export const AppShell: React.FC<AppShellProps> = ({
 
   return (
     <div className="flex flex-col h-[100svh] bg-surface" style={shellStyle}>
+      {/* Global SVG filter defs (#board-roughen) for hand-drawn wobble. */}
+      <BoardFilters />
       {header && (
         <header className="shrink-0 pt-[env(safe-area-inset-top)]">
           {header}

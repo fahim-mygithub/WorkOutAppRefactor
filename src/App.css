@@ -13,8 +13,13 @@
   }
 
   body {
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    line-height: 1.6;
+    /* Default body VOICE = legible handwriting (Kalam). The whole board speaks
+       in handwriting; numbers/inputs opt back out to a crisp face via the
+       tailwind `font-num` family. Falls back to system sans until the woff2
+       swaps in (font-display: swap). */
+    font-family: 'Kalam', ui-sans-serif, system-ui, -apple-system,
+      BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    line-height: 1.5;
     color: hsl(var(--foreground));
     background: hsl(var(--background));
     touch-action: manipulation;

@@ -13,6 +13,7 @@ import {
   Timestamp
 } from 'firebase/firestore';
 import { db } from '../firebase/config';
+import { isDemo } from '../demo/demo';
 import { Exercise } from '../types/exercise';
 
 export interface CustomExercise extends Omit<Exercise, 'id'> {
@@ -88,6 +89,7 @@ export class CustomExerciseService {
 
   // Get all custom exercises for a user
   static async getUserCustomExercises(userId: string): Promise<CustomExercise[]> {
+    if (isDemo(userId)) return [];
     try {
       const q = query(
         collection(db, 'users', userId, this.COLLECTION_NAME),

@@ -108,7 +108,9 @@ export const ExerciseNotesEditor: React.FC<ExerciseNotesEditorProps> = ({
           <div className="flex items-start justify-between">
             <div className="flex-1">
               <div className="flex items-center gap-2">
-                <h2 className="text-title font-bold text-ink">{displayTitle}</h2>
+                <h2 className="font-marker text-display leading-none text-ink">
+                  {displayTitle}
+                </h2>
                 <IconButton
                   variant="ghost"
                   size="sm"
@@ -167,7 +169,7 @@ export const ExerciseNotesEditor: React.FC<ExerciseNotesEditorProps> = ({
               maxLength={500}
             />
             <div className="flex justify-end mt-1">
-              <span className="text-caption text-ink-subtle">
+              <span className="font-num font-tabular text-caption text-ink-subtle">
                 {notes.length}/500
               </span>
             </div>

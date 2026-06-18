@@ -203,8 +203,15 @@ export const ActiveExerciseCard: React.FC<ActiveExerciseCardProps> = ({
       {/* Current Set */}
       <div className="mb-6">
         <div className="mb-3 flex items-center justify-between">
-          <h3 className="text-title font-semibold text-ink">
-            Current Set: {currentSetIndex + 1} / {exercise.sets.length || 0}
+          <h3 className="font-marker text-title text-ink">
+            Current set{' '}
+            <span className="font-num font-tabular text-accent">
+              {currentSetIndex + 1}
+            </span>
+            <span className="text-ink-subtle"> / </span>
+            <span className="font-num font-tabular">
+              {exercise.sets.length || 0}
+            </span>
           </h3>
           <div className="flex gap-2">
             <IconButton
@@ -260,11 +267,15 @@ export const ActiveExerciseCard: React.FC<ActiveExerciseCardProps> = ({
       {/* Instructions */}
       {instructions.length > 0 && (
         <div className={cn('mt-6 rounded-lg bg-surface-subtle p-6')}>
-          <h3 className="mb-3 text-title font-semibold text-ink">Instructions</h3>
+          <h3 className="mb-3 font-marker text-title text-ink">
+            <span className="marker-underline">Instructions</span>
+          </h3>
           <ol className="space-y-2">
             {instructions.map((instruction, index) => (
               <li key={index} className="text-body-sm text-ink-muted">
-                <span className="font-medium text-accent">{index + 1}.</span>{' '}
+                <span className="font-num font-bold text-accent">
+                  {index + 1}.
+                </span>{' '}
                 {instruction}
               </li>
             ))}

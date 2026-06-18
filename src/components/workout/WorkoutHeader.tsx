@@ -38,44 +38,72 @@ export const WorkoutHeader: React.FC<WorkoutHeaderProps> = ({
 
   return (
     <Card elevation={1} className="mb-6 p-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-title font-bold text-ink">{name}</h1>
-          <WorkoutDurationTimer />
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          {/* Workout name in the marker hand, swiped with a hand-drawn underline */}
+          <h1 className="text-display font-marker leading-none text-ink">
+            <span className="marker-underline">{name}</span>
+          </h1>
+          <div className="mt-3">
+            <WorkoutDurationTimer />
+          </div>
         </div>
-        <Button variant="danger" onClick={onEndWorkout}>
-          End Workout
+        <Button variant="danger" size="sm" onClick={onEndWorkout}>
+          End
         </Button>
       </div>
 
       {/* Progress */}
-      <div className="mt-4">
+      <div className="mt-5">
         {/* Overall workout progress */}
         <div className="mb-3">
-          <div className="mb-1 flex justify-between text-body-sm text-ink-subtle">
-            <span>Overall Progress</span>
-            <span>{overallPercentage}%</span>
+          <div className="mb-1 flex items-end justify-between">
+            <span className="font-marker text-body-sm uppercase tracking-wide text-ink-muted">
+              Overall
+            </span>
+            <span className="font-num font-tabular text-title font-bold text-accent">
+              {overallPercentage}%
+            </span>
           </div>
-          <div className="h-3 w-full rounded-full bg-surface-subtle">
+          <div className="h-3 w-full rounded-full bg-surface-subtle sketch-border">
             <div
               className="h-3 rounded-full bg-accent transition-all duration-slow"
               style={{ width: `${overallPercentage}%` }}
             />
           </div>
           <div className="mt-1 flex justify-between text-caption text-ink-subtle">
-            <span>{overallCompletedSets} sets completed</span>
-            <span>{overallTotalSets} total sets</span>
+            <span>
+              <span className="font-num font-tabular">{overallCompletedSets}</span>{' '}
+              done
+            </span>
+            <span>
+              <span className="font-num font-tabular">{overallTotalSets}</span>{' '}
+              total sets
+            </span>
           </div>
         </div>
 
         {/* Current exercise progress */}
         <div className="mb-1 flex justify-between text-body-sm text-ink-subtle">
           <span>
-            Exercise {currentExerciseNumber} of {totalExercises}
+            Exercise{' '}
+            <span className="font-num font-tabular text-ink">
+              {currentExerciseNumber}
+            </span>{' '}
+            of{' '}
+            <span className="font-num font-tabular text-ink">
+              {totalExercises}
+            </span>
           </span>
           <span>
-            {currentExerciseCompletedSets} / {currentExerciseTotalSets} sets
-            completed
+            <span className="font-num font-tabular">
+              {currentExerciseCompletedSets}
+            </span>{' '}
+            /{' '}
+            <span className="font-num font-tabular">
+              {currentExerciseTotalSets}
+            </span>{' '}
+            sets
           </span>
         </div>
         <div className="h-2 w-full rounded-full bg-surface-subtle">

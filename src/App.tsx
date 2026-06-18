@@ -5,6 +5,7 @@ import { ErrorBoundary } from './components/ErrorBoundary';
 import { useAuthSync } from './hooks/useAuthSync';
 import './App.css';
 import './styles/animations.css';
+import './styles/board.css';
 
 function AppContent() {
   // Initialize auth sync

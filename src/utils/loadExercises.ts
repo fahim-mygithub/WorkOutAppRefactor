@@ -10,7 +10,9 @@ import { Exercise } from '../types/exercise';
  */
 export const loadExercises = async (): Promise<Exercise[]> => {
   try {
-    const response = await fetch('/exercises.json');
+    // Base-relative so it resolves under the deploy base (e.g. the GitHub Pages
+    // /WorkOutAppRefactor/ project path); BASE_URL is '/' for a root deploy.
+    const response = await fetch(`${import.meta.env.BASE_URL}exercises.json`);
     if (!response.ok) {
       throw new Error(`Failed to fetch exercises.json: ${response.status}`);
     }

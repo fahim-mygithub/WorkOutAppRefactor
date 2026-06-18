@@ -13,6 +13,7 @@ import {
   Timestamp
 } from 'firebase/firestore';
 import { db } from '../firebase/config';
+import { isDemo } from '../demo/demo';
 
 // Debug: Verify Firebase db is properly initialized
 console.log('🔍 WorkoutStorageService Firebase db check:', {
@@ -99,6 +100,7 @@ export class WorkoutStorageService {
       difficulty?: SavedWorkout['difficulty'];
     }
   ): Promise<string> {
+    if (isDemo(userId)) return 'demo-saved-workout';
     console.log('🎯 WorkoutStorageService.saveWorkout called with:', { userId, workoutName: workoutData.name });
 
     // Safety check: ensure Firebase db is available
@@ -175,6 +177,7 @@ export class WorkoutStorageService {
     userId: string,
     limitCount: number = 50
   ): Promise<SavedWorkout[]> {
+    if (isDemo(userId)) return [];
     try {
       const q = query(
         collection(db, 'users', userId, this.COLLECTION_NAME),
@@ -481,6 +484,7 @@ export class WorkoutStorageService {
     activeWorkout: ActiveWorkout,
     templateId?: string
   ): Promise<string> {
+    if (isDemo(userId)) return 'demo-completed-workout';
     try {
       const endTime = new Date();
 

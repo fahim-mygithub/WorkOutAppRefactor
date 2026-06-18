@@ -1,0 +1,32 @@
+/**
+ * Self-hosted display + handwriting faces for the whiteboard/chalkboard theme.
+ *
+ * Offline-first (PWA hardening): the fonts ship in /public/fonts as latin-subset
+ * woff2 — NO Google Fonts CDN, so a cold offline launch still renders the marker
+ * voice. `font-display: swap` paints body text immediately in the fallback and
+ * swaps when the face loads (no invisible-text flash on the live-workout screen).
+ *
+ * Voices:
+ *   - Kalam (400/700) → both the body voice AND the display/heading voice.
+ *     Headings use weight 700 via the `.font-marker`/`.font-display` rule in
+ *     board.css; body copy uses 400. (Permanent Marker was retired — it read
+ *     too heavy; its woff2 lingers in /public/fonts but is no longer loaded.)
+ * Numbers/inputs deliberately use a crisp system sans (see tailwind `font-num`),
+ * never these faces.
+ */
+
+@font-face {
+  font-family: 'Kalam';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/kalam-400.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Kalam';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('/fonts/kalam-700.woff2') format('woff2');
+}

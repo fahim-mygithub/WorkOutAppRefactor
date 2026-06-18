@@ -27,10 +27,14 @@ export const WorkoutNextActionBanner: React.FC<WorkoutNextActionBannerProps> = (
 }) => {
   if (restActive) {
     return (
-      <div className="mb-4 flex items-center gap-2 rounded-md border border-warning/40 bg-warning/15 p-3">
-        <span className="h-2 w-2 animate-pulse rounded-full bg-warning" />
-        <p className="text-body-sm font-medium text-warning">
-          Rest in progress - {formatClock(restTimeRemaining)} remaining
+      <div className="mb-4 flex items-center gap-2 rounded-md border-2 border-warning/50 bg-warning/15 p-3">
+        <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-warning" />
+        <p className="text-body-sm font-bold text-warning">
+          Resting —{' '}
+          <span className="font-num font-tabular">
+            {formatClock(restTimeRemaining)}
+          </span>{' '}
+          left
         </p>
       </div>
     );
@@ -38,20 +42,21 @@ export const WorkoutNextActionBanner: React.FC<WorkoutNextActionBannerProps> = (
 
   if (!currentSetCompleted) {
     return (
-      <div className="mb-4 flex items-center gap-2 rounded-md border border-success/40 bg-success/15 p-3">
-        <span className="h-2 w-2 animate-pulse rounded-full bg-success" />
-        <p className="text-body-sm font-medium text-success">
-          Ready to perform set {currentSetNumber}
+      <div className="mb-4 flex items-center gap-2 rounded-md border-2 border-success/50 bg-success/15 p-3">
+        <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-success" />
+        <p className="text-body-sm font-bold text-success">
+          Ready for set{' '}
+          <span className="font-num font-tabular">{currentSetNumber}</span>
         </p>
       </div>
     );
   }
 
   return (
-    <div className="mb-4 flex items-center gap-2 rounded-md border border-accent/40 bg-accent/15 p-3">
-      <span className="h-2 w-2 animate-pulse rounded-full bg-accent" />
-      <p className="text-body-sm font-medium text-accent">
-        Set completed!{' '}
+    <div className="mb-4 flex items-center gap-2 rounded-md border-2 border-accent/50 bg-accent/15 p-3">
+      <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-accent" />
+      <p className="text-body-sm font-bold text-accent">
+        Set done!{' '}
         {hasNextSet ? 'Ready for next set' : 'Ready for next exercise'}
       </p>
     </div>

@@ -1,0 +1,243 @@
+/**
+ * board.css — the skeuomorphic layer for the whiteboard / chalkboard theme.
+ *
+ * Techniques (all chosen to keep CONTENT crisp — numbers must stay glanceable):
+ *   1. Board grain: ONE fixed, pointer-events:none noise overlay over the whole
+ *      viewport (paper grain in light, chalk grain in dark). One layer, low
+ *      opacity — never per-element.
+ *   2. Hand-drawn boxes: the wobble comes from an SVG feTurbulence +
+ *      feDisplacementMap filter (#board-roughen, mounted by <BoardFilters/>)
+ *      applied to a PSEUDO-ELEMENT border only — the element's text/numbers are
+ *      never filtered, so they stay perfectly sharp while the outline waves like
+ *      a marker stroke. Irregular border-radius adds organic corners for free.
+ *   3. Marker/chalk underlines + a hand-scribbled set-complete strike.
+ *
+ * Perf / a11y: the displacement filter is STATIC (no animation). Under
+ * prefers-reduced-motion (also a good proxy for "keep it cheap") --board-filter
+ * collapses to `none`, so every drawn edge falls back to a clean rounded border.
+ */
+
+:root {
+  /* Single switch for the hand-drawn wobble. Components reference it via
+     `filter: var(--board-filter)`, so one media query disables it everywhere. */
+  --board-filter: url(#board-roughen);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --board-filter: none;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * Display typography. Headings/labels use the `font-marker` / `font-display`
+ * utilities (now Kalam, per tailwind.config). Tailwind's Preflight resets
+ * heading weight to `inherit` (= body 400), which reads too thin for a title,
+ * so pin the display voice to Kalam Bold (700). This only adds a weight to the
+ * same utility class — it never fights the font-family declaration. Clearer and
+ * lighter than the old Permanent Marker, still unmistakably chalk-handwritten.
+ * ------------------------------------------------------------------------- */
+.font-marker,
+.font-display {
+  font-weight: 700;
+}
+
+/* ---------------------------------------------------------------------------
+ * 1. Board grain — fixed full-viewport overlay, tuned per surface.
+ * The noise tile is an inline feTurbulence SVG (no network request).
+ * ------------------------------------------------------------------------- */
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 2147483646; /* above content, below nothing interactive matters */
+  pointer-events: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-size: 200px 200px;
+  /* defaults (chalkboard) — kept very faint for a clean, flat board */
+  opacity: 0.025;
+  mix-blend-mode: soft-light;
+}
+
+/* Whiteboard: barely-there multiplied paper grain (board stays bright + crisp) */
+.light body::after,
+html.light body::after {
+  opacity: 0.015;
+  mix-blend-mode: multiply;
+}
+
+/* ---------------------------------------------------------------------------
+ * 2. Hand-drawn surfaces.
+ * ------------------------------------------------------------------------- */
+
+/* The signature board panel: a wobbly marker/chalk box around a board surface. */
+.board-card {
+  position: relative;
+  background-color: hsl(var(--surface-raised));
+  /* gently uneven corners — a hint of hand-drawn, kept close to a clean radius */
+  border-radius: 14px 16px 15px 17px;
+}
+.board-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border: 2px solid hsl(var(--board-line));
+  border-radius: inherit;
+  filter: var(--board-filter);
+  pointer-events: none;
+}
+
+/* Generic wobbly outline for smaller controls (buttons, inputs, chips).
+   Inherits the element's own border-radius. Content is never filtered. */
+.sketch-border {
+  position: relative;
+}
+.sketch-border::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border: 2px solid hsl(var(--board-line));
+  border-radius: inherit;
+  filter: var(--board-filter);
+  pointer-events: none;
+}
+/* Accent-colored variant (marker/chalk-blue outline) for primary affordances. */
+.sketch-border-accent::before {
+  border-color: hsl(var(--accent));
+}
+
+/* A rough hand-drawn divider (it's a bare line, so filtering it directly is safe). */
+.board-divider {
+  height: 0;
+  border: 0;
+  border-top: 2.5px solid hsl(var(--board-line));
+  border-radius: 2px;
+  opacity: 0.55;
+  filter: var(--board-filter);
+}
+
+/* ---------------------------------------------------------------------------
+ * 3. Marker / chalk accents.
+ * ------------------------------------------------------------------------- */
+
+/* Hand-drawn underline swiped under a heading, in the marker/chalk accent. */
+.marker-underline {
+  position: relative;
+  display: inline-block;
+}
+.marker-underline::after {
+  content: '';
+  position: absolute;
+  left: -3px;
+  right: -3px;
+  bottom: -0.28em;
+  height: 0.22em;
+  background-color: hsl(var(--accent));
+  border-radius: 45% 60% 55% 50%;
+  filter: var(--board-filter);
+  opacity: 0.85;
+}
+
+/* Hand-scribbled strike for a completed set/line. Apply to the text element. */
+.chalk-strike {
+  position: relative;
+}
+.chalk-strike::after {
+  content: '';
+  position: absolute;
+  left: -2px;
+  right: -2px;
+  top: 52%;
+  height: 3px;
+  background-color: hsl(var(--ink-muted));
+  border-radius: 2px;
+  filter: var(--board-filter);
+  transform: rotate(-1.2deg);
+}
+
+/* A soft chalk/marker glow halo for the "active" element — like a freshly
+   written, still-bright stroke. Subtle; layered under the board-card border. */
+.board-active {
+  box-shadow: 0 0 0 2px hsl(var(--accent) / 0.18),
+    0 6px 22px hsl(var(--accent) / 0.12);
+}
+
+/* ---------------------------------------------------------------------------
+ * Home muscle map (MuscleWiki SVG) — re-skinned to the board palette.
+ * Muscle <g> fills are `currentColor`, so `color` drives them; the body outline
+ * group draws the muscle-separation strokes on top. Light + dark adaptive.
+ * ------------------------------------------------------------------------- */
+.muscle-map {
+  color: hsl(var(--ink) / 0.3); /* default muscle gray */
+}
+.muscle-map svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.muscle-map g.bodymap {
+  cursor: pointer;
+  transition: color 140ms ease;
+}
+.muscle-map g.bodymap:hover {
+  color: hsl(var(--danger)); /* MuscleWiki-style red on hover */
+}
+/* The body outline is decorative: never let it intercept muscle clicks, and
+   re-skin its hardcoded stroke to the board line (adapts to light/dark). */
+.muscle-map g.body-map__model {
+  pointer-events: none;
+}
+.muscle-map svg [stroke] {
+  stroke: hsl(var(--board-line));
+}
+/* MuscleWiki ships hidden joint markers — keep them hidden. */
+.muscle-map g[id].hidden {
+  display: none;
+}
+
+/* ---------------------------------------------------------------------------
+ * Build wizard — muscle MULTI-SELECT picker (BodyMusclePicker).
+ * Selected groups light up in the accent (overriding the default gray + hover),
+ * and figures are bounded by HEIGHT (not width) so the tall body always fits the
+ * no-scroll wizard body. The two-class `.muscle-picker .muscle-map svg` selector
+ * outranks the width:100% rule above, so width yields to the height bound.
+ * ------------------------------------------------------------------------- */
+.muscle-map g.bodymap.is-selected,
+.muscle-map g.bodymap.is-selected:hover {
+  color: hsl(var(--accent));
+}
+.muscle-picker .muscle-map svg {
+  width: auto;
+  height: 100%;
+  max-height: 100%;
+  max-width: 100%;
+}
+
+/* ---------------------------------------------------------------------------
+ * Build wizard — Screen 1 choice cards: a subtle staggered fade-up on load so
+ * the three options feel placed, not popped. Guarded under reduced-motion.
+ * ------------------------------------------------------------------------- */
+@keyframes choiceCardIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.choice-card-in {
+  animation: choiceCardIn 0.34s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.choice-list > .choice-card-in:nth-child(2) {
+  animation-delay: 70ms;
+}
+.choice-list > .choice-card-in:nth-child(3) {
+  animation-delay: 140ms;
+}
+@media (prefers-reduced-motion: reduce) {
+  .choice-card-in {
+    animation: none;
+  }
+}

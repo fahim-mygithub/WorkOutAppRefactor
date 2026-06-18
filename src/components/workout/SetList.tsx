@@ -23,20 +23,22 @@ export const SetList: React.FC<SetListProps> = React.memo(
     return (
       <div className="space-y-2">
         <div className="flex items-center justify-between">
-          <h4 className="font-medium text-ink">All Sets</h4>
+          <h4 className="font-marker text-title text-ink">
+            <span className="marker-underline">All sets</span>
+          </h4>
           <button
             type="button"
             onClick={onAddSet}
-            className="flex items-center gap-1 text-accent transition-colors duration-snap hover:text-accent/80"
+            className="flex items-center gap-1 font-marker tracking-wide text-accent transition-colors duration-snap hover:text-accent/80"
           >
             <Plus className="h-4 w-4" />
-            <span className="text-body-sm">Add Set</span>
+            <span className="text-body-sm">Add set</span>
           </button>
         </div>
 
-        <div className="grid grid-cols-4 gap-2 text-caption font-medium text-ink-subtle">
+        <div className="grid grid-cols-4 gap-2 font-marker text-caption uppercase tracking-wide text-ink-subtle">
           <span>Set</span>
-          <span>Previous</span>
+          <span>Prev</span>
           <span>Reps</span>
           <span>Weight</span>
         </div>
@@ -61,13 +63,19 @@ export const SetList: React.FC<SetListProps> = React.memo(
                     : 'bg-surface-subtle text-ink-muted',
               )}
             >
-              <span className="font-medium">{index + 1}</span>
-              <span className="text-caption">{previousDisplay}</span>
-              <span>{set.reps || '-'}</span>
-              <span>{set.weight ? `${set.weight} lbs` : '-'}</span>
+              <span className="font-num font-tabular font-bold">
+                {index + 1}
+              </span>
+              <span className="font-num font-tabular text-caption">
+                {previousDisplay}
+              </span>
+              <span className="font-num font-tabular">{set.reps || '-'}</span>
+              <span className="font-num font-tabular">
+                {set.weight ? `${set.weight} lbs` : '-'}
+              </span>
               {isCurrent && (
-                <div className="col-span-4 mt-1 text-center text-caption opacity-80">
-                  Current Set
+                <div className="col-span-4 mt-1 text-center font-marker text-caption opacity-90">
+                  Current set
                 </div>
               )}
             </div>

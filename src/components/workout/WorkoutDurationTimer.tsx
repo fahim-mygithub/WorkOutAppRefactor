@@ -53,8 +53,13 @@ export const WorkoutDurationTimer: React.FC = () => {
   }, [startTime, dispatch]);
 
   return (
-    <p className="text-body-sm text-ink-subtle">
-      Duration: {formatDuration(duration)}
+    <p className="flex items-baseline gap-2 text-ink-muted">
+      <span className="font-marker text-caption uppercase tracking-wide">
+        Time
+      </span>
+      <span className="font-num font-tabular text-body-sm text-ink">
+        {formatDuration(duration)}
+      </span>
     </p>
   );
 };

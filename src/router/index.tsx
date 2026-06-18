@@ -4,6 +4,7 @@ import { lazy, Suspense } from 'react';
 const HomePage = lazy(() => import('../pages/HomePage'));
 const WorkoutPage = lazy(() => import('../pages/WorkoutPage'));
 const BuildPage = lazy(() => import('../pages/BuildPage'));
+const BuildWizardPage = lazy(() => import('../pages/BuildWizardPage'));
 const ExercisesPage = lazy(() => import('../pages/ExercisesPage'));
 const ProfilePage = lazy(() => import('../pages/ProfilePage'));
 const LoginPage = lazy(() => import('../pages/LoginPage'));
@@ -57,7 +58,7 @@ export const AppRouter = () => {
   }
 
   return (
-    <BrowserRouter>
+    <BrowserRouter basename={import.meta.env.BASE_URL.replace(/\/$/, '') || '/'}>
       <Suspense fallback={<FullScreenLoader />}>
         <Routes>
           {/* Public routes - shared workouts accessible without authentication */}
@@ -105,8 +106,21 @@ export const AppRouter = () => {
               </AuthenticatedRoute>
             }
           />
+          {/* /build now opens the build WIZARD (chooser → templates / by-muscle /
+              custom). The original free-form build screen lives on at
+              /build/custom, reached from the wizard's "Custom Build" choice. */}
           <Route
             path="/build"
+            element={
+              <AuthenticatedRoute>
+                <ErrorBoundary>
+                  <BuildWizardPage />
+                </ErrorBoundary>
+              </AuthenticatedRoute>
+            }
+          />
+          <Route
+            path="/build/custom"
             element={
               <AuthenticatedRoute>
                 <ErrorBoundary>

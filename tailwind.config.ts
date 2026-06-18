@@ -82,9 +82,28 @@ const config: Config = {
         e3: '0 8px 24px hsl(var(--shadow) / 0.10)',
       },
       fontFamily: {
-        sans: ['Inter', 'system-ui', 'sans-serif'],
-        display: ['Inter Tight', 'Inter', 'system-ui', 'sans-serif'],
-        mono: ['JetBrains Mono', 'ui-monospace', 'monospace'],
+        // Default/body voice = legible handwriting (Kalam). The whole board
+        // speaks in handwriting; numbers/inputs opt back out via `font-num`.
+        sans: ['Kalam', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+        // Display / headers / labels = chalk handwriting. Kalam (bold via the
+        // `.font-marker`/`.font-display` weight rule in board.css) reads clearer
+        // and lighter than the old Permanent Marker while staying on-theme.
+        marker: ['Kalam', 'ui-sans-serif', 'cursive'],
+        display: ['Kalam', 'ui-sans-serif', 'sans-serif'],
+        // Explicit legible-handwriting body voice.
+        hand: ['Kalam', 'ui-sans-serif', 'cursive'],
+        // Crisp numeric/data face — weight/reps/timers stay glanceable mid-set.
+        // Deliberately NOT handwritten (the one skeuomorphic exception).
+        num: [
+          'ui-sans-serif',
+          'system-ui',
+          '-apple-system',
+          'BlinkMacSystemFont',
+          '"Segoe UI"',
+          'Roboto',
+          'sans-serif',
+        ],
+        mono: ['ui-monospace', 'SFMono-Regular', 'Menlo', 'monospace'],
       },
       fontSize: {
         'caption':    ['12px', { lineHeight: '1.4',  letterSpacing: '0.01em',  fontWeight: '500' }],

@@ -97,8 +97,25 @@ const exerciseSlice = createSlice({
       if (action.payload === 'all') {
         state.filteredExercises = state.exercises;
       } else {
-        state.filteredExercises = state.exercises.filter(exercise => 
+        state.filteredExercises = state.exercises.filter(exercise =>
           exercise.muscleGroup.toLowerCase() === action.payload.toLowerCase()
+        );
+      }
+    },
+
+    // Substring match against the (comma-joined) muscleGroup field only — used by
+    // the Home body map, where a single muscle name (e.g. "Chest", "Lats") must
+    // match exercises whose muscleGroup is a list like "Anterior Deltoid, Chest,
+    // Front Shoulders". Unlike filterByMuscleGroup's exact match, and narrower
+    // than searchExercises (which also scans names/instructions).
+    filterByMuscle: (state, action: PayloadAction<string>) => {
+      const term = action.payload.toLowerCase().trim();
+      state.filter.muscleGroup = action.payload;
+      if (!term || term === 'all') {
+        state.filteredExercises = state.exercises;
+      } else {
+        state.filteredExercises = state.exercises.filter(exercise =>
+          exercise.muscleGroup.toLowerCase().includes(term)
         );
       }
     },
@@ -128,6 +145,7 @@ export const {
   addToRecentlyUsed,
   searchExercises,
   filterByMuscleGroup,
+  filterByMuscle,
   setLoading,
   setError,
   clearError,

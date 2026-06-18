@@ -143,12 +143,12 @@ export const WeightProgressionSlider: React.FC<WeightProgressionSliderProps> = (
     <Card className="p-4">
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
-          <span className="text-body-sm text-ink-muted">Weight</span>
+          <span className="text-body-sm text-ink-muted font-marker">Weight</span>
           {getProgressionIcon()}
         </div>
         <div className="text-right">
-          <div className="text-title font-bold text-ink font-tabular">{recommendedWeight} lbs</div>
-          <div className={`text-caption ${
+          <div className="text-title font-bold text-ink font-num font-tabular">{recommendedWeight} lbs</div>
+          <div className={`text-caption font-num font-tabular ${
             Math.abs(weightDiff) < 0.5 ? 'text-ink-subtle' :
             weightDiff >= 0 ? 'text-success' :
             (deloadApplied || (reasoning && reasoning.toLowerCase().includes('fatigue'))) ? 'text-warning' : 'text-warning'
@@ -199,7 +199,7 @@ export const WeightProgressionSlider: React.FC<WeightProgressionSliderProps> = (
         {stopPoints.map((point, index) => (
           <span
             key={point.position}
-            className={`absolute text-caption ${
+            className={`absolute text-caption font-num font-tabular ${
               index === 0 ? 'text-warning' :
               index === 1 ? 'text-ink-subtle' :
               index === 2 ? 'text-muscle-core' :

@@ -124,11 +124,16 @@ export const SetInput: React.FC<SetInputProps> = ({
   if (set?.completed) {
     if (isEditing) {
       return (
-        <div className="rounded-lg border border-success/40 bg-success/15 p-4">
-          <p className="mb-3 font-medium text-success">Edit Completed Set</p>
+        <div className="rounded-lg border-2 border-success/50 bg-success/15 p-4">
+          <p className="mb-3 font-marker text-title text-success">
+            Edit completed set
+          </p>
           <div className="mb-4 grid grid-cols-2 gap-4">
             <div>
-              <Label htmlFor="set-edit-reps" className="mb-2 block">
+              <Label
+                htmlFor="set-edit-reps"
+                className="mb-2 block font-marker text-caption uppercase tracking-wider text-ink-muted"
+              >
                 Reps
               </Label>
               <Input
@@ -140,11 +145,15 @@ export const SetInput: React.FC<SetInputProps> = ({
                 onFocus={(e) => e.target.select()}
                 onKeyDown={handleInputKeyDown}
                 autoComplete="off"
+                className="h-16 text-center text-display"
               />
             </div>
             <div>
-              <Label htmlFor="set-edit-weight" className="mb-2 block">
-                Weight (lbs)
+              <Label
+                htmlFor="set-edit-weight"
+                className="mb-2 block font-marker text-caption uppercase tracking-wider text-ink-muted"
+              >
+                Weight <span className="normal-case text-ink-subtle">(lbs)</span>
               </Label>
               <Input
                 id="set-edit-weight"
@@ -156,6 +165,7 @@ export const SetInput: React.FC<SetInputProps> = ({
                 onFocus={(e) => e.target.select()}
                 onKeyDown={handleInputKeyDown}
                 autoComplete="off"
+                className="h-16 text-center text-display"
               />
             </div>
           </div>
@@ -174,12 +184,17 @@ export const SetInput: React.FC<SetInputProps> = ({
     }
 
     return (
-      <div className="rounded-lg border border-success/40 bg-success/15 p-4">
+      <div className="rounded-lg border-2 border-success/50 bg-success/15 p-4">
         <div className="flex items-center justify-between">
           <div>
-            <p className="font-medium text-success">Set Completed ✓</p>
-            <p className="text-body-sm text-ink-subtle">
-              {set.reps} reps × {set.weight} lbs
+            <p className="font-marker text-title text-success">Set done ✓</p>
+            <p className="text-body-sm text-ink-muted">
+              <span className="font-num font-tabular text-ink">{set.reps}</span>{' '}
+              reps ×{' '}
+              <span className="font-num font-tabular text-ink">
+                {set.weight}
+              </span>{' '}
+              lbs
             </p>
           </div>
           <div className="flex gap-2">
@@ -222,16 +237,19 @@ export const SetInput: React.FC<SetInputProps> = ({
   return (
     <div className="rounded-lg bg-surface-subtle p-4">
       {isUsingSmartDefaults() && (
-        <div className="mb-3 rounded-md border border-accent/40 bg-accent/15 p-2">
-          <p className="text-body-sm text-accent">
-            💡 Auto-filled from {getDefaultSource()}
+        <div className="mb-3 rounded-md border border-accent/40 bg-accent/10 p-2">
+          <p className="font-hand text-body-sm text-accent">
+            Auto-filled from {getDefaultSource()}
           </p>
         </div>
       )}
 
       <div className="mb-4 grid grid-cols-2 gap-4">
         <div>
-          <Label htmlFor="set-reps" className="mb-2 block">
+          <Label
+            htmlFor="set-reps"
+            className="mb-2 block font-marker text-caption uppercase tracking-wider text-ink-muted"
+          >
             Reps
           </Label>
           <Input
@@ -243,11 +261,15 @@ export const SetInput: React.FC<SetInputProps> = ({
             onFocus={(e) => e.target.select()}
             onKeyDown={handleInputKeyDown}
             autoComplete="off"
+            className="h-16 text-center text-display"
           />
         </div>
         <div>
-          <Label htmlFor="set-weight" className="mb-2 block">
-            Weight (lbs)
+          <Label
+            htmlFor="set-weight"
+            className="mb-2 block font-marker text-caption uppercase tracking-wider text-ink-muted"
+          >
+            Weight <span className="normal-case text-ink-subtle">(lbs)</span>
           </Label>
           <Input
             id="set-weight"
@@ -259,11 +281,12 @@ export const SetInput: React.FC<SetInputProps> = ({
             onFocus={(e) => e.target.select()}
             onKeyDown={handleInputKeyDown}
             autoComplete="off"
+            className="h-16 text-center text-display"
           />
         </div>
       </div>
-      <Button onClick={handleComplete} size="lg" className="w-full">
-        <Check className="h-4 w-4" />
+      <Button onClick={handleComplete} size="lg" className="w-full text-title">
+        <Check className="h-5 w-5" />
         <span>Complete Set</span>
       </Button>
     </div>

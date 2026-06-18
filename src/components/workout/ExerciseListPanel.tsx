@@ -30,7 +30,9 @@ export const ExerciseListPanel: React.FC<ExerciseListPanelProps> = React.memo(
   ({ groups, exercises, onJumpToExercise, onEditExercise }) => {
     return (
       <Card elevation={1} className="p-4">
-        <h3 className="mb-3 text-title font-semibold text-ink">Exercises</h3>
+        <h3 className="mb-3 font-marker text-title text-ink">
+          <span className="marker-underline">Exercises</span>
+        </h3>
         <div className="space-y-2">
           {groups.map((group) => {
             const exerciseIndex = group.isSuperset
@@ -57,13 +59,26 @@ export const ExerciseListPanel: React.FC<ExerciseListPanelProps> = React.memo(
                   >
                     <div className="flex items-start justify-between">
                       <div className="flex-1">
-                        <p className="font-medium">{group.name}</p>
+                        <p className="font-marker text-body leading-tight">
+                          {group.name}
+                        </p>
                         <p className="text-caption opacity-75">
-                          {group.completedSets} / {group.totalSets} sets
+                          <span className="font-num font-tabular">
+                            {group.completedSets}
+                          </span>{' '}
+                          /{' '}
+                          <span className="font-num font-tabular">
+                            {group.totalSets}
+                          </span>{' '}
+                          sets
                         </p>
                         {group.isSuperset && (
                           <p className="mt-1 text-caption opacity-60">
-                            Superset ({group.exercises.length} exercises)
+                            Superset (
+                            <span className="font-num font-tabular">
+                              {group.exercises.length}
+                            </span>{' '}
+                            exercises)
                           </p>
                         )}
                       </div>

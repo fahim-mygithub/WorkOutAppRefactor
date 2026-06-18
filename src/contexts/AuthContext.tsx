@@ -3,6 +3,7 @@ import { onAuthStateChanged, type User } from 'firebase/auth';
 import { auth } from '../firebase/config';
 import { authService, type AuthResult } from '../firebase/auth';
 import { UserProfileService } from '../services/userProfileService';
+import { DEMO_MODE, DEMO_USER } from '../demo/demo';
 
 // Serializable user data interface
 interface SerializableUser {
@@ -52,6 +53,14 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   });
 
   useEffect(() => {
+    // Demo build: inject the fake user immediately and never touch Firebase auth,
+    // so the published demo needs no login and hits no backend.
+    if (DEMO_MODE) {
+      setUser(DEMO_USER);
+      setLoading(false);
+      return;
+    }
+
     console.log('🔐 AuthContext: Setting up auth state listener');
 
     const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {

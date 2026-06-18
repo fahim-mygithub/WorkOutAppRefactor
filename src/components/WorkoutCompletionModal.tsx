@@ -137,44 +137,44 @@ export const WorkoutCompletionModal: React.FC<WorkoutCompletionModalProps> = ({
         {/* Header */}
         <div className="mb-6 text-center">
           <Trophy className="mx-auto mb-2 h-16 w-16 animate-pulse text-warning" aria-hidden="true" />
-          <SheetTitle className="text-title">Workout Complete!</SheetTitle>
+          <SheetTitle className="text-title font-marker"><span className="marker-underline">Workout Complete!</span></SheetTitle>
           <SheetDescription>
             Congratulations on finishing your workout
           </SheetDescription>
         </div>
 
         {/* Workout Summary */}
-        <h3 className="mb-4 text-body font-bold text-ink">{activeWorkout.name}</h3>
+        <h3 className="mb-4 text-body font-bold text-ink font-marker">{activeWorkout.name}</h3>
 
         <div className="mb-6 grid grid-cols-2 gap-4">
           <div className="rounded-lg bg-surface-subtle p-4 text-center">
             <Clock className="mx-auto mb-2 h-6 w-6 text-accent" aria-hidden="true" />
-            <div className="text-body-sm text-ink-subtle">Duration</div>
-            <div className="text-body font-bold text-ink">{formatTime(activeWorkout.duration)}</div>
+            <div className="text-body-sm text-ink-subtle font-marker">Duration</div>
+            <div className="text-body font-bold text-ink font-num font-tabular">{formatTime(activeWorkout.duration)}</div>
           </div>
 
           <div className="rounded-lg bg-surface-subtle p-4 text-center">
             <Target className="mx-auto mb-2 h-6 w-6 text-success" aria-hidden="true" />
-            <div className="text-body-sm text-ink-subtle">Sets Completed</div>
-            <div className="text-body font-bold text-ink">{stats.completedSets}/{stats.totalSets}</div>
+            <div className="text-body-sm text-ink-subtle font-marker">Sets Completed</div>
+            <div className="text-body font-bold text-ink font-num font-tabular">{stats.completedSets}/{stats.totalSets}</div>
           </div>
 
           <div className="rounded-lg bg-surface-subtle p-4 text-center">
             <TrendingUp className="mx-auto mb-2 h-6 w-6 text-accent" aria-hidden="true" />
-            <div className="text-body-sm text-ink-subtle">Total Reps</div>
-            <div className="text-body font-bold text-ink">{stats.totalReps.toLocaleString()}</div>
+            <div className="text-body-sm text-ink-subtle font-marker">Total Reps</div>
+            <div className="text-body font-bold text-ink font-num font-tabular">{stats.totalReps.toLocaleString()}</div>
           </div>
 
           <div className="rounded-lg bg-surface-subtle p-4 text-center">
             <Trophy className="mx-auto mb-2 h-6 w-6 text-warning" aria-hidden="true" />
-            <div className="text-body-sm text-ink-subtle">Volume</div>
-            <div className="text-body font-bold text-ink">{stats.totalVolume.toLocaleString()} lbs</div>
+            <div className="text-body-sm text-ink-subtle font-marker">Volume</div>
+            <div className="text-body font-bold text-ink"><span className="font-num font-tabular">{stats.totalVolume.toLocaleString()}</span> lbs</div>
           </div>
         </div>
 
         {/* Exercises Summary */}
         <div className="mb-6">
-          <h4 className="mb-3 text-body font-semibold text-ink">Exercises Completed</h4>
+          <h4 className="mb-3 text-body font-semibold text-ink font-marker">Exercises Completed</h4>
           <div className="max-h-32 space-y-2 overflow-y-auto">
             {activeWorkout.exercises.map((exercise) => {
               const completedSets = exercise.sets.filter(set => set.completed).length;
@@ -187,7 +187,7 @@ export const WorkoutCompletionModal: React.FC<WorkoutCompletionModalProps> = ({
                   className="rounded bg-surface-subtle p-2"
                 >
                   <span className="text-body-sm text-ink">{exercise.exercise.name}</span>
-                  <span className="text-caption text-ink-subtle">{completedSets}/{exercise.sets.length} sets</span>
+                  <span className="text-caption text-ink-subtle"><span className="font-num font-tabular">{completedSets}/{exercise.sets.length}</span> sets</span>
                 </Stack>
               );
             })}

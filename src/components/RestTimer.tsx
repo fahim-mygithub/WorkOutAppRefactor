@@ -274,9 +274,9 @@ export const RestTimer: React.FC<RestTimerProps> = ({
   }
 
   return (
-    <div className={`bg-surface-raised rounded-lg p-4 ${className}`}>
+    <div className={`board-card p-4 ${className}`}>
       <div className="flex items-center justify-between mb-4">
-        <h3 className="text-lg font-semibold text-ink">Rest Timer</h3>
+        <h3 className="font-marker text-title text-ink">Rest timer</h3>
         {restTimer.isActive && (
           <button
             onClick={handleStop}
@@ -290,20 +290,20 @@ export const RestTimer: React.FC<RestTimerProps> = ({
 
       {/* Timer Display */}
       <div className="text-center mb-4">
-        <div className={`font-mono font-bold transition-all duration-200 ${
+        <div className={`font-num font-tabular font-bold tracking-tight transition-all duration-200 ${
           restTimer.timeRemaining <= 3 && restTimer.isActive
             ? 'text-danger animate-bounce text-5xl'
             : restTimer.timeRemaining <= 10 && restTimer.isActive
             ? 'text-warning animate-pulse'
             : 'text-ink'
-        } ${compact ? 'text-2xl' : 'text-4xl'}`}>
+        } ${compact ? 'text-2xl' : 'text-5xl'}`}>
           {formatTime(restTimer.timeRemaining)}
         </div>
 
         {/* Countdown Visual Effect */}
         {restTimer.timeRemaining <= 3 && restTimer.timeRemaining > 0 && restTimer.isActive && (
-          <div className="mt-2 text-danger font-bold text-lg animate-pulse">
-            GET READY!
+          <div className="mt-2 font-marker text-danger text-title animate-pulse">
+            Get ready!
           </div>
         )}
 
@@ -329,7 +329,7 @@ export const RestTimer: React.FC<RestTimerProps> = ({
         {!restTimer.isActive ? (
           <button
             onClick={handleStart}
-            className="flex items-center space-x-2 px-4 py-2 bg-success hover:bg-success/90 text-accent-fg rounded-lg transition-colors"
+            className="sketch-border flex items-center space-x-2 px-4 py-2 bg-success hover:bg-success/90 text-ink-inverse rounded-lg font-marker tracking-wide transition-colors"
           >
             <Play className="w-4 h-4" />
             <span>Start</span>
@@ -337,7 +337,7 @@ export const RestTimer: React.FC<RestTimerProps> = ({
         ) : (
           <button
             onClick={handleStop}
-            className="flex items-center space-x-2 px-4 py-2 bg-danger hover:bg-danger/90 text-ink-inverse rounded-lg transition-colors"
+            className="sketch-border flex items-center space-x-2 px-4 py-2 bg-danger hover:bg-danger/90 text-ink-inverse rounded-lg font-marker tracking-wide transition-colors"
           >
             <Pause className="w-4 h-4" />
             <span>Stop</span>
@@ -346,7 +346,7 @@ export const RestTimer: React.FC<RestTimerProps> = ({
 
         <button
           onClick={handleReset}
-          className="flex items-center space-x-2 px-4 py-2 bg-surface-subtle hover:bg-surface-subtle/80 text-ink rounded-lg transition-colors"
+          className="sketch-border flex items-center space-x-2 px-4 py-2 bg-surface-subtle hover:bg-surface-subtle/80 text-ink rounded-lg font-marker tracking-wide transition-colors"
         >
           <RotateCcw className="w-4 h-4" />
           <span>Reset</span>
@@ -417,7 +417,7 @@ export const RestTimer: React.FC<RestTimerProps> = ({
           </div>
 
           {/* Custom Timer Section */}
-          <div className="border-t border-line pt-3">
+          <div className="border-t-2 border-border pt-3">
             {!showCustomInput ? (
               <button
                 onClick={() => setShowCustomInput(true)}
@@ -485,8 +485,8 @@ export const RestTimer: React.FC<RestTimerProps> = ({
 
       {/* Timer Complete Notification */}
       {restTimer.timeRemaining === 0 && !restTimer.isActive && restTimer.duration > 0 && (
-        <div className="mt-4 p-3 bg-success text-accent-fg text-center rounded-lg animate-pulse">
-          <p className="font-semibold">Rest Complete!</p>
+        <div className="mt-4 p-3 bg-success text-ink-inverse text-center rounded-lg animate-pulse">
+          <p className="font-marker text-title">Rest complete!</p>
           <p className="text-sm">Auto-advancing to next set...</p>
         </div>
       )}

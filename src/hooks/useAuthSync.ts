@@ -4,6 +4,8 @@ import { useAppDispatch } from '../store/hooks';
 import { setProfile, setPreferences, updateStats, resetUser } from '../store/slices/userSlice';
 import { auth } from '../firebase/config';
 import { UserProfileService } from '../services/userProfileService';
+import { DEMO_MODE } from '../demo/demo';
+import { seedDemoState } from '../demo/seed';
 
 /**
  * Hook that syncs Firebase Auth state with Redux state
@@ -13,6 +15,14 @@ export const useAuthSync = () => {
   const dispatch = useAppDispatch();
 
   useEffect(() => {
+    // Demo build: seed the in-memory profile/stats and skip the Firebase auth +
+    // Firestore profile subscription entirely (this listener is independent of
+    // AuthContext's, so it must be guarded separately).
+    if (DEMO_MODE) {
+      seedDemoState(dispatch);
+      return;
+    }
+
     let unsubscribeProfile: (() => void) | null = null;
 
     const unsubscribeAuth = onAuthStateChanged(auth, async (firebaseUser) => {

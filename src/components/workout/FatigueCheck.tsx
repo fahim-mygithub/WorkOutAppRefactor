@@ -57,19 +57,19 @@ export const FatigueCheck: React.FC<FatigueCheckProps> = ({
         {/* Header */}
         <div className="flex items-center gap-2 mb-3">
           <BatteryLow className="w-5 h-5 text-warning flex-shrink-0" />
-          <SheetTitle className="text-title">Tough Set!</SheetTitle>
+          <SheetTitle className="text-title font-marker"><span className="marker-underline">Tough Set!</span></SheetTitle>
         </div>
 
         {/* Message */}
         <div className="space-y-3">
           <p className="text-body-sm text-ink-muted">
-            Set {setNumber} of {exerciseName} was challenging. How are you feeling?
+            Set <span className="font-num font-tabular">{setNumber}</span> of {exerciseName} was challenging. How are you feeling?
           </p>
 
           <div className="bg-surface-subtle rounded-md p-3">
-            <p className="text-caption text-ink-subtle mb-2">Current: {currentWeight} lbs</p>
+            <p className="text-caption text-ink-subtle mb-2">Current: <span className="font-num font-tabular">{currentWeight}</span> lbs</p>
             <p className="text-caption text-ink-subtle">
-              If fatigued, we'll reduce to {reducedWeight} lbs (-10%) for remaining sets
+              If fatigued, we'll reduce to <span className="font-num font-tabular">{reducedWeight}</span> lbs (<span className="font-num font-tabular">-10%</span>) for remaining sets
             </p>
           </div>
 

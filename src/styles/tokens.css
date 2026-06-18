@@ -1,136 +1,149 @@
 /**
- * Design tokens — CSS custom properties for v2.
+ * Design tokens — CSS custom properties for the WHITEBOARD / CHALKBOARD theme.
  *
- * SINGLE SOURCE OF TRUTH (PWA hardening §4 blocker #1). This file owns every
- * design token, including the shadcn-style aliases (--background, --foreground,
- * --card*, --primary*, --secondary*, --muted*, --border, --input, --ring,
- * --accent-foreground) that previously lived in App.css. App.css no longer
- * defines any :root tokens, so there is exactly one place each token is set.
+ * SINGLE SOURCE OF TRUTH. This file owns every design token, including the
+ * shadcn-style aliases (--background, --foreground, --card*, --primary*,
+ * --secondary*, --muted*, --border, --input, --ring, --accent-foreground).
+ * App.css defines no :root tokens, so each token is set in exactly one place.
  *
- * DARK-FIRST. The default :root palette is DARK so an un-hydrated / cold-start
- * page paints dark immediately (no light flash before JS runs). The .light
- * block is the toggle target. ThemeProvider drives a `.dark` / `.light` class
- * on <html> from the Redux theme state; .dark mirrors :root (kept in sync with
- * tailwind's darkMode:'class') and .light overrides to the light palette.
+ * CONCEPT — "one hand, two surfaces." The handwriting (marker/chalk) is the
+ * same in both modes; only the board changes:
+ *   - .light  = dry-erase WHITEBOARD — cool off-white board, dark marker ink,
+ *               vivid dry-erase marker accent colors.
+ *   - :root/.dark = CHALKBOARD — near-black slate board, warm chalk ink (never
+ *               pure white — that is the chalk tell), colored-chalk accents.
  *
- * Authoritative values from docs/research/2026-04-23-ui-gap-analysis.md §5,
- * validated by Gate 1 visual showcase. Two deviations from the placeholder
- * spec are baked in:
- *   1. --muscle-pull is cyan (198 85% 48%), not blue — avoids accent collision.
- *   2. --ink-muted dark mode is 70% lightness, not 73% — meets WCAG AA on dark surface.
+ * DARK-FIRST. The default :root palette is the chalkboard so a cold-start page
+ * paints dark immediately (no light flash before JS runs). ThemeProvider toggles
+ * a `.dark` / `.light` class on <html>; .dark mirrors :root (kept in sync with
+ * tailwind darkMode:'class') and .light overrides to the whiteboard palette.
  *
- * --accent resolves to BRAND BLUE in both modes (dark 217 91% 65% / light
- * 217 91% 60%) and is defined ONLY here, fixing the old App.css slate override
- * that made Button/IconButton/ring-accent render gray instead of brand blue.
+ * Token-name compatibility: every name from the previous theme is preserved with
+ * the same meaning, so all components re-skin automatically. Two semantics changed
+ * on purpose:
+ *   1. --border / --input now resolve to a visible stroke (hand-drawn boxes need
+ *      visible edges) instead of the old elevation-only near-invisible border.
+ *   2. New token --board-line: the bold marker/chalk stroke used by the
+ *      hand-drawn card/panel outlines in board.css.
  *
- * Colors are stored as raw HSL triplets (e.g. "222 47% 11%") so Tailwind can
- * compose them with hsl(var(--token) / <alpha>) for per-call alpha.
+ * Muscle-group hues are dry-erase marker colors (light) / colored chalks (dark).
+ * Colors are raw HSL triplets so Tailwind composes hsl(var(--token) / <alpha>).
  *
- * Note: this file is imported standalone in main.tsx (not via App.css's
- * @tailwind chain), so we deliberately omit a `@layer base` wrapper — Tailwind
- * would error without a paired `@tailwind base`. Cascade order is preserved
- * by import order: tokens.css loads before App.css's Tailwind base.
+ * Imported standalone in main.tsx (before App.css's @tailwind chain), so no
+ * `@layer base` wrapper — cascade order is preserved by import order.
  */
 
 /* ---------------------------------------------------------------------------
- * DARK (default) — :root paints dark on cold start; .dark mirrors it so the
- * toggled class and tailwind darkMode:'class' stay consistent.
+ * CHALKBOARD (default) — :root paints dark on cold start; .dark mirrors it.
  * ------------------------------------------------------------------------- */
 :root,
 .dark {
-  /* Surface */
-  --surface:        222 47%  8%;
-  --surface-subtle: 222 47% 11%;
-  --surface-raised: 222 47% 14%;
+  /* Surface — slate chalkboard (near-black, faint cool tint, not pure black) */
+  --surface:        220 14%  9%;
+  --surface-subtle: 220 13% 12%;
+  --surface-raised: 222 13% 15%;
 
-  /* Ink */
-  --ink:         210 20% 98%;
-  --ink-muted:   217 19% 70%;  /* WCAG AA fix: 70%, not 73% */
-  --ink-subtle:  215 16% 60%;
-  --ink-inverse: 222 47%  8%;
+  /* Ink — warm chalk (never pure white) */
+  --ink:         45 25% 91%;
+  --ink-muted:   44 13% 73%;   /* AA on slate surface */
+  --ink-subtle:  40  9% 60%;
+  --ink-inverse: 220 16% 10%;  /* dark text on chalk-colored fills */
 
-  /* Accent — brand blue (single source of truth; fixes old slate override) */
-  --accent:    217 91% 65%;
-  --accent-fg:   0  0% 100%;
+  /* Accent — chalk blue (distinct from cyan pull) */
+  --accent:    205 80% 67%;
+  --accent-fg: 220 18% 12%;    /* dark ink on light chalk-blue fill */
 
-  /* Semantic state */
-  --success: 142 71% 50%;
-  --warning:  38 92% 55%;
-  --danger:    0 84% 65%;
+  /* Semantic state — colored chalk */
+  --success: 145 52% 60%;
+  --warning:  45 88% 63%;
+  --danger:    5 82% 68%;
 
-  /* Muscle groups */
-  --muscle-push:        4 90% 58%;
-  --muscle-pull:      198 85% 48%;  /* cyan — collision fix vs accent */
-  --muscle-legs:       35 91% 55%;
-  --muscle-core:      280 75% 60%;
-  --muscle-cardio:    345 85% 58%;
-  --muscle-full-body: 160 60% 45%;
-  --muscle-mobility:  200 70% 55%;
+  /* Muscle groups — colored chalks */
+  --muscle-push:        5 80% 66%;
+  --muscle-pull:      190 70% 62%;
+  --muscle-legs:       38 85% 62%;
+  --muscle-core:      270 66% 71%;
+  --muscle-cardio:    340 75% 68%;
+  --muscle-full-body: 165 52% 58%;
+  --muscle-mobility:  200 72% 66%;
 
-  /* Elevation source color */
+  /* Hand-drawn stroke (bold) for card/panel outlines + dividers */
+  --board-line: 45 20% 80%;
+
+  /* Elevation source color (kept subtle — chalkboards are flat) */
   --shadow: 0 0% 0%;
 
-  /* --- Shadcn-style aliases (absorbed from App.css; derived from v2 palette) --- */
-  --background:           222 47%  8%;   /* = --surface */
-  --foreground:           210 20% 98%;   /* = --ink */
-  --card:                 222 47% 14%;   /* = --surface-raised */
-  --card-foreground:      210 20% 98%;   /* = --ink */
-  --primary:              217 91% 65%;   /* = --accent */
-  --primary-foreground:     0  0% 100%;  /* = --accent-fg */
-  --secondary:            222 47% 11%;   /* = --surface-subtle */
-  --secondary-foreground: 210 20% 98%;   /* = --ink */
-  --accent-foreground:    210 20% 98%;   /* shadcn `accent.foreground` (muted-surface fg) */
-  --muted:                222 47% 11%;   /* = --surface-subtle */
-  --muted-foreground:     217 19% 70%;   /* = --ink-muted */
-  --border:               222 47% 14%;   /* = --surface-raised */
-  --input:                222 47% 14%;   /* = --surface-raised */
-  --ring:                 217 91% 65%;   /* = --accent (brand focus ring) */
+  /* --- Shadcn-style aliases (derived from the chalkboard palette) --- */
+  --background:           220 14%  9%;   /* = --surface */
+  --foreground:            45 25% 91%;   /* = --ink */
+  --card:                 222 13% 15%;   /* = --surface-raised */
+  --card-foreground:       45 25% 91%;   /* = --ink */
+  --primary:              205 80% 67%;   /* = --accent */
+  --primary-foreground:   220 18% 12%;   /* = --accent-fg */
+  --secondary:            220 13% 12%;   /* = --surface-subtle */
+  --secondary-foreground:  45 25% 91%;   /* = --ink */
+  --accent-foreground:     45 25% 91%;   /* shadcn accent.foreground (on muted) */
+  --muted:                220 13% 12%;   /* = --surface-subtle */
+  --muted-foreground:      44 13% 73%;   /* = --ink-muted */
+  --border:                45  8% 40%;   /* soft chalk outline for controls */
+  --input:                 45  8% 40%;   /* = --border */
+  --ring:                 205 80% 67%;   /* = --accent (chalk focus ring) */
 }
 
 /* ---------------------------------------------------------------------------
- * LIGHT (toggle target) — applied by ThemeProvider when effective mode is light.
+ * WHITEBOARD (toggle target) — applied by ThemeProvider in light mode.
  * ------------------------------------------------------------------------- */
 .light {
-  /* Surface */
-  --surface:        0 0% 100%;
-  --surface-subtle: 0 0% 98%;
-  --surface-raised: 0 0% 100%;
+  /* Surface — clean dry-erase board (cool off-white, panels = pure white) */
+  --surface:        200 24% 98%;
+  --surface-subtle: 205 20% 95%;
+  --surface-raised:   0  0% 100%;
 
-  /* Ink */
-  --ink:         222 47% 11%;
-  --ink-muted:   217 19% 35%;
-  --ink-subtle:  215 16% 47%;
+  /* Ink — dry-erase marker black (very dark gray, not pure black) */
+  --ink:         222 22% 19%;
+  --ink-muted:   220 12% 40%;
+  --ink-subtle:  220  9% 52%;
   --ink-inverse:   0  0% 100%;
 
-  /* Accent — brand blue */
-  --accent:    217 91% 60%;
+  /* Accent — dry-erase marker blue (AA with white fg) */
+  --accent:    217 84% 47%;
   --accent-fg:   0  0% 100%;
 
-  /* Semantic state */
-  --success: 142 71% 45%;
-  --warning:  38 92% 50%;
-  --danger:    0 84% 60%;
+  /* Semantic state — marker colors */
+  --success: 145 63% 35%;
+  --warning:  33 92% 44%;
+  --danger:    2 76% 50%;
 
-  /* Muscle group hues stay; only shadow flips */
+  /* Muscle groups — dry-erase marker colors */
+  --muscle-push:        2 76% 50%;
+  --muscle-pull:      190 88% 36%;
+  --muscle-legs:       28 90% 45%;
+  --muscle-core:      270 60% 52%;
+  --muscle-cardio:    330 74% 48%;
+  --muscle-full-body: 150 62% 34%;
+  --muscle-mobility:  200 84% 42%;
 
-  /* Elevation source color */
-  --shadow: 222 47% 11%;
+  /* Hand-drawn stroke (bold) — dark marker line on the white board */
+  --board-line: 222 24% 24%;
 
-  /* --- Shadcn-style aliases (light derivations) --- */
-  --background:           0 0% 100%;     /* = --surface */
-  --foreground:           222 47% 11%;   /* = --ink */
-  --card:                 0 0% 100%;     /* = --surface-raised */
-  --card-foreground:      222 47% 11%;   /* = --ink */
-  --primary:              217 91% 60%;   /* = --accent */
+  /* Elevation source color (soft tray shadow) */
+  --shadow: 220 45% 28%;
+
+  /* --- Shadcn-style aliases (whiteboard derivations) --- */
+  --background:           200 24% 98%;   /* = --surface */
+  --foreground:           222 22% 19%;   /* = --ink */
+  --card:                   0  0% 100%;  /* = --surface-raised */
+  --card-foreground:      222 22% 19%;   /* = --ink */
+  --primary:              217 84% 47%;   /* = --accent */
   --primary-foreground:     0  0% 100%;  /* = --accent-fg */
-  --secondary:            0 0% 98%;      /* = --surface-subtle */
-  --secondary-foreground: 222 47% 11%;   /* = --ink */
-  --accent-foreground:    222 47% 11%;   /* shadcn `accent.foreground` (muted-surface fg) */
-  --muted:                0 0% 98%;      /* = --surface-subtle */
-  --muted-foreground:     217 19% 35%;   /* = --ink-muted */
-  --border:               220 13% 91%;   /* subtle light border */
-  --input:                220 13% 91%;   /* subtle light input border */
-  --ring:                 217 91% 60%;   /* = --accent (brand focus ring) */
+  --secondary:            205 20% 95%;   /* = --surface-subtle */
+  --secondary-foreground: 222 22% 19%;   /* = --ink */
+  --accent-foreground:    222 22% 19%;   /* shadcn accent.foreground (on muted) */
+  --muted:                205 20% 95%;   /* = --surface-subtle */
+  --muted-foreground:     220 12% 40%;   /* = --ink-muted */
+  --border:               220 16% 78%;   /* soft marker outline for controls */
+  --input:                220 16% 78%;   /* = --border */
+  --ring:                 217 84% 47%;   /* = --accent (marker focus ring) */
 }
 
 /* Tabular numerals utility for live-workout metrics. */

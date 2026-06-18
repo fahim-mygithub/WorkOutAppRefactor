@@ -1,12 +1,10 @@
 import { useState } from 'react';
 import { WelcomeHero } from '../components/home/WelcomeHero';
 import { WorkoutCalendar } from '../components/home/WorkoutCalendar';
-import { StatsGrid } from '../components/home/StatsGrid';
-import { HighlightsCarousel } from '../components/home/HighlightsCarousel';
+import { BodyMuscleMap } from '../components/home/BodyMuscleMap';
 import { WorkoutDayModal } from '../components/home/WorkoutDayModal';
 import { useWorkoutCalendar } from '../hooks/useWorkoutCalendar';
 import { useWorkoutStats } from '../hooks/useWorkoutStats';
-import { useHighlights } from '../hooks/useHighlights';
 import type { WorkoutCalendarDay } from '../utils/statsCalculator';
 import { Card, CardBody } from '../components/ui/card';
 import { Button } from '../components/ui/button';
@@ -18,25 +16,18 @@ export default function HomePage() {
   // Fetch data using custom hooks
   const {
     calendarData,
-    currentDate,
     isLoading: isCalendarLoading,
     error: calendarError,
-    navigateMonth
+    navigateMonth,
+    goToMonth
   } = useWorkoutCalendar();
 
   const {
     weeklyStats,
-    monthlyStats,
     lastWorkoutStats,
     isLoading: isStatsLoading,
     error: statsError
   } = useWorkoutStats();
-
-  const {
-    highlights,
-    isLoading: isHighlightsLoading,
-    error: highlightsError
-  } = useHighlights();
 
   const handleDayClick = (day: WorkoutCalendarDay) => {
     setSelectedDay(day);
@@ -49,7 +40,7 @@ export default function HomePage() {
   };
 
   // Show error state if there are critical errors
-  if (calendarError || statsError || highlightsError) {
+  if (calendarError || statsError) {
     return (
       <div className="container mx-auto px-4 py-8">
         <Card className="border border-danger/20 bg-danger/10 text-center">
@@ -58,7 +49,7 @@ export default function HomePage() {
               Unable to load dashboard
             </h2>
             <p className="mb-4 text-body-sm text-ink-muted">
-              {calendarError || statsError || highlightsError || 'An unexpected error occurred'}
+              {calendarError || statsError || 'An unexpected error occurred'}
             </p>
             <Button variant="primary" onClick={() => window.location.reload()}>
               Retry
@@ -71,34 +62,31 @@ export default function HomePage() {
 
   return (
     <div className="container mx-auto px-4 py-6 max-w-6xl">
-      {/* Welcome Section */}
-      <WelcomeHero
-        lastWorkoutStats={lastWorkoutStats}
-        currentStreak={weeklyStats.streak}
-        isLoading={isStatsLoading}
-      />
+      {/* Merged module: greeting + week calendar (expandable to the full month) */}
+      <Card className="mb-6">
+        <CardBody className="space-y-5 p-6 pt-6">
+          <WelcomeHero
+            lastWorkoutStats={lastWorkoutStats}
+            currentStreak={weeklyStats.streak}
+            isLoading={isStatsLoading}
+          />
 
-      {/* Calendar Section */}
-      <WorkoutCalendar
-        calendarData={calendarData}
-        isLoading={isCalendarLoading}
-        onDayClick={handleDayClick}
-        onNavigateMonth={navigateMonth}
-      />
+          <WorkoutCalendar
+            calendarData={calendarData}
+            isLoading={isCalendarLoading}
+            onDayClick={handleDayClick}
+            onNavigateMonth={navigateMonth}
+            onResetToCurrentMonth={() => goToMonth(new Date())}
+          />
+        </CardBody>
+      </Card>
 
-      {/* Stats Grid */}
-      <StatsGrid
-        weeklyStats={weeklyStats}
-        monthlyStats={monthlyStats}
-        lastWorkoutStats={lastWorkoutStats}
-        isLoading={isStatsLoading}
-      />
-
-      {/* Highlights */}
-      <HighlightsCarousel
-        highlights={highlights}
-        isLoading={isHighlightsLoading}
-      />
+      {/* Muscle map — tap a muscle to browse its exercises */}
+      <Card className="mb-6">
+        <CardBody className="p-6 pt-6">
+          <BodyMuscleMap />
+        </CardBody>
+      </Card>
 
       {/* Day Detail Modal */}
       <WorkoutDayModal

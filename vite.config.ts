@@ -10,6 +10,11 @@ export default defineConfig(({ command, mode }) => {
   const analyze = mode === 'analyze'
 
   return {
+  // Served from a GitHub Pages PROJECT site at /WorkOutAppRefactor/. All asset
+  // URLs, the router basename, and the runtime exercises.json fetch derive from
+  // this (via import.meta.env.BASE_URL). A root deploy (custom domain / Firebase
+  // Hosting) would set this back to '/'.
+  base: '/WorkOutAppRefactor/',
   resolve: {
     alias: { '@': path.resolve(__dirname, './src') },
   },
@@ -59,7 +64,7 @@ export default defineConfig(({ command, mode }) => {
         // `json` here does not affect the web manifest. exercises.json is
         // instead fetched on demand and cached via the runtimeCaching rule below.
         globPatterns: ['**/*.{js,css,html,ico,png,svg}'],
-        navigateFallback: '/index.html',
+        navigateFallback: '/WorkOutAppRefactor/index.html',
         navigateFallbackDenylist: [/^\/api/],
         runtimeCaching: [
           {
@@ -113,12 +118,12 @@ export default defineConfig(({ command, mode }) => {
         display: 'standalone',
         icons: [
           {
-            src: '/icon-192.png',
+            src: '/WorkOutAppRefactor/icon-192.png',
             sizes: '192x192',
             type: 'image/png'
           },
           {
-            src: '/icon-512.png',
+            src: '/WorkOutAppRefactor/icon-512.png',
             sizes: '512x512',
             type: 'image/png'
           }

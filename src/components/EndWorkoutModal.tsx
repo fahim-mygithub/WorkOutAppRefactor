@@ -96,48 +96,48 @@ export const EndWorkoutModal: React.FC<EndWorkoutModalProps> = ({
       <SheetContent className="max-w-md sm:mx-auto">
         {/* Header */}
         <div className="mb-6">
-          <SheetTitle className="text-title">End Workout</SheetTitle>
+          <SheetTitle className="text-title font-marker"><span className="marker-underline">End Workout</span></SheetTitle>
           <SheetDescription>
             Choose how you'd like to finish your workout
           </SheetDescription>
         </div>
 
         {/* Workout Summary */}
-        <h3 className="mb-4 text-body font-semibold text-ink">
+        <h3 className="mb-4 text-body font-semibold text-ink font-marker">
           {activeWorkout.name}
         </h3>
 
         <div className="mb-6 grid grid-cols-2 gap-3">
           <div className="rounded-lg bg-surface-subtle p-3 text-center">
             <Clock className="mx-auto mb-1 h-5 w-5 text-accent" aria-hidden="true" />
-            <div className="text-caption text-ink-subtle">Duration</div>
-            <div className="text-body-sm font-bold text-ink">{formatTime(activeWorkout.duration)}</div>
+            <div className="text-caption text-ink-subtle font-marker">Duration</div>
+            <div className="text-body-sm font-bold text-ink font-num font-tabular">{formatTime(activeWorkout.duration)}</div>
           </div>
 
           <div className="rounded-lg bg-surface-subtle p-3 text-center">
             <Target className="mx-auto mb-1 h-5 w-5 text-success" aria-hidden="true" />
-            <div className="text-caption text-ink-subtle">Sets Complete</div>
-            <div className="text-body-sm font-bold text-ink">{stats.completedSets}/{stats.totalSets}</div>
+            <div className="text-caption text-ink-subtle font-marker">Sets Complete</div>
+            <div className="text-body-sm font-bold text-ink font-num font-tabular">{stats.completedSets}/{stats.totalSets}</div>
           </div>
 
           <div className="rounded-lg bg-surface-subtle p-3 text-center">
             <TrendingUp className="mx-auto mb-1 h-5 w-5 text-accent" aria-hidden="true" />
-            <div className="text-caption text-ink-subtle">Total Reps</div>
-            <div className="text-body-sm font-bold text-ink">{stats.totalReps.toLocaleString()}</div>
+            <div className="text-caption text-ink-subtle font-marker">Total Reps</div>
+            <div className="text-body-sm font-bold text-ink font-num font-tabular">{stats.totalReps.toLocaleString()}</div>
           </div>
 
           <div className="rounded-lg bg-surface-subtle p-3 text-center">
             <Trophy className="mx-auto mb-1 h-5 w-5 text-warning" aria-hidden="true" />
-            <div className="text-caption text-ink-subtle">Volume</div>
-            <div className="text-body-sm font-bold text-ink">{stats.totalVolume.toLocaleString()} lbs</div>
+            <div className="text-caption text-ink-subtle font-marker">Volume</div>
+            <div className="text-body-sm font-bold text-ink"><span className="font-num font-tabular">{stats.totalVolume.toLocaleString()}</span> lbs</div>
           </div>
         </div>
 
         {/* Progress Bar */}
         <div className="mb-6">
           <Stack direction="row" justify="between" className="mb-2">
-            <span className="text-body-sm text-ink-subtle">Workout Progress</span>
-            <span className="text-body-sm text-ink-subtle">{stats.completionPercentage}%</span>
+            <span className="text-body-sm text-ink-subtle font-marker">Workout Progress</span>
+            <span className="text-body-sm text-ink-subtle"><span className="font-num font-tabular">{stats.completionPercentage}</span>%</span>
           </Stack>
           <div className="h-2 w-full rounded-full bg-surface-subtle">
             <div

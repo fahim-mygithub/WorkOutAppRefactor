@@ -1,7 +1,8 @@
-import { useState, useMemo } from 'react';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { useState, useMemo, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import { ChevronLeft, ChevronRight, X } from 'lucide-react';
 import { useAppSelector, useAppDispatch } from '../store/hooks';
-import { searchExercises, filterByMuscleGroup, setSelectedExercise } from '../store/slices/exerciseSlice';
+import { searchExercises, filterByMuscleGroup, filterByMuscle, setSelectedExercise } from '../store/slices/exerciseSlice';
 import { ExerciseVideo } from '../components/ExerciseVideo';
 import { CustomExerciseBadge } from '../components/workout/CustomExerciseBadge';
 import { Exercise } from '../types/exercise';
@@ -46,10 +47,45 @@ export default function ExercisesPage() {
   useExercises();
   const { filteredExercises, exercises, selectedExercise, isLoading, error } = useAppSelector((state) => state.exercise);
   const customExercises = useAppSelector(selectCustomExercises);
+  const [searchParams, setSearchParams] = useSearchParams();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedMuscleGroup, setSelectedMuscleGroup] = useState('all');
+  const [activeMuscle, setActiveMuscle] = useState(() => searchParams.get('muscle') ?? '');
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage] = useState(12);
+
+  // Deep-link support: the Home body map navigates here with ?muscle=<name>.
+  // Apply the substring muscle filter once the exercise database has loaded
+  // (and whenever the param changes). Other params/states are reset so the
+  // muscle filter is the sole active criterion on arrival.
+  useEffect(() => {
+    const muscle = searchParams.get('muscle') ?? '';
+    setActiveMuscle(muscle);
+    // Re-apply whenever the exercise list changes (the database loads async, so
+    // the first run usually sees an empty list — depending on `exercises` rather
+    // than a one-shot flag ensures the filter lands once the data arrives).
+    if (muscle && exercises.length > 0) {
+      setSearchTerm('');
+      setSelectedMuscleGroup('all');
+      setCurrentPage(1);
+      dispatch(filterByMuscle(muscle));
+    }
+  }, [searchParams, exercises, dispatch]);
+
+  // Dropping the muscle deep-link when the user picks another filter keeps the
+  // active-filter chip honest.
+  const clearMuscleParam = () => {
+    if (!activeMuscle) return;
+    setActiveMuscle('');
+    setSearchParams({}, { replace: true });
+  };
+
+  const clearMuscleFilter = () => {
+    clearMuscleParam();
+    setSelectedMuscleGroup('all');
+    setCurrentPage(1);
+    dispatch(filterByMuscleGroup('all'));
+  };
 
   // Helper to check if an exercise is custom
   const isCustomExercise = (exerciseId: string) => {
@@ -62,12 +98,14 @@ export default function ExercisesPage() {
   }, [exercises]);
 
   const handleSearch = (term: string) => {
+    clearMuscleParam();
     setSearchTerm(term);
     setCurrentPage(1); // Reset to first page on search
     dispatch(searchExercises(term));
   };
 
   const handleMuscleGroupFilter = (group: string) => {
+    clearMuscleParam();
     setSelectedMuscleGroup(group);
     setCurrentPage(1); // Reset to first page on filter
     dispatch(filterByMuscleGroup(group));
@@ -163,6 +201,21 @@ export default function ExercisesPage() {
             </Select>
           </div>
         </div>
+
+        {activeMuscle && (
+          <div className="mb-4 flex items-center gap-2">
+            <span className="text-body-sm text-ink-muted">Filtered by muscle:</span>
+            <button
+              type="button"
+              onClick={clearMuscleFilter}
+              className="inline-flex items-center gap-1 rounded-full bg-accent/10 px-3 py-1 text-body-sm font-medium text-accent transition-colors hover:bg-accent/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface"
+              aria-label={`Clear ${activeMuscle} filter`}
+            >
+              <span className="capitalize">{activeMuscle}</span>
+              <X size={14} aria-hidden="true" />
+            </button>
+          </div>
+        )}
 
         {filteredExercises.length === 0 ? (
           <div className="text-center py-12">

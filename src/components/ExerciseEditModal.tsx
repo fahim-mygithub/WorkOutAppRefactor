@@ -132,7 +132,7 @@ export const ExerciseEditModal: React.FC<ExerciseEditModalProps> = ({
         {/* Header */}
         <Stack direction="row" align="start" justify="between" gap={3} className="mb-4">
           <div className="min-w-0">
-            <SheetTitle className="text-title">Edit Exercise</SheetTitle>
+            <SheetTitle className="text-title font-marker"><span className="marker-underline">Edit Exercise</span></SheetTitle>
             <SheetDescription>{exercise.exercise.name}</SheetDescription>
           </div>
           {hasChanges && (
@@ -150,7 +150,7 @@ export const ExerciseEditModal: React.FC<ExerciseEditModalProps> = ({
         <div className="space-y-6">
           {/* Rest Time */}
           <div>
-            <Label htmlFor="rest-time-input">Rest Time (seconds)</Label>
+            <Label htmlFor="rest-time-input" className="font-marker">Rest Time (seconds)</Label>
             <Input
               id="rest-time-input"
               type="number"
@@ -161,14 +161,14 @@ export const ExerciseEditModal: React.FC<ExerciseEditModalProps> = ({
               step="15"
             />
             <p className="mt-1 text-caption text-ink-subtle">
-              {Math.floor(restTime / 60)}:{(restTime % 60).toString().padStart(2, '0')} minutes
+              <span className="font-num font-tabular">{Math.floor(restTime / 60)}:{(restTime % 60).toString().padStart(2, '0')}</span> minutes
             </p>
           </div>
 
           {/* Sets */}
           <div className="space-y-4">
             <Stack direction="row" align="center" justify="between">
-              <h4 className="text-body font-semibold text-ink">Sets</h4>
+              <h4 className="text-body font-semibold text-ink font-marker">Sets</h4>
               <Button size="sm" onClick={addSet}>
                 <Plus className="h-4 w-4" aria-hidden="true" />
                 <span>Add Set</span>
@@ -182,8 +182,8 @@ export const ExerciseEditModal: React.FC<ExerciseEditModalProps> = ({
                   className="rounded-lg bg-surface-subtle p-4"
                 >
                   <Stack direction="row" align="center" justify="between" className="mb-3">
-                    <h5 className="text-body-sm font-semibold text-ink">
-                      Set {index + 1}
+                    <h5 className="text-body-sm font-semibold text-ink font-marker">
+                      Set <span className="font-num font-tabular">{index + 1}</span>
                     </h5>
                     <Stack direction="row" align="center" gap={1}>
                       <Button
@@ -210,7 +210,7 @@ export const ExerciseEditModal: React.FC<ExerciseEditModalProps> = ({
 
                   <div className="grid grid-cols-3 gap-4">
                     <div>
-                      <Label size="sm" htmlFor={`reps-${set.id}`}>
+                      <Label size="sm" htmlFor={`reps-${set.id}`} className="font-marker">
                         Reps
                       </Label>
                       <Input
@@ -223,7 +223,7 @@ export const ExerciseEditModal: React.FC<ExerciseEditModalProps> = ({
                       />
                     </div>
                     <div>
-                      <Label size="sm" htmlFor={`weight-${set.id}`}>
+                      <Label size="sm" htmlFor={`weight-${set.id}`} className="font-marker">
                         Weight (lbs)
                       </Label>
                       <Input
@@ -237,7 +237,7 @@ export const ExerciseEditModal: React.FC<ExerciseEditModalProps> = ({
                       />
                     </div>
                     <div>
-                      <Label size="sm" htmlFor={`status-${set.id}`}>
+                      <Label size="sm" htmlFor={`status-${set.id}`} className="font-marker">
                         Status
                       </Label>
                       <Select
@@ -259,7 +259,7 @@ export const ExerciseEditModal: React.FC<ExerciseEditModalProps> = ({
 
                   {set.completed && (
                     <div className="mt-2 flex items-center text-caption text-success">
-                      <span>✓ Completed: {set.reps} reps × {set.weight || 0} lbs</span>
+                      <span>✓ Completed: <span className="font-num font-tabular">{set.reps}</span> reps × <span className="font-num font-tabular">{set.weight || 0}</span> lbs</span>
                     </div>
                   )}
                 </div>

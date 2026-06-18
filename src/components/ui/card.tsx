@@ -4,7 +4,10 @@ import * as React from 'react';
 import { cva, type VariantProps } from 'class-variance-authority';
 import { cn } from '@/lib/utils';
 
-const cardVariants = cva('bg-surface-raised rounded-lg', {
+// `.board-card` (board.css) supplies the board surface, asymmetric hand-drawn
+// corners, and the wobbly marker/chalk outline (drawn on a pseudo-element so the
+// card's content stays crisp). Elevation shadows layer underneath for depth.
+const cardVariants = cva('board-card', {
   variants: {
     elevation: {
       0: 'shadow-e0',

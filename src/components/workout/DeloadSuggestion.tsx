@@ -61,7 +61,7 @@ export const DeloadSuggestion: React.FC<DeloadSuggestionProps> = ({
         {/* Header */}
         <div className="flex items-center gap-2 mb-3">
           <AlertTriangle className="w-5 h-5 text-warning flex-shrink-0" />
-          <SheetTitle className="text-title">Deload Recommended</SheetTitle>
+          <SheetTitle className="text-title font-marker"><span className="marker-underline">Deload Recommended</span></SheetTitle>
         </div>
 
         {/* Message */}
@@ -79,21 +79,21 @@ export const DeloadSuggestion: React.FC<DeloadSuggestionProps> = ({
             <div className="flex items-center justify-between">
               <div className="space-y-1">
                 <div className="flex items-center gap-2">
-                  <span className="text-body-sm text-ink-subtle">Previous:</span>
-                  <span className="font-semibold text-ink font-tabular">{previousWeight} lbs</span>
+                  <span className="text-body-sm text-ink-subtle font-marker">Previous:</span>
+                  <span className="font-semibold text-ink font-num font-tabular">{previousWeight} lbs</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <TrendingDown className="w-4 h-4 text-warning" />
-                  <span className="text-body-sm text-ink-subtle">Suggested:</span>
-                  <span className="font-semibold text-warning font-tabular">{suggestedWeight} lbs</span>
+                  <span className="text-body-sm text-ink-subtle font-marker">Suggested:</span>
+                  <span className="font-semibold text-warning font-num font-tabular">{suggestedWeight} lbs</span>
                 </div>
               </div>
 
               <div className="text-right">
-                <div className="text-display font-bold text-warning font-tabular">
+                <div className="text-display font-bold text-warning font-num font-tabular">
                   -{suggestedDeloadPercentage}%
                 </div>
-                <div className="text-caption text-ink-subtle">reduction</div>
+                <div className="text-caption text-ink-subtle font-marker">reduction</div>
               </div>
             </div>
           </div>

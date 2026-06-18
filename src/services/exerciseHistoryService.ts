@@ -14,6 +14,8 @@ import {
   writeBatch
 } from 'firebase/firestore';
 import { db } from '../firebase/config';
+import { isDemo } from '../demo/demo';
+import { getDemoWorkoutHistory } from '../demo/seed';
 import {
   ExerciseHistory,
   PerformedSet,
@@ -48,6 +50,7 @@ export class ExerciseHistoryService {
       notes?: string;
     }
   ): Promise<string> {
+    if (isDemo(userId)) return 'demo-exercise-performance';
     try {
       // Validate required fields
       if (!userId?.trim()) {
@@ -285,6 +288,7 @@ export class ExerciseHistoryService {
     userId: string,
     filter: ExerciseHistoryFilter
   ): Promise<ExerciseHistory[]> {
+    if (isDemo(userId)) return [];
     try {
       let q = collection(db, 'users', userId, this.EXERCISE_HISTORY_COLLECTION);
       const constraints: any[] = [];
@@ -488,6 +492,7 @@ export class ExerciseHistoryService {
     userId: string,
     limit: number = 20
   ): Promise<WorkoutSummary[]> {
+    if (isDemo(userId)) return getDemoWorkoutHistory();
     try {
       const q = query(
         collection(db, 'users', userId, this.WORKOUT_HISTORY_COLLECTION),
@@ -750,6 +755,7 @@ export class ExerciseHistoryService {
       workoutDate: string;
     }>
   ): Promise<void> {
+    if (isDemo(userId)) return;
     try {
       const exerciseHistoryRef = doc(db, 'users', userId, this.EXERCISE_HISTORY_COLLECTION, exerciseHistoryId);
 
@@ -802,6 +808,7 @@ export class ExerciseHistoryService {
 
   // Delete a completed workout history entry
   static async deleteWorkoutHistory(userId: string, workoutId: string): Promise<void> {
+    if (isDemo(userId)) return;
     try {
       const workoutHistoryRef = doc(db, 'users', userId, this.WORKOUT_HISTORY_COLLECTION, workoutId);
       await deleteDoc(workoutHistoryRef);

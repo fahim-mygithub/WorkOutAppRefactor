@@ -11,11 +11,11 @@ const iconButtonVariants = cva(
   {
     variants: {
       variant: {
-        primary: 'bg-accent text-accent-fg hover:bg-accent/90',
+        primary: 'sketch-border bg-accent text-accent-fg hover:bg-accent/90',
         secondary:
-          'bg-surface-raised text-ink shadow-e1 hover:bg-surface-raised/90',
+          'sketch-border bg-surface-raised text-ink hover:bg-surface-raised/90',
         ghost: 'text-ink hover:bg-surface-subtle',
-        danger: 'bg-danger text-ink-inverse hover:bg-danger/90',
+        danger: 'sketch-border bg-danger text-ink-inverse hover:bg-danger/90',
       },
       size: {
         sm: 'h-9 w-9',

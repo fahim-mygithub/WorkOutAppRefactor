@@ -9,7 +9,10 @@ import { cn } from '@/lib/utils';
 const inputVariants = cva(
   // Surface + border tokens, brand-blue focus ring, danger-token error state
   // via aria-invalid, and the shared disabled affordances mirroring Button.
-  'flex w-full rounded-md border border-border bg-surface text-ink transition-colors duration-snap placeholder:text-ink-subtle focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface aria-[invalid=true]:border-danger aria-[invalid=true]:focus-visible:ring-danger disabled:cursor-not-allowed disabled:opacity-50',
+  // `font-num` keeps typed values (weight, reps, names) in the crisp data face —
+  // never handwritten — so they stay glanceable mid-set (the one skeuomorphic
+  // exception). 2px board-line border reads as a hand-drawn input box.
+  'flex w-full rounded-md border-2 border-border bg-surface font-num text-ink transition-colors duration-snap placeholder:text-ink-subtle focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface aria-[invalid=true]:border-danger aria-[invalid=true]:focus-visible:ring-danger disabled:cursor-not-allowed disabled:opacity-50',
   {
     variants: {
       size: {
