@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { WelcomeHero } from '../components/home/WelcomeHero';
 import { WorkoutCalendar } from '../components/home/WorkoutCalendar';
+import { TodayWorkout } from '../components/home/TodayWorkout';
 import { BodyMuscleMap } from '../components/home/BodyMuscleMap';
 import { WorkoutDayModal } from '../components/home/WorkoutDayModal';
 import { useWorkoutCalendar } from '../hooks/useWorkoutCalendar';
@@ -16,6 +17,7 @@ export default function HomePage() {
   // Fetch data using custom hooks
   const {
     calendarData,
+    workoutHistory,
     isLoading: isCalendarLoading,
     error: calendarError,
     navigateMonth,
@@ -68,6 +70,7 @@ export default function HomePage() {
           <WelcomeHero
             lastWorkoutStats={lastWorkoutStats}
             currentStreak={weeklyStats.streak}
+            hasHistory={workoutHistory.length > 0}
             isLoading={isStatsLoading}
           />
 
@@ -78,6 +81,9 @@ export default function HomePage() {
             onNavigateMonth={navigateMonth}
             onResetToCurrentMonth={() => goToMonth(new Date())}
           />
+
+          {/* Today's status — workout / rest day / nothing planned */}
+          <TodayWorkout workoutHistory={workoutHistory} isLoading={isCalendarLoading} />
         </CardBody>
       </Card>
 

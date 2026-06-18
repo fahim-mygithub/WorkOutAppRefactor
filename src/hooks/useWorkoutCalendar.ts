@@ -6,6 +6,9 @@ import { generateCalendarData, type CalendarMonth } from '../utils/statsCalculat
 
 export interface UseWorkoutCalendarReturn {
   calendarData: CalendarMonth;
+  /** Raw history (month-independent) so consumers can derive "today" without
+   *  re-fetching or being affected by which month the grid is paged to. */
+  workoutHistory: WorkoutSummary[];
   currentDate: Date;
   isLoading: boolean;
   error: string | null;
@@ -83,6 +86,7 @@ export function useWorkoutCalendar(): UseWorkoutCalendarReturn {
 
   return {
     calendarData,
+    workoutHistory,
     currentDate,
     isLoading,
     error,

@@ -20,6 +20,7 @@ import '../styles/animations.css';
 import '../styles/board.css';
 import { BoardFilters } from '../components/BoardFilters';
 import { WorkoutCalendar } from '../components/home/WorkoutCalendar';
+import { TodayWorkout } from '../components/home/TodayWorkout';
 import { BodyMuscleMap } from '../components/home/BodyMuscleMap';
 import { Card, CardBody } from '../components/ui/card';
 import { generateCalendarData } from '../utils/statsCalculator';
@@ -60,6 +61,24 @@ const mockHistory = seedDays.map((dayNum, i) => {
 
 const calendarData = generateCalendarData(mockHistory, now);
 
+// Histories that exercise the three TodayWorkout states.
+const restDayHistory = [
+  {
+    id: 'rest-1',
+    userId: 'demo',
+    name: 'Leg Day',
+    startTime: new Date(y, m, d - 1, 18, 0, 0),
+    endTime: new Date(y, m, d - 1, 19, 0, 0),
+    duration: 55,
+    totalExercises: 5,
+    totalSets: 18,
+    totalReps: 150,
+    totalVolume: 11200,
+    exercisesSummary: [],
+  },
+] as any[];
+const emptyHistory: any[] = [];
+
 const Column: React.FC<{ theme: 'light' | 'dark' }> = ({ theme }) => (
   <div className={theme}>
     <div className="min-h-screen bg-surface p-4 space-y-6 text-ink">
@@ -71,8 +90,8 @@ const Column: React.FC<{ theme: 'light' | 'dark' }> = ({ theme }) => (
         <p className="mb-2 font-marker text-body-sm text-ink-muted">Merged module — collapsed (week)</p>
         <Card>
           <CardBody className="space-y-5 p-6 pt-6">
-            <h1 className="font-marker text-title leading-snug text-ink">
-              Here are your Workouts for this week, Fahim!
+            <h1 className="truncate font-marker text-title leading-snug text-ink">
+              Welcome back, Fahim!
             </h1>
             <WorkoutCalendar
               calendarData={calendarData}
@@ -81,6 +100,20 @@ const Column: React.FC<{ theme: 'light' | 'dark' }> = ({ theme }) => (
               onNavigateMonth={noop}
               onResetToCurrentMonth={noop}
             />
+            <TodayWorkout workoutHistory={mockHistory} isLoading={false} />
+          </CardBody>
+        </Card>
+      </div>
+
+      <div>
+        <p className="mb-2 font-marker text-body-sm text-ink-muted">
+          Today section — three states
+        </p>
+        <Card>
+          <CardBody className="space-y-2 p-6 pt-6">
+            <TodayWorkout workoutHistory={mockHistory} isLoading={false} />
+            <TodayWorkout workoutHistory={restDayHistory} isLoading={false} />
+            <TodayWorkout workoutHistory={emptyHistory} isLoading={false} />
           </CardBody>
         </Card>
       </div>
@@ -89,8 +122,8 @@ const Column: React.FC<{ theme: 'light' | 'dark' }> = ({ theme }) => (
         <p className="mb-2 font-marker text-body-sm text-ink-muted">Expanded (month)</p>
         <Card>
           <CardBody className="space-y-5 p-6 pt-6">
-            <h1 className="font-marker text-title leading-snug text-ink">
-              Here are your Workouts for this week, Fahim!
+            <h1 className="truncate font-marker text-title leading-snug text-ink">
+              Welcome back, Fahim!
             </h1>
             <WorkoutCalendar
               calendarData={calendarData}

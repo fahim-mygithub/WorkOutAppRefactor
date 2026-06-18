@@ -123,10 +123,22 @@ export function WorkoutCalendar({
 
   return (
     <div>
-      {/* Slim control row — no big "This Week" title; the greeting above carries
-          the context. Left = current range / month; right = nav + labeled toggle. */}
-      <div className="mb-3 flex items-center justify-between">
-        <div className="flex items-center gap-2">
+      {/* Slim control row. The date label itself is the week/month toggle (a
+          chevron hints at it) — no separate "Month"/"Week" button. Month nav
+          (prev/next) only appears in the expanded month view. */}
+      <div className="mb-2 flex items-center justify-between">
+        <button
+          type="button"
+          onClick={handleToggle}
+          aria-expanded={expanded}
+          aria-controls="home-calendar-grid"
+          aria-label={expanded ? 'Collapse to week view' : 'Expand to month view'}
+          className={cn(
+            'group -ml-1 inline-flex items-center gap-1.5 rounded-md px-1.5 py-1',
+            'transition-colors hover:bg-surface-subtle',
+            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2',
+          )}
+        >
           <Calendar className="text-accent" size={18} aria-hidden="true" />
           {expanded ? (
             <h3 className="font-marker text-body text-ink">
@@ -134,52 +146,37 @@ export function WorkoutCalendar({
               <span className="font-num font-tabular">{calendarData.year}</span>
             </h3>
           ) : (
-            <span className="font-num font-tabular text-caption text-ink-muted">
+            <span className="font-num font-tabular text-caption text-ink-muted group-hover:text-ink">
               {formatWeekRange(currentWeek)}
             </span>
           )}
-        </div>
-
-        <div className="flex items-center gap-1">
-          {expanded && (
-            <>
-              <IconButton
-                variant="ghost"
-                size="sm"
-                aria-label="Previous month"
-                onClick={() => onNavigateMonth('prev')}
-              >
-                <ChevronLeft size={18} />
-              </IconButton>
-              <IconButton
-                variant="ghost"
-                size="sm"
-                aria-label="Next month"
-                onClick={() => onNavigateMonth('next')}
-              >
-                <ChevronRight size={18} />
-              </IconButton>
-            </>
+          {expanded ? (
+            <ChevronUp size={16} className="text-ink-subtle group-hover:text-ink" aria-hidden="true" />
+          ) : (
+            <ChevronDown size={16} className="text-ink-subtle group-hover:text-ink" aria-hidden="true" />
           )}
-          {/* Labeled toggle — visible "Month"/"Week" text keeps the month view
-              discoverable now that it is hidden by default. */}
-          <button
-            type="button"
-            onClick={handleToggle}
-            aria-expanded={expanded}
-            aria-controls="home-calendar-grid"
-            aria-label={expanded ? 'Collapse to week view' : 'Expand to month view'}
-            className={cn(
-              'inline-flex items-center gap-1 rounded-md px-2 py-1',
-              'font-marker text-caption uppercase tracking-wide text-ink-muted',
-              'transition-colors hover:bg-surface-subtle hover:text-ink',
-              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2',
-            )}
-          >
-            {expanded ? 'Week' : 'Month'}
-            {expanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-          </button>
-        </div>
+        </button>
+
+        {expanded && (
+          <div className="flex items-center gap-1">
+            <IconButton
+              variant="ghost"
+              size="sm"
+              aria-label="Previous month"
+              onClick={() => onNavigateMonth('prev')}
+            >
+              <ChevronLeft size={18} />
+            </IconButton>
+            <IconButton
+              variant="ghost"
+              size="sm"
+              aria-label="Next month"
+              onClick={() => onNavigateMonth('next')}
+            >
+              <ChevronRight size={18} />
+            </IconButton>
+          </div>
+        )}
       </div>
 
       {/* Month view keeps a shared weekday header; the week strip puts the day

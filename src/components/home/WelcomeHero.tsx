@@ -9,6 +9,10 @@ import { Button } from '../ui/button';
 interface WelcomeHeroProps {
   lastWorkoutStats: LastWorkoutStats | null;
   currentStreak: number;
+  /** Whether the user has any workout history — drives the returning-vs-new
+   *  greeting. More reliable than lastWorkoutStats, which depends on exercise
+   *  history (empty in demo mode). */
+  hasHistory: boolean;
   isLoading: boolean;
 }
 
@@ -17,9 +21,13 @@ interface WelcomeHeroProps {
  * wraps this together with the calendar in a single board-card so the greeting
  * and the week strip read as one unit.
  */
-export function WelcomeHero({ lastWorkoutStats, currentStreak, isLoading }: WelcomeHeroProps) {
+export function WelcomeHero({ lastWorkoutStats, currentStreak, hasHistory, isLoading }: WelcomeHeroProps) {
   const user = useAppSelector(state => state.user.profile);
   const firstName = user?.displayName?.split(' ')[0] || 'there';
+  // One-line greeting: welcome returning lifters, nudge new ones to start.
+  const greeting = hasHistory
+    ? `Welcome back, ${firstName}!`
+    : `Let's get started, ${firstName}!`;
 
   if (isLoading) {
     return (
@@ -36,9 +44,9 @@ export function WelcomeHero({ lastWorkoutStats, currentStreak, isLoading }: Welc
 
   return (
     <div>
-      {/* Greeting — leads straight into the week calendar below it. */}
-      <h1 className="mb-5 font-marker text-title leading-snug text-ink">
-        Here are your Workouts for this week, {firstName}!
+      {/* Greeting — single line; leads straight into the week calendar below it. */}
+      <h1 className="mb-5 truncate font-marker text-title leading-snug text-ink">
+        {greeting}
       </h1>
 
       {/* Resume Last — the only quick action kept (shows when a workout exists). */}
