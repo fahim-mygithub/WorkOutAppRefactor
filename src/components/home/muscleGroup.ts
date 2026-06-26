@@ -11,16 +11,14 @@
 //   - Deterministic + stable: same name always resolves to the same group,
 //     falling back to a name-hash so unmatched names still spread across hues
 //     instead of all collapsing to one.
-import type { LucideIcon } from 'lucide-react';
+import type { ComponentType } from 'react';
 import {
-  Dumbbell,
-  ArrowDownToLine,
-  Footprints,
   Hexagon,
   HeartPulse,
   PersonStanding,
   StretchHorizontal,
 } from 'lucide-react';
+import { PushIcon, PullIcon, LegsIcon } from '../icons/PplIcons';
 
 export type MuscleGroup =
   | 'push'
@@ -48,8 +46,8 @@ interface MuscleGroupMeta {
   bgClass: string;
   /** Intensity-bar class (muscle hue at 60% alpha). */
   barClass: string;
-  /** lucide-react glyph for the group. */
-  icon: LucideIcon;
+  /** Glyph for the group — custom PPL barbell figure or a lucide icon. */
+  icon: ComponentType<{ size?: number; className?: string }>;
   /** Human-readable label for legends / aria. */
   label: string;
 }
@@ -61,21 +59,21 @@ export const MUSCLE_GROUP_META: Record<MuscleGroup, MuscleGroupMeta> = {
     textClass: 'text-muscle-push',
     bgClass: 'bg-muscle-push',
     barClass: 'bg-muscle-push/60',
-    icon: Dumbbell,
+    icon: PushIcon,
     label: 'Push',
   },
   pull: {
     textClass: 'text-muscle-pull',
     bgClass: 'bg-muscle-pull',
     barClass: 'bg-muscle-pull/60',
-    icon: ArrowDownToLine,
+    icon: PullIcon,
     label: 'Pull',
   },
   legs: {
     textClass: 'text-muscle-legs',
     bgClass: 'bg-muscle-legs',
     barClass: 'bg-muscle-legs/60',
-    icon: Footprints,
+    icon: LegsIcon,
     label: 'Legs',
   },
   core: {

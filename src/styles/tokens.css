@@ -58,10 +58,10 @@
   --warning:  45 88% 63%;
   --danger:    5 82% 68%;
 
-  /* Muscle groups — colored chalks */
-  --muscle-push:        5 80% 66%;
+  /* Muscle groups — colored chalks (PPL: red / blue / yellow per the infographic) */
+  --muscle-push:        3 84% 63%;
   --muscle-pull:      190 70% 62%;
-  --muscle-legs:       38 85% 62%;
+  --muscle-legs:       48 92% 58%;
   --muscle-core:      270 66% 71%;
   --muscle-cardio:    340 75% 68%;
   --muscle-full-body: 165 52% 58%;
@@ -114,10 +114,10 @@
   --warning:  33 92% 44%;
   --danger:    2 76% 50%;
 
-  /* Muscle groups — dry-erase marker colors */
-  --muscle-push:        2 76% 50%;
+  /* Muscle groups — dry-erase marker colors (PPL: red / blue / yellow) */
+  --muscle-push:        2 82% 52%;
   --muscle-pull:      190 88% 36%;
-  --muscle-legs:       28 90% 45%;
+  --muscle-legs:       46 94% 47%;
   --muscle-core:      270 60% 52%;
   --muscle-cardio:    330 74% 48%;
   --muscle-full-body: 150 62% 34%;
