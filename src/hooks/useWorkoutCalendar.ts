@@ -1,8 +1,10 @@
 import { useState, useEffect, useMemo } from 'react';
 import { ExerciseHistoryService } from '../services/exerciseHistoryService';
+import { ScheduleService } from '../services/scheduleService';
 import { useAppSelector } from '../store/hooks';
 import type { WorkoutSummary } from '../types/exerciseHistory';
 import { generateCalendarData, type CalendarMonth } from '../utils/statsCalculator';
+import { usePlannedSchedule } from './usePlannedSchedule';
 
 export interface UseWorkoutCalendarReturn {
   calendarData: CalendarMonth;
@@ -25,29 +27,27 @@ export function useWorkoutCalendar(): UseWorkoutCalendarReturn {
 
   // Get user ID from auth state
   const user = useAppSelector(state => state.user.profile);
+  const { plannedByDate } = usePlannedSchedule();
 
   const fetchWorkoutHistory = async () => {
-    if (!user?.uid) {
-      setIsLoading(false);
-      setWorkoutHistory([]); // Set empty array for demo mode
-      return;
-    }
-
+    const idKey = user?.uid ?? 'anon';
     try {
       setIsLoading(true);
       setError(null);
 
-      // Fetch workout history (up to 100 recent workouts)
-      const allSummaries = await ExerciseHistoryService.getWorkoutHistory(
-        user.uid,
-        100
-      );
-
-      setWorkoutHistory(allSummaries || []);
+      // Remote history (authed only); demo/anon rely on the local performed store.
+      let remote: WorkoutSummary[] = [];
+      if (user?.uid) {
+        remote = (await ExerciseHistoryService.getWorkoutHistory(user.uid, 100)) || [];
+      }
+      // Merge locally-completed Charlie days so they render even when Firestore
+      // writes are stubbed (loginless demo) or offline.
+      const local = ScheduleService.getPerformedLocal(idKey);
+      setWorkoutHistory([...remote, ...local]);
     } catch (err) {
       console.error('Error fetching workout history:', err);
       setError(null); // Don't show error, just use empty state
-      setWorkoutHistory([]); // Fallback to empty array
+      setWorkoutHistory(ScheduleService.getPerformedLocal(user?.uid ?? 'anon'));
     } finally {
       setIsLoading(false);
     }
@@ -58,10 +58,10 @@ export function useWorkoutCalendar(): UseWorkoutCalendarReturn {
     fetchWorkoutHistory();
   }, [user?.uid]);
 
-  // Generate calendar data from workout history
+  // Generate calendar data from workout history + the planned-schedule projection
   const calendarData = useMemo(() => {
-    return generateCalendarData(workoutHistory, currentDate);
-  }, [workoutHistory, currentDate]);
+    return generateCalendarData(workoutHistory, currentDate, plannedByDate);
+  }, [workoutHistory, currentDate, plannedByDate]);
 
   // Navigation functions
   const navigateMonth = (direction: 'prev' | 'next') => {

@@ -6,10 +6,13 @@ import {
   ChevronDown,
   ChevronUp,
   Slash,
+  Sparkles,
+  CalendarPlus,
 } from 'lucide-react';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import type { CalendarMonth, WorkoutCalendarDay } from '../../utils/statsCalculator';
 import { getWorkoutIntensity } from '../../utils/workoutColors';
+import { usePlannedSchedule } from '../../hooks/usePlannedSchedule';
 import {
   MUSCLE_GROUPS,
   MUSCLE_GROUP_META,
@@ -17,6 +20,7 @@ import {
   type MuscleGroup,
 } from './muscleGroup';
 import { IconButton } from '../ui/icon-button';
+import { Button } from '../ui/button';
 import { Skeleton } from '../ui/skeleton';
 import { cn } from '../../lib/utils';
 
@@ -36,6 +40,14 @@ const INTENSITY_WIDTH: Record<'low' | 'medium' | 'high', string> = {
   low: 'w-1/4',
   medium: 'w-1/2',
   high: 'w-full',
+};
+
+// Dashed muscle-hue border for a planned (not-yet-done) day. Literal class
+// strings keep Tailwind's JIT from purging them.
+const PLANNED_BORDER: Record<'push' | 'pull' | 'legs', string> = {
+  push: 'border-muscle-push',
+  pull: 'border-muscle-pull',
+  legs: 'border-muscle-legs',
 };
 
 const WEEKDAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -74,6 +86,11 @@ export function WorkoutCalendar({
   // Collapsed = single week strip (default); expanded = full month grid.
   const [expanded, setExpanded] = useState(initialExpanded);
   const reduceMotion = useReducedMotion();
+  const { hasActivePlan, autofillMonth } = usePlannedSchedule();
+  const hasPlannedInView = useMemo(
+    () => calendarData.days.some((d) => d.isCurrentMonth && d.planned),
+    [calendarData.days],
+  );
 
   // Group the (Sunday-aligned, complete-week-padded) month grid into rows.
   const weeks = useMemo(() => {
@@ -159,6 +176,16 @@ export function WorkoutCalendar({
 
         {expanded && (
           <div className="flex items-center gap-1">
+            {hasActivePlan && !hasPlannedInView && (
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => autofillMonth(new Date(calendarData.year, calendarData.month, 1))}
+              >
+                <CalendarPlus size={14} />
+                <span>Autofill</span>
+              </Button>
+            )}
             <IconButton
               variant="ghost"
               size="sm"
@@ -252,6 +279,13 @@ function Legend() {
           </div>
         );
       })}
+      <div className="flex items-center gap-1.5 text-caption text-ink-muted">
+        <span
+          aria-hidden="true"
+          className="h-3.5 w-3.5 rounded border border-dashed border-ink-subtle"
+        />
+        <span>Planned</span>
+      </div>
     </div>
   );
 }
@@ -263,33 +297,40 @@ interface CalendarDayCellProps {
   onClick: () => void;
 }
 
-// 'upcoming' (planned-not-done) from the wireframe needs a per-day plan signal
-// that the current calendar data does not carry — future empty days are simply
-// rest days here. The remaining four states are fully derivable from existing
-// data, so we keep the data wiring intact and omit 'upcoming'.
-type DayState = 'completed' | 'today' | 'rest' | 'missed';
+// 'planned' is the revived "upcoming" state — now that WorkoutCalendarDay carries
+// a per-day Charlie-Split plan signal (day.planned), future planned days render a
+// ghosted glyph instead of collapsing to a rest dot.
+type DayState = 'completed' | 'today' | 'planned' | 'rest' | 'missed';
 
 function CalendarDayCell({ day, showWeekday, onClick }: CalendarDayCellProps) {
   const hasWorkouts = day.workouts.length > 0;
+  const planned = day.planned ?? null;
+  const isPlannedActive = planned != null && planned.status === 'planned';
 
-  // Derive the dominant muscle group + intensity from the existing day data.
-  const primary = hasWorkouts ? day.workouts[0] : null;
-  const group: MuscleGroup | null = primary
-    ? getMuscleGroup(primary.name)
-    : null;
-  const meta = group ? MUSCLE_GROUP_META[group] : null;
-  const intensity = primary
-    ? getWorkoutIntensity(primary.totalVolume, primary.duration, primary.totalSets)
-    : null;
-
-  // Day-state vocabulary (wireframe): today > completed > missed > upcoming > rest.
+  // Day-state vocabulary: today > completed > planned > missed > rest.
   const state: DayState = day.isToday
     ? 'today'
     : hasWorkouts
       ? 'completed'
-      : day.isPast
-        ? 'missed'
-        : 'rest';
+      : !day.isPast && isPlannedActive
+        ? 'planned'
+        : day.isPast
+          ? 'missed'
+          : 'rest';
+
+  // Muscle group + intensity: completed days derive from the session NAME; a
+  // planned/missed day uses its plan's dayType directly (push/pull/legs).
+  const primary = hasWorkouts ? day.workouts[0] : null;
+  const group: MuscleGroup | null =
+    hasWorkouts && primary
+      ? getMuscleGroup(primary.name)
+      : planned
+        ? (planned.dayType as MuscleGroup)
+        : null;
+  const meta = group ? MUSCLE_GROUP_META[group] : null;
+  const intensity = primary
+    ? getWorkoutIntensity(primary.totalVolume, primary.duration, primary.totalSets)
+    : null;
 
   const Icon = meta?.icon ?? null;
   const extraCount = day.workouts.length - 1;
@@ -299,15 +340,23 @@ function CalendarDayCell({ day, showWeekday, onClick }: CalendarDayCellProps) {
     <button
       type="button"
       onClick={onClick}
-      title={primary?.name}
+      title={primary?.name ?? (isPlannedActive && planned ? `Planned · ${planned.variantLabel}` : undefined)}
       aria-label={`${weekdayLabel} ${day.date.toDateString()}${
-        primary ? `, ${primary.name}` : day.isToday ? ', today' : ', rest day'
+        primary
+          ? `, ${primary.name}`
+          : isPlannedActive && planned
+            ? `, planned ${planned.dayType}`
+            : day.isToday
+              ? ', today'
+              : ', rest day'
       }`}
       className={cn(
         'relative flex aspect-square flex-col rounded-md border p-1 text-left',
         'transition-colors duration-snap focus-visible:outline-none',
         'focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2',
         'bg-surface-raised border-ink/8 hover:bg-surface-subtle',
+        state === 'planned' && 'border-dashed',
+        state === 'planned' && planned ? PLANNED_BORDER[planned.dayType] : '',
         day.isToday && 'bg-accent/8 ring-2 ring-accent border-accent',
         !day.isCurrentMonth && 'opacity-40',
       )}
@@ -344,6 +393,7 @@ function CalendarDayCell({ day, showWeekday, onClick }: CalendarDayCellProps) {
               className={cn(
                 meta.textClass,
                 state === 'missed' && 'opacity-50',
+                state === 'planned' && 'opacity-70',
               )}
             />
             {state === 'missed' && (
@@ -378,6 +428,16 @@ function CalendarDayCell({ day, showWeekday, onClick }: CalendarDayCellProps) {
           aria-hidden="true"
           className="absolute -top-1 -right-1 h-3 w-3 rounded-full bg-success ring-2 ring-surface-raised"
         />
+      )}
+
+      {/* 1RM-retest badge (top-left) */}
+      {day.planned?.isRetest && state !== 'completed' && (
+        <span
+          title="1RM test"
+          className="absolute -top-1 -left-1 flex h-4 w-4 items-center justify-center rounded-full bg-accent ring-2 ring-surface-raised"
+        >
+          <Sparkles size={9} className="text-accent-fg" aria-hidden="true" />
+        </span>
       )}
 
       {/* Multi-session overflow indicator */}

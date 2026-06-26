@@ -8,6 +8,11 @@ import { SharedWorkoutStartPage } from '../components/SharedWorkoutStartPage';
 import { incrementWorkoutUseCount } from '../store/slices/sharedWorkoutSlice';
 import { loadWorkoutContext } from '../store/slices/exerciseHistorySlice';
 import { WorkoutStorageService } from '../services/workoutStorageService';
+import { ScheduleService } from '../services/scheduleService';
+import { dayOverrideSet, retestAdvanced } from '../store/slices/scheduleSlice';
+import type { WorkoutSummary } from '../types/exerciseHistory';
+import type { ActiveWorkout } from '../types/exercise';
+import type { ActivePlanContext } from '../hooks/useStartPlannedDay';
 import {
   startWorkout,
   endWorkout,
@@ -99,6 +104,41 @@ const getGroupedExercisesForDisplay = (exercises: WorkoutExercise[], currentExer
 
   return groups;
 };
+
+/** Build a calendar-shaped WorkoutSummary from a finished ActiveWorkout, for the
+ *  local performed store (so completed Charlie days render in the loginless demo). */
+function buildLocalSummary(workout: ActiveWorkout, userId: string): WorkoutSummary {
+  const start = new Date(workout.startTime);
+  const end = new Date();
+  let totalSets = 0;
+  let totalReps = 0;
+  let totalVolume = 0;
+  const exercisesSummary = workout.exercises.map((we) => {
+    const done = we.sets.filter((s) => s.completed);
+    const sets = done.length;
+    const reps = done.reduce((n, s) => n + (s.reps || 0), 0);
+    const volume = done.reduce((n, s) => n + (s.weight || 0) * (s.reps || 0), 0);
+    totalSets += sets;
+    totalReps += reps;
+    totalVolume += volume;
+    return { exerciseId: we.exercise.id, exerciseName: we.exercise.name, sets, reps, volume };
+  });
+  return {
+    id: `local-${workout.id}`,
+    userId,
+    name: workout.name,
+    workoutId: workout.id,
+    templateId: 'charlie-split',
+    startTime: start,
+    endTime: end,
+    duration: workout.duration || Math.max(1, Math.round((end.getTime() - start.getTime()) / 60000)),
+    totalExercises: workout.exercises.length,
+    totalSets,
+    totalReps,
+    totalVolume,
+    exercisesSummary,
+  };
+}
 
 export default function WorkoutPage() {
   const navigate = useNavigate();
@@ -404,27 +444,68 @@ export default function WorkoutPage() {
   };
 
   const handleSaveAndEnd = async () => {
+    // A Charlie-Split planned day stashes context at launch; if present we flip
+    // the calendar day to completed and write a local summary (so the loginless
+    // demo renders it despite stubbed Firestore writes), then route to Home.
+    let planCtx: ActivePlanContext | null = null;
+    try {
+      const raw = sessionStorage.getItem('activePlanContext');
+      if (raw) planCtx = JSON.parse(raw) as ActivePlanContext;
+    } catch {
+      planCtx = null;
+    }
+
+    const completePlanDay = () => {
+      if (!planCtx) return;
+      const idKey = user?.uid ?? 'anon';
+      const summary = buildLocalSummary(activeWorkout, idKey);
+      ScheduleService.appendPerformedLocal(idKey, summary);
+      dispatch(
+        dayOverrideSet({
+          dateKey: planCtx.dateKey,
+          status: 'completed',
+          dayType: planCtx.dayType,
+          cycleOrdinal: planCtx.cycleOrdinal,
+          completedSummaryId: summary.id,
+          updatedAt: new Date().toISOString(),
+        }),
+      );
+      // A completed retest advances the rotating-retest pointer to the next lift.
+      if (planCtx.isRetest) {
+        dispatch(retestAdvanced({ testedAtKey: planCtx.dateKey }));
+      }
+      try {
+        sessionStorage.removeItem('activePlanContext');
+      } catch {
+        /* ignore */
+      }
+    };
+
     try {
       // Save completed workout to Firebase
       if (user?.uid) {
         await WorkoutStorageService.saveCompletedWorkout(user.uid, activeWorkout);
       }
 
+      completePlanDay();
       dispatch(endWorkout());
       setShowEndWorkoutModal(false);
-      // Navigate appropriately based on user type
-      if (!isAnonymousUser) {
+      // Plan days route home so the calendar flip is visible; others keep prior behavior.
+      if (planCtx) {
+        navigate('/');
+      } else if (!isAnonymousUser) {
         navigate('/profile', { state: { showWorkoutComplete: true } });
       }
     } catch (error) {
       console.error('❌ Error saving workout:', error);
       // Show user-friendly error message
       alert('Failed to save workout. Your progress will still be ended. Please check your connection and try again.');
+      completePlanDay();
       // Still end workout even if save fails
       dispatch(endWorkout());
       setShowEndWorkoutModal(false);
       // Navigate appropriately based on user type
-      if (!isAnonymousUser) {
+      if (planCtx || !isAnonymousUser) {
         navigate('/');
       }
     }

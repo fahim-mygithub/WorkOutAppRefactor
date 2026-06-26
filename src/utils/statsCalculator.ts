@@ -1,4 +1,6 @@
 import type { WorkoutSummary, ExerciseHistory, ExerciseStats } from '../types/exerciseHistory';
+import type { PlannedDay } from '../types/schedule';
+import { toDateKey } from '../lib/dateKey';
 
 export interface WorkoutCalendarDay {
   date: Date;
@@ -14,6 +16,8 @@ export interface WorkoutCalendarDay {
   isPast: boolean;
   isCurrentMonth: boolean;
   dayNumber: number;
+  /** Charlie-Split planned workout for this day (null when none). Additive. */
+  planned?: PlannedDay | null;
 }
 
 export interface CalendarMonth {
@@ -54,7 +58,8 @@ export interface HighlightData {
 // Generate proper calendar month data
 export function generateCalendarData(
   workoutHistory: WorkoutSummary[],
-  targetDate: Date = new Date()
+  targetDate: Date = new Date(),
+  plannedByDate?: Map<string, PlannedDay>
 ): CalendarMonth {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -127,7 +132,8 @@ export function generateCalendarData(
         isToday: date.getTime() === today.getTime(),
         isPast: date < today,
         isCurrentMonth: false,
-        dayNumber: dayNum
+        dayNumber: dayNum,
+        planned: plannedByDate?.get(toDateKey(date)) ?? null
       });
     }
   }
@@ -153,7 +159,8 @@ export function generateCalendarData(
       isToday: date.getTime() === today.getTime(),
       isPast: date < today,
       isCurrentMonth: true,
-      dayNumber: day
+      dayNumber: day,
+      planned: plannedByDate?.get(toDateKey(date)) ?? null
     });
   }
 
@@ -178,7 +185,8 @@ export function generateCalendarData(
       isToday: date.getTime() === today.getTime(),
       isPast: date < today,
       isCurrentMonth: false,
-      dayNumber: day
+      dayNumber: day,
+      planned: plannedByDate?.get(toDateKey(date)) ?? null
     });
   }
 

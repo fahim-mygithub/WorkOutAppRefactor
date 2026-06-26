@@ -17,11 +17,42 @@ import { ChoiceCard } from '../components/build/ChoiceCard';
 import { BodyMusclePicker } from '../components/build/BodyMusclePicker';
 import { RecommendedWorkout, type ReviewRow } from '../components/build/RecommendedWorkout';
 import { Button } from '../components/ui/button';
+import { Input } from '../components/ui/input';
+import { cn } from '../lib/utils';
+import { usePlannedSchedule } from '../hooks/usePlannedSchedule';
+import { MUSCLE_GROUP_META } from '../components/home/muscleGroup';
+import type { OneRmKey } from '../lib/charlie/definition';
+import type { OneRepMax, PullupSeed } from '../types/schedule';
 
-type Screen = 'chooser' | 'muscle-select' | 'muscle-review' | 'template';
+type Screen =
+  | 'chooser'
+  | 'muscle-select'
+  | 'muscle-review'
+  | 'template'
+  | 'template-detail'
+  | 'template-1rm';
 
 let rowSeq = 0;
 const newRowId = () => `row-${Date.now().toString(36)}-${rowSeq++}`;
+
+type CharlieFieldKey = OneRmKey | 'pullup-heavy' | 'bodyweight';
+interface CharlieLiftField {
+  key: CharlieFieldKey;
+  label: string;
+  group: 'Push' | 'Pull' | 'Legs';
+  hint?: string;
+  required?: boolean;
+}
+const LIFT_FIELDS: CharlieLiftField[] = [
+  { key: 'bb-bench', label: 'Barbell Bench Press', group: 'Push', required: true },
+  { key: 'db-bench', label: 'Dumbbell Bench Press', group: 'Push', hint: 'per dumbbell', required: true },
+  { key: 'seal-row', label: 'Seal Row', group: 'Pull', required: true },
+  { key: 'pullup-heavy', label: 'Weighted Pull-up — added load', group: 'Pull', hint: '~5 reps (e.g. 35)', required: true },
+  { key: 'bodyweight', label: 'Bodyweight', group: 'Pull', hint: 'scales the pull-up' },
+  { key: 'back-squat', label: 'Back Squat', group: 'Legs', required: true },
+  { key: 'front-squat', label: 'Front Squat', group: 'Legs', hint: 'blank → 0.82× back squat' },
+  { key: 'deadlift', label: 'Deadlift', group: 'Legs', required: true },
+];
 
 /** "Chest Day" / "Chest & Shoulders" / "Chest, Shoulders & Triceps". */
 function defaultWorkoutName(terms: string[]): string {
@@ -52,8 +83,45 @@ export default function BuildWizardPage() {
   const [selectedTerms, setSelectedTerms] = useState<string[]>([]);
   const [rows, setRows] = useState<ReviewRow[]>([]);
   const [name, setName] = useState('');
+  const [maxes, setMaxes] = useState<Record<string, string>>({});
+
+  const { activateCharlieSplit, autofillMonth } = usePlannedSchedule();
 
   const exercisesReady = exercises.length > 0;
+
+  // -- Charlie Split setup ----------------------------------------------------
+
+  const liftValue = (k: string): number => {
+    const n = parseFloat(maxes[k]);
+    return Number.isFinite(n) && n > 0 ? n : 0;
+  };
+  const canAutofillCharlie = LIFT_FIELDS.filter((f) => f.required).every((f) => liftValue(f.key) > 0);
+
+  const handleActivateCharlie = () => {
+    const now = new Date().toISOString();
+    const oneRepMax: Partial<Record<OneRmKey, OneRepMax>> = {};
+    const setRm = (key: OneRmKey, value: number) => {
+      if (value > 0) {
+        oneRepMax[key] = { key, value, unit: 'lbs', source: 'entered', enteredAt: now, updatedAt: now };
+      }
+    };
+    setRm('bb-bench', liftValue('bb-bench'));
+    setRm('db-bench', liftValue('db-bench'));
+    setRm('seal-row', liftValue('seal-row'));
+    setRm('back-squat', liftValue('back-squat'));
+    setRm('deadlift', liftValue('deadlift'));
+    const frontSquat = liftValue('front-squat') || Math.round((liftValue('back-squat') * 0.82) / 2.5) * 2.5;
+    setRm('front-squat', frontSquat);
+    const pullup: PullupSeed = {
+      heavyAddedLoad: liftValue('pullup-heavy') || 35,
+      volumeAddedLoad: 0,
+      bodyweight: liftValue('bodyweight') || 0,
+      updatedAt: now,
+    };
+    activateCharlieSplit({ oneRepMax, pullup });
+    autofillMonth(new Date());
+    navigate('/');
+  };
 
   // -- muscle selection -------------------------------------------------------
 
@@ -187,25 +255,107 @@ export default function BuildWizardPage() {
 
   if (screen === 'template') {
     return (
+      <WizardShell title="Templates" subtitle="Programmed splits" onBack={() => setScreen('chooser')}>
+        <div className="flex flex-col gap-4 pt-4">
+          <ChoiceCard
+            icon={LayoutTemplate}
+            title="Charlie Split"
+            description="Push / Pull / Legs · auto-fills your month"
+            onClick={() => setScreen('template-detail')}
+          />
+          <p className="px-1 text-caption text-ink-subtle">More splits coming soon.</p>
+        </div>
+      </WizardShell>
+    );
+  }
+
+  if (screen === 'template-detail') {
+    return (
       <WizardShell
-        title="Templates"
-        subtitle="Common splits — coming next"
-        onBack={() => setScreen('chooser')}
+        title="Charlie Split"
+        subtitle="Push / Pull / Legs, every day"
+        onBack={() => setScreen('template')}
+        footer={
+          <Button variant="primary" size="lg" className="w-full" onClick={() => setScreen('template-1rm')}>
+            Set up my lifts
+          </Button>
+        }
       >
-        <div className="flex h-full flex-col items-center justify-center gap-2 text-center">
-          <LayoutTemplate size={40} className="text-ink-subtle" aria-hidden="true" />
-          <p className="font-marker text-body text-ink">Split templates are on the way</p>
-          <p className="max-w-xs text-body-sm text-ink-muted">
-            Push/Pull/Legs, Upper/Lower and more will land here. For now, try{' '}
-            <button
-              type="button"
-              className="text-accent underline"
-              onClick={() => setScreen('muscle-select')}
-            >
-              building by muscle group
-            </button>
-            .
+        <div className="flex flex-col gap-4 pt-4">
+          <div className="flex gap-3">
+            {(['push', 'pull', 'legs'] as const).map((g) => {
+              const m = MUSCLE_GROUP_META[g];
+              const Icon = m.icon;
+              return (
+                <div
+                  key={g}
+                  className="flex flex-1 flex-col items-center gap-1 rounded-md border border-ink/8 bg-surface-raised p-3"
+                >
+                  <Icon className={m.textClass} size={22} aria-hidden="true" />
+                  <span className="text-caption text-ink-muted">{m.label}</span>
+                </div>
+              );
+            })}
+          </div>
+          <p className="text-body-sm text-ink-muted">
+            A continuous Push/Pull/Legs rotation that fills your calendar and carries into next month
+            from wherever you left off.
           </p>
+          <ul className="list-disc space-y-1 pl-5 text-body-sm text-ink-muted">
+            <li>Push — alternating volume/heavy bench (DB ↔ BB) + 3 rotating supersets</li>
+            <li>Pull — weighted pull-ups &amp; seal rows, back + arms</li>
+            <li>Legs — squat / front-squat / deadlift cycle + core &amp; stability</li>
+          </ul>
+        </div>
+      </WizardShell>
+    );
+  }
+
+  if (screen === 'template-1rm') {
+    return (
+      <WizardShell
+        title="Your starting maxes"
+        subtitle="We scale every working set from these. Editable anytime."
+        onBack={() => setScreen('template-detail')}
+        footer={
+          <Button
+            variant="primary"
+            size="lg"
+            className="w-full"
+            disabled={!canAutofillCharlie}
+            onClick={handleActivateCharlie}
+          >
+            {canAutofillCharlie ? 'Autofill this month' : 'Enter your main lifts'}
+          </Button>
+        }
+      >
+        <div className="flex h-full flex-col gap-5 overflow-y-auto pt-2 pb-2">
+          {(['Push', 'Pull', 'Legs'] as const).map((group) => (
+            <div key={group} className="flex flex-col gap-2">
+              <h4 className="font-marker text-body text-ink">{group}</h4>
+              {LIFT_FIELDS.filter((f) => f.group === group).map((f) => (
+                <label key={f.key} className="flex items-center justify-between gap-3">
+                  <span className="flex-1 text-body-sm text-ink-muted">
+                    {f.label}
+                    {f.required && <span className="text-danger"> *</span>}
+                    {f.hint && <span className="block text-caption text-ink-subtle">{f.hint}</span>}
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <Input
+                      type="number"
+                      inputMode="decimal"
+                      size="sm"
+                      className={cn('w-24 text-right')}
+                      placeholder="0"
+                      value={maxes[f.key] ?? ''}
+                      onChange={(e) => setMaxes((v) => ({ ...v, [f.key]: e.target.value }))}
+                    />
+                    <span className="text-caption text-ink-subtle">lbs</span>
+                  </span>
+                </label>
+              ))}
+            </div>
+          ))}
         </div>
       </WizardShell>
     );

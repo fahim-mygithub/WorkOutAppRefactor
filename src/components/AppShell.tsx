@@ -2,6 +2,7 @@ import React from 'react';
 import { BottomNavigation } from './BottomNavigation';
 import { BoardFilters } from './BoardFilters';
 import { useAppViewport } from '../hooks/useAppViewport';
+import { useScheduleSync } from '../hooks/useScheduleSync';
 import { APP_SCROLL_ID } from '../lib/scroll';
 
 export interface AppShellProps {
@@ -34,6 +35,8 @@ export const AppShell: React.FC<AppShellProps> = ({
   header
 }) => {
   const { height, isKeyboardOpen, needsManualResize } = useAppViewport();
+  // Single-instance schedule hydration + local-first persistence (Charlie Split).
+  useScheduleSync();
 
   // On iOS, pin the shell to the visual viewport so the keyboard doesn't shove
   // content off-screen. Elsewhere rely on 100svh / native resize.

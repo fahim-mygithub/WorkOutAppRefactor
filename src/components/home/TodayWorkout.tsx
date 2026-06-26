@@ -1,7 +1,10 @@
 import { Link } from 'react-router-dom';
-import { Moon, Plus } from 'lucide-react';
+import { Moon, Plus, Play } from 'lucide-react';
 import type { WorkoutSummary } from '../../types/exerciseHistory';
-import { getMuscleGroupMeta } from './muscleGroup';
+import { getMuscleGroupMeta, MUSCLE_GROUP_META } from './muscleGroup';
+import { usePlannedSchedule } from '../../hooks/usePlannedSchedule';
+import { useStartPlannedDay } from '../../hooks/useStartPlannedDay';
+import type { PlannedDay } from '../../types/schedule';
 import { Button } from '../ui/button';
 import { Skeleton } from '../ui/skeleton';
 import { cn } from '../../lib/utils';
@@ -40,6 +43,9 @@ const formatVolume = (num: number): string => {
  * a real plan/schedule lookup once that exists.
  */
 export function TodayWorkout({ workoutHistory, isLoading }: TodayWorkoutProps) {
+  const { getPlannedDay } = usePlannedSchedule();
+  const startPlannedDay = useStartPlannedDay();
+
   if (isLoading) {
     return (
       <div className="border-t border-ink/10 pt-5">
@@ -63,6 +69,9 @@ export function TodayWorkout({ workoutHistory, isLoading }: TodayWorkoutProps) {
     return !isSameDay(d, now) && d < now && daysBetween(d, now) <= 3;
   });
 
+  const plannedToday = getPlannedDay(now);
+  const showPlanned = !todays && plannedToday != null && plannedToday.status === 'planned';
+
   return (
     <div className="border-t border-ink/10 pt-5">
       <p className="mb-3 font-marker text-caption uppercase tracking-wide text-ink-subtle">
@@ -70,11 +79,37 @@ export function TodayWorkout({ workoutHistory, isLoading }: TodayWorkoutProps) {
       </p>
       {todays ? (
         <LoggedWorkout workout={todays} />
+      ) : showPlanned && plannedToday ? (
+        <PlannedToday planned={plannedToday} onStart={() => startPlannedDay(plannedToday)} />
       ) : trainedRecently ? (
         <RestDay />
       ) : (
         <NoWorkoutPlanned />
       )}
+    </div>
+  );
+}
+
+function PlannedToday({ planned, onStart }: { planned: PlannedDay; onStart: () => void }) {
+  const meta = MUSCLE_GROUP_META[planned.dayType];
+  const Icon = meta.icon;
+  const accessoryCount = planned.preview.filter((p) => p.kind === 'accessory').length;
+  return (
+    <div className="flex items-start gap-3">
+      <div className={cn('flex h-11 w-11 shrink-0 items-center justify-center rounded-md', meta.bgClass)}>
+        <Icon size={22} className="text-ink-inverse" aria-hidden="true" />
+      </div>
+      <div className="min-w-0 flex-1">
+        <h3 className="font-marker text-title leading-tight text-ink">Today: {meta.label}</h3>
+        <p className="mt-0.5 truncate text-body-sm text-ink-muted">
+          {planned.variantLabel}
+          {accessoryCount > 0 ? ` · compound + ${accessoryCount} more` : ''}
+        </p>
+        <Button variant="primary" size="sm" className="mt-3" onClick={onStart}>
+          <Play size={16} />
+          <span>Start workout</span>
+        </Button>
+      </div>
     </div>
   );
 }
