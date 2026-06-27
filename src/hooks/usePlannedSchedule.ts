@@ -101,6 +101,8 @@ export interface UsePlannedSchedule {
   generatePlannedWorkout: (dateKey: DateKey, catalog: Exercise[]) => GeneratedDay | null;
   /** Re-randomize a planned day's accessory picks (persisted as a picks override). */
   rerollAccessories: (dateKey: DateKey) => void;
+  /** Re-randomize ONE accessory role (avoiding `avoidId`), preserving the others. */
+  rerollAccessory: (dateKey: DateKey, roleKey: string, avoidId?: string) => void;
 }
 
 export function usePlannedSchedule(): UsePlannedSchedule {
@@ -324,6 +326,31 @@ export function usePlannedSchedule(): UsePlannedSchedule {
     [plannedByDate, overrides, dispatch],
   );
 
+  const rerollAccessory = useCallback(
+    (dateKey: DateKey, roleKey: string, avoidId?: string) => {
+      const pd = plannedByDate.get(dateKey);
+      if (!pd || pd.status === 'completed') return;
+      const roles = accessoryRolesForDay(pd.dayType, pd.cycleIndex);
+      const role = roles.find((r) => r.roleKey === roleKey);
+      if (!role || role.pool.length === 0) return;
+      const current = overrides[dateKey]?.picks ?? {};
+      const candidates = avoidId ? role.pool.filter((o) => o.exerciseId !== avoidId) : role.pool;
+      const list = candidates.length > 0 ? candidates : role.pool;
+      const choice = list[Math.floor(Math.random() * list.length)].exerciseId;
+      dispatch(
+        dayOverrideSet({
+          dateKey,
+          status: 'planned',
+          dayType: pd.dayType,
+          cycleOrdinal: pd.cycleOrdinal,
+          picks: { ...current, [roleKey]: choice }, // merge — preserve other roles
+          updatedAt: new Date().toISOString(),
+        }),
+      );
+    },
+    [plannedByDate, overrides, dispatch],
+  );
+
   // retestAdvanced is dispatched by WorkoutPage on retest completion.
   void retestAdvanced;
 
@@ -337,5 +364,6 @@ export function usePlannedSchedule(): UsePlannedSchedule {
     markCompleted,
     generatePlannedWorkout,
     rerollAccessories,
+    rerollAccessory,
   };
 }

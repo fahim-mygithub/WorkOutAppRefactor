@@ -1,10 +1,9 @@
-import { Clock, Target, Zap, Play, BarChart3, Dumbbell, Shuffle, Sparkles } from 'lucide-react';
+import { Clock, Target, Zap, Play, BarChart3 } from 'lucide-react';
 import type { WorkoutCalendarDay } from '../../utils/statsCalculator';
 import { getWorkoutIntensity } from '../../utils/workoutColors';
-import { getMuscleGroupMeta, MUSCLE_GROUP_META } from './muscleGroup';
-import { useStartPlannedDay } from '../../hooks/useStartPlannedDay';
+import { getMuscleGroupMeta } from './muscleGroup';
 import { usePlannedSchedule } from '../../hooks/usePlannedSchedule';
-import type { PlannedDay } from '../../types/schedule';
+import { PlannedDayCard } from './PlannedDayCard';
 import {
   Sheet,
   SheetContent,
@@ -13,7 +12,6 @@ import {
 } from '../ui/sheet';
 import { Card, CardBody } from '../ui/card';
 import { IconButton } from '../ui/icon-button';
-import { Button } from '../ui/button';
 import { Stack } from '../ui/stack';
 import { cn } from '../../lib/utils';
 
@@ -36,8 +34,7 @@ const formatNumber = (num: number): string => {
 };
 
 export function WorkoutDayModal({ day, isOpen, onClose }: WorkoutDayModalProps) {
-  const startPlannedDay = useStartPlannedDay();
-  const { plannedByDate, rerollAccessories } = usePlannedSchedule();
+  const { plannedByDate } = usePlannedSchedule();
   const hasWorkouts = !!day && day.workouts.length > 0;
   const isToday = day?.isToday ?? false;
   const isPast = day?.isPast ?? false;
@@ -45,13 +42,12 @@ export function WorkoutDayModal({ day, isOpen, onClose }: WorkoutDayModalProps) 
   const planned = day?.planned ? plannedByDate.get(day.planned.dateKey) ?? day.planned : null;
   const showPlanned = !hasWorkouts && planned != null && planned.status === 'planned';
 
-  const stateLabel = showPlanned && planned
-    ? `Planned · ${MUSCLE_GROUP_META[planned.dayType].label}`
-    : isToday
-      ? 'Today'
-      : isPast
-        ? 'Past workout'
-        : 'Future';
+  // Planned days get a bespoke centered card; completed/rest keep the bottom sheet.
+  if (day && showPlanned && planned) {
+    return <PlannedDayCard day={day} planned={planned} isOpen={isOpen} onClose={onClose} />;
+  }
+
+  const stateLabel = isToday ? 'Today' : isPast ? 'Past workout' : 'Future';
 
   return (
     <Sheet open={isOpen} onOpenChange={(next) => !next && onClose()}>
@@ -81,15 +77,6 @@ export function WorkoutDayModal({ day, isOpen, onClose }: WorkoutDayModalProps) 
             <div className="mt-4">
               {hasWorkouts ? (
                 <WorkoutDayContent workouts={day.workouts} />
-              ) : showPlanned && planned ? (
-                <PlannedDayContent
-                  planned={planned}
-                  onStart={() => {
-                    onClose();
-                    startPlannedDay(planned);
-                  }}
-                  onReroll={() => rerollAccessories(planned.dateKey)}
-                />
               ) : (
                 <RestDayContent />
               )}
@@ -98,71 +85,6 @@ export function WorkoutDayModal({ day, isOpen, onClose }: WorkoutDayModalProps) 
         )}
       </SheetContent>
     </Sheet>
-  );
-}
-
-function PlannedDayContent({
-  planned,
-  onStart,
-  onReroll,
-}: {
-  planned: PlannedDay;
-  onStart: () => void;
-  onReroll: () => void;
-}) {
-  const meta = MUSCLE_GROUP_META[planned.dayType];
-  const Icon = meta.icon;
-  return (
-    <Stack gap={5}>
-      <div className="flex items-center gap-3">
-        <div className={cn('flex h-11 w-11 items-center justify-center rounded-md', meta.bgClass)}>
-          <Icon size={22} className="text-ink-inverse" aria-hidden="true" />
-        </div>
-        <div className="flex-1">
-          <h4 className="font-marker text-title text-ink">{meta.label}</h4>
-          <p className="text-body-sm text-ink-muted">{planned.variantLabel}</p>
-        </div>
-        {planned.isRetest && (
-          <span className="inline-flex items-center gap-1 rounded-full bg-accent/15 px-2 py-1 text-caption font-medium text-accent">
-            <Sparkles size={12} aria-hidden="true" />
-            1RM test
-          </span>
-        )}
-      </div>
-
-      <Stack gap={2}>
-        {planned.preview.map((slot, i) => (
-          <Card key={i} elevation={0} className={cn(slot.kind === 'compound' && 'border-l-2 border-accent')}>
-            <CardBody className="flex items-center justify-between gap-3 p-3 pt-3">
-              <div className="min-w-0">
-                <div className="flex items-center gap-1.5">
-                  {slot.kind === 'compound' && <Dumbbell size={14} className="shrink-0 text-accent" aria-hidden="true" />}
-                  <span className="truncate text-body-sm font-medium text-ink">{slot.title}</span>
-                </div>
-                <span className="text-caption text-ink-subtle">{slot.equipment}</span>
-              </div>
-              <div className="shrink-0 text-right">
-                <div className="font-num font-tabular text-body-sm text-ink">{slot.scheme}</div>
-                <div className="font-num text-caption text-ink-subtle">
-                  {slot.targetWeight != null ? `${slot.targetWeight} lb` : slot.isBodyweight ? 'BW' : '—'}
-                </div>
-              </div>
-            </CardBody>
-          </Card>
-        ))}
-      </Stack>
-
-      <div className="flex flex-col gap-2">
-        <Button variant="primary" size="lg" className="w-full" onClick={onStart}>
-          <Play size={18} />
-          <span>Start this workout</span>
-        </Button>
-        <Button variant="ghost" size="sm" className="w-full" onClick={onReroll}>
-          <Shuffle size={16} />
-          <span>Re-roll accessories</span>
-        </Button>
-      </div>
-    </Stack>
   );
 }
 
