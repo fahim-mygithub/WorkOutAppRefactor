@@ -20,90 +20,28 @@ import {
   previousExercise,
   completeSet,
   uncompleteSet,
-  addSet,
   jumpToSet,
   startRestTimer,
   stopRestTimer,
   nextSupersetExercise,
   completeSuperset,
   updateExercise,
-  updateExerciseNotesAndTitle,
   setShowCompletionModal,
   recordProgressionOutcome
 } from '../store/slices/workoutSlice';
-import { RestTimer } from '../components/RestTimer';
-import { SupersetExerciseCard } from '../components/SupersetExerciseCard';
 import { ExerciseEditModal } from '../components/ExerciseEditModal';
 import { WorkoutCompletionModal } from '../components/WorkoutCompletionModal';
 import { EndWorkoutModal } from '../components/EndWorkoutModal';
 import { DeloadSuggestion } from '../components/workout/DeloadSuggestion';
 import { FatigueCheck } from '../components/workout/FatigueCheck';
-import { WorkoutHeader } from '../components/workout/WorkoutHeader';
-import { ActiveExerciseCard } from '../components/workout/ActiveExerciseCard';
-import {
-  ExerciseListPanel,
-  type ExerciseDisplayGroup,
-} from '../components/workout/ExerciseListPanel';
+import { WorkoutTopBar } from '../components/workout/player/WorkoutTopBar';
+import { ExerciseDeck } from '../components/workout/player/ExerciseDeck';
+import { ExercisePlayCard } from '../components/workout/player/ExercisePlayCard';
+import { RestTimerBar } from '../components/workout/player/RestTimerBar';
 import { useProgressionRecommendation } from '../hooks/useProgressionRecommendation';
 import { Button } from '../components/ui/button';
 import { Card } from '../components/ui/card';
 import { Exercise, WorkoutExercise, WorkoutSet } from '../types/exercise';
-
-// Helper function to group exercises for display purposes
-const getGroupedExercisesForDisplay = (exercises: WorkoutExercise[], currentExerciseIndex: number): ExerciseDisplayGroup[] => {
-  const groups: ExerciseDisplayGroup[] = [];
-  const processedExerciseIds = new Set<string>();
-
-  exercises.forEach((exercise, index) => {
-    // Skip if already processed as part of a superset
-    if (processedExerciseIds.has(exercise.id)) return;
-
-    if (exercise.isSuperset && exercise.supersetId) {
-      // Find all exercises in this superset
-      const supersetExercises = exercises.filter(ex =>
-        ex.supersetId === exercise.supersetId
-      );
-
-      // Mark all superset exercises as processed
-      supersetExercises.forEach(ex => processedExerciseIds.add(ex.id));
-
-      // Calculate totals for the superset
-      const totalSets = supersetExercises.reduce((total, ex) => total + ex.sets.length, 0);
-      const completedSets = supersetExercises.reduce((total, ex) =>
-        total + ex.sets.filter(set => set.completed).length, 0);
-
-      // Check if any exercise in the superset is currently active
-      const isActive = supersetExercises.some(ex =>
-        exercises.findIndex(e => e.id === ex.id) === currentExerciseIndex
-      );
-
-      groups.push({
-        id: exercise.supersetId,
-        name: supersetExercises.map(ex => ex.customTitle || ex.exercise.name).join(' + '),
-        isSuperset: true,
-        exercises: supersetExercises,
-        totalSets,
-        completedSets,
-        isActive
-      });
-    } else {
-      // Regular exercise
-      processedExerciseIds.add(exercise.id);
-
-      groups.push({
-        id: exercise.id,
-        name: exercise.customTitle || exercise.exercise.name,
-        isSuperset: false,
-        exercises: [exercise],
-        totalSets: exercise.sets.length,
-        completedSets: exercise.sets.filter(set => set.completed).length,
-        isActive: index === currentExerciseIndex
-      });
-    }
-  });
-
-  return groups;
-};
 
 /** Build a calendar-shaped WorkoutSummary from a finished ActiveWorkout, for the
  *  local performed store (so completed Charlie days render in the loginless demo). */
@@ -146,7 +84,7 @@ export default function WorkoutPage() {
   const { activeWorkout, restTimer, showCompletionModal } = useAppSelector((state) => state.workout);
   const { preferences } = useAppSelector((state) => state.user);
   const { user } = useAuth(); // Get Firebase user from auth context
-  const { previousPerformances, isLoadingPrevious } = useAppSelector((state) => state.exerciseHistory);
+  const { previousPerformances } = useAppSelector((state) => state.exerciseHistory);
 
   // Check if we're viewing a shared workout
   const { shareId } = useParams<{ shareId?: string }>() || {};
@@ -221,7 +159,6 @@ export default function WorkoutPage() {
   // Move all variable declarations and hooks before early return to prevent hook count mismatch
   const currentExercise = activeWorkout?.exercises[activeWorkout.currentExerciseIndex];
   const currentSet = currentExercise?.sets[activeWorkout?.currentSetIndex || 0];
-  const currentSupersetIndex = activeWorkout?.currentSupersetIndex || 0;
 
   // Initialize progression recommendation hook for current exercise (always call this hook)
   const progressionHook = useProgressionRecommendation({
@@ -233,31 +170,10 @@ export default function WorkoutPage() {
     configuredReps: currentExercise?.sets?.[0]?.reps // Pass configured reps from first set
   });
 
-  // Stable callbacks for the memoized <ExerciseListPanel>. Defined above the
-  // early returns (rules-of-hooks) and via useCallback so the panel — which is
-  // React.memo'd — does not re-render when WorkoutPage re-renders for unrelated
-  // reasons (set completion, set navigation, modal toggles). dispatch is stable.
-  const handleJumpToExercise = useCallback((exerciseIndex: number) => {
-    dispatch(jumpToSet({ exerciseIndex, setIndex: 0 }));
-  }, [dispatch]);
-
   const handleEditExercise = useCallback((exercise: WorkoutExercise) => {
     setEditingExercise(exercise);
     setShowEditModal(true);
   }, []);
-
-  // Memoize the grouped-exercise list so its array identity is stable across
-  // renders that don't change the exercise data (e.g. opening a modal). It still
-  // recomputes when sets complete or the active exercise changes — which is when
-  // the side-panel list genuinely needs to update. Guarded for the null-workout
-  // case so it can sit above the early returns (rules-of-hooks).
-  const exerciseGroups = useMemo<ExerciseDisplayGroup[]>(() => {
-    if (!activeWorkout) return [];
-    return getGroupedExercisesForDisplay(
-      activeWorkout.exercises,
-      activeWorkout.currentExerciseIndex,
-    );
-  }, [activeWorkout?.exercises, activeWorkout?.currentExerciseIndex]);
 
   // Effect to check for deload when recommendation loads
   useEffect(() => {
@@ -322,9 +238,11 @@ export default function WorkoutPage() {
     );
   }
 
-  // Get superset exercises if we're in one
-  const supersetExercises = currentExercise?.isSuperset && currentExercise.supersetId
-    ? activeWorkout.exercises.filter(ex => ex.supersetId === currentExercise.supersetId)
+  // Names of the OTHER movements paired with the current one (superset context).
+  const supersetPartners = currentExercise?.isSuperset && currentExercise.supersetId
+    ? activeWorkout.exercises
+        .filter((ex) => ex.supersetId === currentExercise.supersetId && ex.id !== currentExercise.id)
+        .map((ex) => ex.customTitle || ex.exercise.name)
     : [];
 
   const handleCompleteSet = (reps: number, weight: number) => {
@@ -399,16 +317,6 @@ export default function WorkoutPage() {
     dispatch(uncompleteSet({
       exerciseIndex: activeWorkout.currentExerciseIndex,
       setIndex: activeWorkout.currentSetIndex
-    }));
-  };
-
-  const handleAddSet = () => {
-    dispatch(addSet({
-      exerciseIndex: activeWorkout.currentExerciseIndex,
-      setData: {
-        reps: currentSet?.reps || 0,
-        weight: currentSet?.weight || 0
-      }
     }));
   };
 
@@ -589,120 +497,72 @@ export default function WorkoutPage() {
   }, [currentSet, currentExercise, activeWorkout, restTimer, dispatch, handleCompleteSet, handleUncompleteSet, handleJumpToSet]);
 
   const progress = calculateWorkoutProgress();
-  const isSupersetView =
-    !!currentExercise?.isSuperset &&
-    !!currentExercise.supersetId &&
-    supersetExercises.length > 1;
+
+  // Group the workout into "cards" (a superset is one card) so the deck can show
+  // how many remain and so within-superset moves flip instead of slide.
+  const groupKeys: string[] = [];
+  {
+    const seen = new Set<string>();
+    activeWorkout.exercises.forEach((ex, i) => {
+      const k = ex.isSuperset && ex.supersetId ? `ss:${ex.supersetId}` : `ex:${i}`;
+      if (!seen.has(k)) {
+        seen.add(k);
+        groupKeys.push(k);
+      }
+    });
+  }
+  const currentSupersetId = currentExercise.isSuperset ? currentExercise.supersetId : undefined;
+  const curGroupKey = currentSupersetId
+    ? `ss:${currentSupersetId}`
+    : `ex:${activeWorkout.currentExerciseIndex}`;
+  const cardsLeft = Math.max(0, groupKeys.length - groupKeys.indexOf(curGroupKey) - 1);
 
   return (
-    <div className="min-h-full bg-surface p-4">
-      <div className="mx-auto max-w-4xl">
-        <WorkoutHeader
+    <>
+      {/* No-scroll player: slim top bar, swipeable exercise deck, rest-timer bar.
+          Phone-first — capped to a phone-width column and centered on wider screens. */}
+      <div className="mx-auto flex h-full w-full max-w-md flex-col overflow-hidden bg-surface">
+        <WorkoutTopBar
           name={activeWorkout.name}
           overallCompletedSets={progress.completedSets}
           overallTotalSets={progress.totalSets}
           overallPercentage={progress.percentage}
           currentExerciseNumber={activeWorkout.currentExerciseIndex + 1}
           totalExercises={activeWorkout.exercises.length}
-          currentExerciseCompletedSets={
-            currentExercise?.sets.filter((set) => set.completed).length || 0
-          }
-          currentExerciseTotalSets={currentExercise?.sets.length || 0}
           onEndWorkout={handleEndWorkoutClick}
         />
 
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-          {/* Main Exercise Panel */}
-          <div className="flex flex-col gap-6 lg:col-span-2">
-            {isSupersetView ? (
-              <SupersetExerciseCard
-                exercises={supersetExercises}
-                currentSupersetIndex={currentSupersetIndex}
-                currentSetIndex={activeWorkout.currentSetIndex}
-                onCompleteSet={handleCompleteSet}
-                onUncompleteSet={handleUncompleteSet}
-                onJumpToSet={handleJumpToSet}
-                onAddSet={handleAddSet}
-                previousPerformances={previousPerformances}
-              />
-            ) : (
-              <ActiveExerciseCard
-                exercise={currentExercise}
-                exerciseIndex={activeWorkout.currentExerciseIndex}
-                totalExercises={activeWorkout.exercises.length}
-                currentSetIndex={activeWorkout.currentSetIndex}
-                currentSet={currentSet}
-                previousPerformance={
-                  currentExercise?.exercise.id
-                    ? previousPerformances[currentExercise.exercise.id] || null
-                    : null
-                }
-                isLoadingPrevious={isLoadingPrevious}
-                isAnonymousUser={isAnonymousUser}
-                restActive={restTimer.isActive}
-                restTimeRemaining={restTimer.timeRemaining}
-                showProgressionSlider={
-                  !!progressionHook.recommendation && !progressionHook.isLoading
-                }
-                recommendation={progressionHook.recommendation}
-                recommendedWeight={
-                  progressionHook.acceptedRecommendation
-                    ? progressionHook.recommendation?.recommendedWeight
-                    : undefined
-                }
-                recommendedReps={
-                  progressionHook.acceptedRecommendation
-                    ? progressionHook.recommendation?.recommendedReps
-                    : undefined
-                }
-                onAcceptWeight={(weight) => {
-                  progressionHook.modifyRecommendation(
-                    weight,
-                    progressionHook.recommendation?.recommendedReps,
-                  );
-                  progressionHook.acceptRecommendation();
-                }}
-                onUpdateTitle={(title) =>
-                  dispatch(
-                    updateExerciseNotesAndTitle({
-                      exerciseId: currentExercise.id,
-                      customTitle: title,
-                    }),
-                  )
-                }
-                onUpdateNotes={(notes) =>
-                  dispatch(
-                    updateExerciseNotesAndTitle({
-                      exerciseId: currentExercise.id,
-                      notes,
-                    }),
-                  )
-                }
-                onEditSets={() => handleEditExercise(currentExercise)}
-                onPreviousExercise={() => dispatch(previousExercise())}
-                onNextExercise={() => dispatch(nextExercise())}
-                onCompleteSet={handleCompleteSet}
-                onUncompleteSet={handleUncompleteSet}
-                onJumpToSet={handleJumpToSet}
-                onAddSet={handleAddSet}
-              />
-            )}
-          </div>
+        <ExerciseDeck
+          index={activeWorkout.currentExerciseIndex}
+          canPrev={activeWorkout.currentExerciseIndex > 0}
+          canNext={
+            activeWorkout.currentExerciseIndex < activeWorkout.exercises.length - 1
+          }
+          onPrev={() => dispatch(previousExercise())}
+          onNext={() => dispatch(nextExercise())}
+          currentSupersetId={currentSupersetId}
+          cardsLeft={cardsLeft}
+        >
+          <ExercisePlayCard
+            exercise={currentExercise}
+            currentSetIndex={activeWorkout.currentSetIndex}
+            currentSet={currentSet}
+            supersetPartners={supersetPartners}
+            previousPerformance={
+              currentExercise.exercise.id
+                ? previousPerformances[currentExercise.exercise.id] || null
+                : null
+            }
+            recommendedWeight={progressionHook.recommendation?.recommendedWeight}
+            recommendedReps={progressionHook.recommendation?.recommendedReps}
+            onEditSets={() => handleEditExercise(currentExercise)}
+            onCompleteSet={handleCompleteSet}
+            onUncompleteSet={handleUncompleteSet}
+            onJumpToSet={handleJumpToSet}
+          />
+        </ExerciseDeck>
 
-          {/* Side Panel */}
-          <div className="space-y-6">
-            {/* Rest Timer - Desktop only */}
-            <RestTimer className="hidden lg:block" />
-
-            {/* Exercise List */}
-            <ExerciseListPanel
-              groups={exerciseGroups}
-              exercises={activeWorkout.exercises}
-              onJumpToExercise={handleJumpToExercise}
-              onEditExercise={handleEditExercise}
-            />
-          </div>
-        </div>
+        <RestTimerBar />
       </div>
 
       {/* Exercise Edit Modal */}
@@ -767,6 +627,6 @@ export default function WorkoutPage() {
           onClose={() => setShowFatigueModal(false)}
         />
       )}
-    </div>
+    </>
   );
 }

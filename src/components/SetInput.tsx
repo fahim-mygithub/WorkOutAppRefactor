@@ -3,6 +3,7 @@ import { Check, X, Edit3, Save } from 'lucide-react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
+import { cn } from '@/lib/utils';
 
 interface SetInputProps {
   set: any;
@@ -12,6 +13,8 @@ interface SetInputProps {
   allSets?: any[];
   recommendedWeight?: number;
   recommendedReps?: number;
+  /** Tighten padding, input height, and the action button for the no-scroll player. */
+  compact?: boolean;
 }
 
 export const SetInput: React.FC<SetInputProps> = ({
@@ -21,7 +24,8 @@ export const SetInput: React.FC<SetInputProps> = ({
   previousSet,
   allSets = [],
   recommendedWeight,
-  recommendedReps
+  recommendedReps,
+  compact = false,
 }) => {
   const [reps, setReps] = useState(0);
   const [weight, setWeight] = useState(0);
@@ -184,10 +188,10 @@ export const SetInput: React.FC<SetInputProps> = ({
     }
 
     return (
-      <div className="rounded-lg border-2 border-success/50 bg-success/15 p-4">
+      <div className={cn('rounded-lg border-2 border-success/50 bg-success/15', compact ? 'p-3' : 'p-4')}>
         <div className="flex items-center justify-between">
           <div>
-            <p className="font-marker text-title text-success">Set done ✓</p>
+            <p className={cn('font-marker text-success', compact ? 'text-body' : 'text-title')}>Set done ✓</p>
             <p className="text-body-sm text-ink-muted">
               <span className="font-num font-tabular text-ink">{set.reps}</span>{' '}
               reps ×{' '}
@@ -235,8 +239,8 @@ export const SetInput: React.FC<SetInputProps> = ({
   };
 
   return (
-    <div className="rounded-lg bg-surface-subtle p-4">
-      {isUsingSmartDefaults() && (
+    <div className={cn('rounded-lg bg-surface-subtle', compact ? 'p-3' : 'p-4')}>
+      {!compact && isUsingSmartDefaults() && (
         <div className="mb-3 rounded-md border border-accent/40 bg-accent/10 p-2">
           <p className="font-hand text-body-sm text-accent">
             Auto-filled from {getDefaultSource()}
@@ -244,11 +248,11 @@ export const SetInput: React.FC<SetInputProps> = ({
         </div>
       )}
 
-      <div className="mb-4 grid grid-cols-2 gap-4">
+      <div className={cn('grid grid-cols-2 items-end gap-3', compact ? 'mb-2.5' : 'mb-4')}>
         <div>
           <Label
             htmlFor="set-reps"
-            className="mb-2 block font-marker text-caption uppercase tracking-wider text-ink-muted"
+            className={cn('block font-marker uppercase tracking-wider text-ink-muted', compact ? 'mb-1 text-[10px]' : 'mb-2 text-caption')}
           >
             Reps
           </Label>
@@ -261,13 +265,13 @@ export const SetInput: React.FC<SetInputProps> = ({
             onFocus={(e) => e.target.select()}
             onKeyDown={handleInputKeyDown}
             autoComplete="off"
-            className="h-16 text-center text-display"
+            className={cn('text-center', compact ? 'h-12 text-2xl' : 'h-16 text-display')}
           />
         </div>
         <div>
           <Label
             htmlFor="set-weight"
-            className="mb-2 block font-marker text-caption uppercase tracking-wider text-ink-muted"
+            className={cn('block font-marker uppercase tracking-wider text-ink-muted', compact ? 'mb-1 text-[10px]' : 'mb-2 text-caption')}
           >
             Weight <span className="normal-case text-ink-subtle">(lbs)</span>
           </Label>
@@ -281,12 +285,17 @@ export const SetInput: React.FC<SetInputProps> = ({
             onFocus={(e) => e.target.select()}
             onKeyDown={handleInputKeyDown}
             autoComplete="off"
-            className="h-16 text-center text-display"
+            className={cn('text-center', compact ? 'h-12 text-2xl' : 'h-16 text-display')}
           />
         </div>
       </div>
-      <Button onClick={handleComplete} size="lg" className="w-full text-title">
-        <Check className="h-5 w-5" />
+      {/* Stays a colored, labeled action — just smaller in compact (md vs lg). */}
+      <Button
+        onClick={handleComplete}
+        size={compact ? 'md' : 'lg'}
+        className={cn('w-full', !compact && 'text-title')}
+      >
+        <Check className={compact ? 'h-4 w-4' : 'h-5 w-5'} />
         <span>Complete Set</span>
       </Button>
     </div>
