@@ -30,8 +30,9 @@ interface ExercisePlayCardProps {
 }
 
 /** A single looping muted clip that fills its box, with a glyph placeholder behind
- *  it so a slow/undecodable video never reads as a black rectangle. */
-function Clip({ url, reduced }: { url: string; reduced: boolean }) {
+ *  it so a slow/undecodable video never reads as a black rectangle. `contain`
+ *  letterboxes the clip (full, uncropped) instead of cover-cropping it. */
+function Clip({ url, reduced, contain = false }: { url: string; reduced: boolean; contain?: boolean }) {
   const [loaded, setLoaded] = useState(false);
   const [errored, setErrored] = useState(false);
   const src = url ? transformVideoUrl(url) : '';
@@ -44,7 +45,8 @@ function Clip({ url, reduced }: { url: string; reduced: boolean }) {
         <video
           src={src}
           className={cn(
-            'relative h-full w-full object-cover transition-opacity duration-300',
+            'relative h-full w-full transition-opacity duration-300',
+            contain ? 'object-contain' : 'object-cover',
             loaded ? 'opacity-100' : 'opacity-0',
           )}
           muted
@@ -117,8 +119,17 @@ export const ExercisePlayCard: React.FC<ExercisePlayCardProps> = ({
         </IconButton>
       </div>
 
-      {/* Clip(s) — flex to fill remaining height; overlay chips for last-time + instructions */}
-      <div className="relative min-h-0 flex-1 overflow-hidden rounded-xl border border-board-line/20">
+      {/* Clip(s) — flex to fill remaining height. Tapping anywhere opens the
+          instructions popup; the chip is the visible affordance for it. */}
+      <div
+        className={cn(
+          'relative min-h-0 flex-1 overflow-hidden rounded-xl border border-board-line/20',
+          instructions.length > 0 && 'cursor-pointer',
+        )}
+        onClick={instructions.length > 0 ? () => setShowInstructions(true) : undefined}
+        role={instructions.length > 0 ? 'button' : undefined}
+        aria-label={instructions.length > 0 ? `Show instructions for ${title}` : undefined}
+      >
         {videoLinks.length >= 2 ? (
           <div className="grid h-full grid-cols-2 gap-px">
             <Clip url={videoLinks[0]} reduced={reduced} />
@@ -128,16 +139,12 @@ export const ExercisePlayCard: React.FC<ExercisePlayCardProps> = ({
           <Clip url={videoLinks[0] ?? ''} reduced={reduced} />
         )}
 
-        {/* instructions opener */}
+        {/* instructions affordance */}
         {instructions.length > 0 && (
-          <button
-            type="button"
-            onClick={() => setShowInstructions(true)}
-            className="absolute bottom-2 right-2 inline-flex items-center gap-1 rounded-full bg-ink/65 px-2.5 py-1 text-caption font-medium text-surface-raised backdrop-blur-sm transition-colors hover:bg-ink/80"
-          >
+          <span className="pointer-events-none absolute bottom-2 right-2 inline-flex items-center gap-1 rounded-full bg-ink/65 px-2.5 py-1 text-caption font-medium text-surface-raised backdrop-blur-sm">
             <BookOpen size={13} aria-hidden="true" />
             Instructions
-          </button>
+          </span>
         )}
       </div>
 
@@ -219,7 +226,8 @@ export const ExercisePlayCard: React.FC<ExercisePlayCardProps> = ({
         />
       </div>
 
-      {/* Instructions popup */}
+      {/* Instructions popup — the clip(s) shown in full (uncropped) and stacked,
+          then the steps, all scrollable. */}
       <Modal open={showInstructions} onOpenChange={setShowInstructions}>
         <ModalContent>
           <div className="border-b border-board-line/20 px-4 pb-3 pt-4">
@@ -228,14 +236,25 @@ export const ExercisePlayCard: React.FC<ExercisePlayCardProps> = ({
               How to perform this exercise
             </ModalDescription>
           </div>
-          <ol className="space-y-3 overflow-y-auto px-4 py-4">
-            {instructions.map((step, i) => (
-              <li key={i} className="flex gap-3 text-body-sm text-ink-muted">
-                <span className="font-num font-bold text-accent">{i + 1}.</span>
-                <span>{step}</span>
-              </li>
-            ))}
-          </ol>
+          <div className="space-y-4 overflow-y-auto px-4 py-4">
+            {videoLinks.length > 0 && (
+              <div className="space-y-2">
+                {videoLinks.map((url, i) => (
+                  <div key={i} className="aspect-video w-full overflow-hidden rounded-lg border border-board-line/20">
+                    <Clip url={url} reduced={reduced} contain />
+                  </div>
+                ))}
+              </div>
+            )}
+            <ol className="space-y-3">
+              {instructions.map((step, i) => (
+                <li key={i} className="flex gap-3 text-body-sm text-ink-muted">
+                  <span className="font-num font-bold text-accent">{i + 1}.</span>
+                  <span>{step}</span>
+                </li>
+              ))}
+            </ol>
+          </div>
         </ModalContent>
       </Modal>
     </div>

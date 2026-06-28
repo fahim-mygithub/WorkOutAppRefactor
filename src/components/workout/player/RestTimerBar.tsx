@@ -38,6 +38,17 @@ function formatTime(seconds: number): string {
   return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
+/**
+ * Rest-button fill color by elapsed fraction (0 = just started → green,
+ * 1 = time's up → red). Linear hue sweep so the fill visibly shifts the whole
+ * way through the rest — green → amber → red — as the limit approaches.
+ */
+function restFillColor(elapsedFraction: number): string {
+  const p = Math.max(0, Math.min(1, elapsedFraction));
+  const hue = 142 - 136 * p; // 142° green → ~6° red
+  return `hsl(${hue} 68% 50%)`;
+}
+
 // --- sound helpers (ported from RestTimer) ---
 function playBeep() {
   const ctx = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
@@ -179,59 +190,49 @@ export const RestTimerBar: React.FC = () => {
 
   const active = restTimer.isActive;
   const remaining = restTimer.timeRemaining;
-  const progress = active && restTimer.duration > 0
-    ? ((restTimer.duration - remaining) / restTimer.duration) * 100
-    : 0;
-  const timeTone =
-    active && remaining <= 3 ? 'text-danger' : active && remaining <= 10 ? 'text-warning' : 'text-ink';
+  const elapsedFraction =
+    active && restTimer.duration > 0 ? (restTimer.duration - remaining) / restTimer.duration : 0;
+  // Inactive shows the resting-green start state; active interpolates toward red.
+  const fillColor = restFillColor(elapsedFraction);
 
   return (
     <>
-      <div
-        className="relative shrink-0 overflow-hidden border-t border-board-line/25 bg-surface-raised pb-[env(safe-area-inset-bottom)]"
-      >
-        {/* progress fill behind the bar while resting */}
-        {active && (
-          <div
-            className={cn(
-              'absolute inset-y-0 left-0 transition-all duration-1000',
-              remaining <= 3 ? 'bg-danger/20' : remaining <= 10 ? 'bg-warning/20' : 'bg-accent/15',
-            )}
-            style={{ width: `${progress}%` }}
-            aria-hidden="true"
-          />
-        )}
-
-        <div className="relative flex items-stretch">
+      <div className="shrink-0 border-t border-board-line/25 bg-surface-raised px-2 pt-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))]">
+        <div className="flex items-center gap-2">
           {/* Chevron — open presets/custom */}
           <button
             type="button"
             onClick={() => setSheetOpen(true)}
             aria-label="Rest timer options"
-            className="flex shrink-0 items-center px-3 text-ink-muted transition-colors hover:text-ink"
+            className="flex min-h-touch shrink-0 items-center rounded-full px-2 text-ink-muted transition-colors hover:bg-surface-subtle hover:text-ink"
           >
             <ChevronUp size={20} />
           </button>
 
-          {/* Main button — start default, or show countdown + skip while active */}
+          {/* Main pill — rounded, color-filled; green to start, ramping to red as
+              the rest elapses. Tap to start the default rest, or to skip while resting. */}
           <button
             type="button"
             onClick={active ? handleSkip : () => startDuration(defaultDuration)}
-            className="flex min-h-touch flex-1 items-center justify-center gap-2 py-2 pr-3"
+            style={{ backgroundColor: fillColor, color: 'hsl(210 28% 13%)' }}
+            className={cn(
+              'flex min-h-touch flex-1 items-center justify-center gap-2 rounded-full px-5 font-marker shadow-e1',
+              active && remaining <= 3 && 'animate-pulse',
+            )}
           >
             {active ? (
               <>
-                <span className={cn('font-num font-tabular text-xl font-bold tabular-nums', timeTone)}>
+                <Pause size={16} className="opacity-80" aria-hidden="true" />
+                <span className="font-num font-tabular text-xl font-bold tabular-nums">
                   {formatTime(remaining)}
                 </span>
-                <span className="text-caption text-ink-subtle">rest · tap to skip</span>
-                <Pause size={15} className="text-ink-subtle" />
+                <span className="text-caption opacity-75">tap to skip</span>
               </>
             ) : (
               <>
-                <Play size={16} className="text-success" />
-                <span className="font-marker text-body text-ink">Start rest</span>
-                <span className="font-num font-tabular text-caption text-ink-subtle">
+                <Play size={17} aria-hidden="true" />
+                <span className="text-body">Start rest</span>
+                <span className="font-num font-tabular text-caption opacity-75">
                   {formatTime(defaultDuration)}
                 </span>
               </>
@@ -243,7 +244,7 @@ export const RestTimerBar: React.FC = () => {
               type="button"
               onClick={() => dispatch(stopRestTimer())}
               aria-label="Cancel rest"
-              className="flex shrink-0 items-center px-3 text-ink-muted transition-colors hover:text-danger"
+              className="flex min-h-touch shrink-0 items-center rounded-full px-2 text-ink-muted transition-colors hover:bg-surface-subtle hover:text-danger"
             >
               <X size={18} />
             </button>
