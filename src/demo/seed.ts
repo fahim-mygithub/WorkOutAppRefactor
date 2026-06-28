@@ -12,14 +12,16 @@ import { DEMO_UID, DEMO_USER } from './demo';
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 /**
- * A handful of recent workouts for the demo account. Days 0/1/2 are consecutive
- * (a 3-day streak), with two more earlier in the week so the calendar shows
- * activity. Shape mirrors the verified mock in home-calendar-showcase.tsx.
+ * A handful of recent workouts for the demo account. Days 1/2/3 are consecutive
+ * (a 3-day streak ending yesterday), with two more earlier in the week so the
+ * calendar shows activity. TODAY is intentionally left free so the active plan's
+ * "Today" workout still surfaces with a Start button (a logged-today workout
+ * would otherwise mask it). Shape mirrors home-calendar-showcase.tsx.
  */
 export function getDemoWorkoutHistory(): WorkoutSummary[] {
   const now = Date.now();
   const names = ['Push Day', 'Pull Day', 'Leg Day', 'Upper Body', 'Full Body'];
-  const dayOffsets = [0, 1, 2, 4, 6];
+  const dayOffsets = [1, 2, 3, 5, 7];
 
   return dayOffsets.map((offset, i) => {
     const end = new Date(now - offset * DAY_MS);
