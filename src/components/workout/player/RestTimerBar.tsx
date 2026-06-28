@@ -21,6 +21,7 @@ import {
 } from '../../../store/slices/workoutSlice';
 import { remainingSeconds, isElapsed } from '../../../lib/restTimer';
 import { Sheet, SheetContent, SheetTitle, SheetDescription } from '@/components/ui/sheet';
+import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
 const PRESETS: Array<{ label: string; seconds: number }> = [
@@ -199,24 +200,18 @@ export const RestTimerBar: React.FC = () => {
     <>
       <div className="shrink-0 border-t border-board-line/25 bg-surface-raised px-2 pt-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))]">
         <div className="flex items-center gap-2">
-          {/* Chevron — open presets/custom */}
-          <button
-            type="button"
-            onClick={() => setSheetOpen(true)}
-            aria-label="Rest timer options"
-            className="flex min-h-touch shrink-0 items-center rounded-full px-2 text-ink-muted transition-colors hover:bg-surface-subtle hover:text-ink"
-          >
-            <ChevronUp size={20} />
-          </button>
-
-          {/* Main pill — rounded, color-filled; green to start, ramping to red as
-              the rest elapses. Tap to start the default rest, or to skip while resting. */}
-          <button
-            type="button"
+          {/* Main action — same shape as the Complete Set button (rounded,
+              sketch-border, font-marker), green-filled and ramping toward red as
+              the rest elapses. Label is centered; the time is spaced to the right.
+              Taller than a default button. Tap to start the default rest / skip. */}
+          <Button
+            size="lg"
             onClick={active ? handleSkip : () => startDuration(defaultDuration)}
-            style={{ backgroundColor: fillColor, color: 'hsl(210 28% 13%)' }}
+            // transition: none — the fill updates every tick; a CSS color
+            // transition lags badly under the per-second re-renders.
+            style={{ backgroundColor: fillColor, color: 'hsl(210 28% 13%)', transition: 'none' }}
             className={cn(
-              'flex min-h-touch flex-1 items-center justify-center gap-2 rounded-full px-5 font-marker shadow-e1',
+              'relative min-h-[3.25rem] flex-1',
               active && remaining <= 3 && 'animate-pulse',
             )}
           >
@@ -226,27 +221,39 @@ export const RestTimerBar: React.FC = () => {
                 <span className="font-num font-tabular text-xl font-bold tabular-nums">
                   {formatTime(remaining)}
                 </span>
-                <span className="text-caption opacity-75">tap to skip</span>
+                <span className="absolute right-5 text-caption font-normal opacity-75">
+                  tap to skip
+                </span>
               </>
             ) : (
               <>
-                <Play size={17} aria-hidden="true" />
-                <span className="text-body">Start rest</span>
-                <span className="font-num font-tabular text-caption opacity-75">
+                <Play size={18} aria-hidden="true" />
+                <span>Start rest</span>
+                <span className="absolute right-5 font-num font-tabular text-body font-normal opacity-75">
                   {formatTime(defaultDuration)}
                 </span>
               </>
             )}
-          </button>
+          </Button>
 
-          {active && (
+          {/* Right side: presets while idle, cancel while resting */}
+          {active ? (
             <button
               type="button"
               onClick={() => dispatch(stopRestTimer())}
               aria-label="Cancel rest"
-              className="flex min-h-touch shrink-0 items-center rounded-full px-2 text-ink-muted transition-colors hover:bg-surface-subtle hover:text-danger"
+              className="flex min-h-[3.25rem] shrink-0 items-center rounded-lg border border-board-line/40 px-3 text-ink-muted transition-colors hover:bg-surface-subtle hover:text-danger"
             >
               <X size={18} />
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setSheetOpen(true)}
+              aria-label="Rest timer options"
+              className="flex min-h-[3.25rem] shrink-0 items-center rounded-lg border border-board-line/40 px-3 text-ink-muted transition-colors hover:bg-surface-subtle hover:text-ink"
+            >
+              <ChevronUp size={20} />
             </button>
           )}
         </div>
