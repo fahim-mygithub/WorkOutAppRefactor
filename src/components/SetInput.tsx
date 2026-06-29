@@ -5,9 +5,18 @@ import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { cn } from '@/lib/utils';
 
+/** Optional reps-in-reserve taps. `3` renders as "3+" (3 or more left in the
+ *  tank); an unset value means the lifter skipped logging effort for this set. */
+const RIR_OPTIONS: { value: number; label: string }[] = [
+  { value: 0, label: '0' },
+  { value: 1, label: '1' },
+  { value: 2, label: '2' },
+  { value: 3, label: '3+' },
+];
+
 interface SetInputProps {
   set: any;
-  onComplete: (reps: number, weight: number) => void;
+  onComplete: (reps: number, weight: number, rir?: number) => void;
   onUncomplete: () => void;
   previousSet?: any;
   allSets?: any[];
@@ -29,6 +38,7 @@ export const SetInput: React.FC<SetInputProps> = ({
 }) => {
   const [reps, setReps] = useState(0);
   const [weight, setWeight] = useState(0);
+  const [rir, setRir] = useState<number | undefined>(undefined);
   const [isEditing, setIsEditing] = useState(false);
 
   // Smart defaults logic
@@ -91,6 +101,14 @@ export const SetInput: React.FC<SetInputProps> = ({
     }
   }, [set, previousSet, allSets]);
 
+  // Seed RIR only when the set itself changes (not on every render — the effect
+  // above re-fires whenever the unstable `allSets`/`previousSet` defaults change,
+  // which must not clobber an in-progress tap). Fresh sets start unset (skipped);
+  // a revisited set restores its stored effort.
+  useEffect(() => {
+    setRir(set?.rir);
+  }, [set?.id, set?.rir]);
+
   // Update when recommendation changes
   useEffect(() => {
     if (recommendedWeight !== undefined && !set?.completed) {
@@ -102,7 +120,7 @@ export const SetInput: React.FC<SetInputProps> = ({
   }, [recommendedWeight, recommendedReps, set?.completed]);
 
   const handleComplete = () => {
-    onComplete(reps, weight);
+    onComplete(reps, weight, rir);
     setIsEditing(false);
   };
 
@@ -111,7 +129,7 @@ export const SetInput: React.FC<SetInputProps> = ({
   };
 
   const handleSaveEdit = () => {
-    onComplete(reps, weight);
+    onComplete(reps, weight, rir);
     setIsEditing(false);
   };
 
@@ -309,6 +327,44 @@ export const SetInput: React.FC<SetInputProps> = ({
           />
         </div>
       </div>
+
+      {/* Optional reps-in-reserve tap — unset by default (skippable). Kept on one
+          tight row so it stays unobtrusive in the no-scroll compact player. */}
+      <div className={cn('flex items-center gap-2', compact ? 'mb-2.5' : 'mb-4')}>
+        <span
+          className={cn(
+            'shrink-0 font-marker uppercase tracking-wider text-ink-muted',
+            compact ? 'text-[10px]' : 'text-caption',
+          )}
+        >
+          RIR
+        </span>
+        <div className="flex flex-1 gap-1" role="group" aria-label="Reps in reserve">
+          {RIR_OPTIONS.map((opt) => {
+            const selected = rir === opt.value;
+            return (
+              <button
+                key={opt.value}
+                type="button"
+                aria-label={`RIR ${opt.label}`}
+                aria-pressed={selected}
+                // Tapping the active chip clears it back to skipped.
+                onClick={() => setRir(selected ? undefined : opt.value)}
+                className={cn(
+                  'flex-1 rounded-md border text-center font-num font-tabular leading-none transition-colors',
+                  compact ? 'py-1 text-caption' : 'py-1.5 text-body-sm',
+                  selected
+                    ? 'border-accent bg-accent/10 text-accent'
+                    : 'border-board-line/25 bg-surface-subtle text-ink-muted',
+                )}
+              >
+                {opt.label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
       {/* Stays a colored, labeled action — just smaller in compact (md vs lg). */}
       <Button
         onClick={handleComplete}

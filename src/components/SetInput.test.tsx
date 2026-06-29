@@ -1,5 +1,6 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { SetInput } from '@/components/SetInput';
 
 const noop = () => {};
@@ -27,5 +28,44 @@ describe('SetInput — prescribed rep range', () => {
 
     expect(screen.queryByText('8–8')).not.toBeInTheDocument();
     expect(screen.getByLabelText('Reps')).toHaveValue(8);
+  });
+});
+
+describe('SetInput — optional RIR tap', () => {
+  it('passes the tapped RIR through onComplete', async () => {
+    const user = userEvent.setup();
+    const onComplete = vi.fn();
+    const set = { id: 's1', reps: 8, weight: 50, completed: false };
+    render(<SetInput set={set} onComplete={onComplete} onUncomplete={noop} />);
+
+    await user.click(screen.getByRole('button', { name: 'RIR 2' }));
+    await user.click(screen.getByRole('button', { name: /complete set/i }));
+
+    expect(onComplete).toHaveBeenCalledWith(8, 50, 2);
+  });
+
+  it('leaves RIR undefined when the lifter skips it (default)', async () => {
+    const user = userEvent.setup();
+    const onComplete = vi.fn();
+    const set = { id: 's1', reps: 8, weight: 50, completed: false };
+    render(<SetInput set={set} onComplete={onComplete} onUncomplete={noop} />);
+
+    await user.click(screen.getByRole('button', { name: /complete set/i }));
+
+    expect(onComplete).toHaveBeenCalledWith(8, 50, undefined);
+  });
+
+  it('clears the RIR back to skipped when the active chip is tapped again', async () => {
+    const user = userEvent.setup();
+    const onComplete = vi.fn();
+    const set = { id: 's1', reps: 8, weight: 50, completed: false };
+    render(<SetInput set={set} onComplete={onComplete} onUncomplete={noop} />);
+
+    const chip = screen.getByRole('button', { name: 'RIR 2' });
+    await user.click(chip); // select
+    await user.click(chip); // toggle back off
+    await user.click(screen.getByRole('button', { name: /complete set/i }));
+
+    expect(onComplete).toHaveBeenCalledWith(8, 50, undefined);
   });
 });

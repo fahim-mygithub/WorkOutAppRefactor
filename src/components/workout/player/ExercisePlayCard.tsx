@@ -24,7 +24,7 @@ interface ExercisePlayCardProps {
   recommendedWeight?: number;
   recommendedReps?: number;
   onEditSets: () => void;
-  onCompleteSet: (reps: number, weight: number) => void;
+  onCompleteSet: (reps: number, weight: number, rir?: number) => void;
   onUncompleteSet: () => void;
   onJumpToSet: (index: number) => void;
 }

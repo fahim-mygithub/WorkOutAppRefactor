@@ -246,11 +246,11 @@ export default function WorkoutPage() {
         .map((ex) => ex.customTitle || ex.exercise.name)
     : [];
 
-  const handleCompleteSet = (reps: number, weight: number) => {
+  const handleCompleteSet = (reps: number, weight: number, rir?: number) => {
     dispatch(completeSet({
       exerciseIndex: activeWorkout.currentExerciseIndex,
       setIndex: activeWorkout.currentSetIndex,
-      setData: { reps, weight }
+      setData: { reps, weight, rir }
     }));
 
     // Check for failed set (if reps are significantly less than target)
