@@ -5,7 +5,8 @@ import type {
   ExperienceLevel,
   ProgressionAction,
   AlternativeProgression,
-  BandColor
+  BandColor,
+  EquipmentType
 } from '../types/progression';
 import type { ExerciseHistory, PerformedSet } from '../types/exerciseHistory';
 import type { Exercise } from '../types/exercise';
@@ -31,6 +32,7 @@ import type {
   InSessionDecision,
   LayoffSuggestion
 } from '../lib/progression';
+import { roundToIncrement } from '../lib/oneRepMax';
 
 export class ProgressiveOverloadService {
 
@@ -430,24 +432,15 @@ export class ProgressiveOverloadService {
     return currentIndex !== -1 ? currentIndex - progression.regressions.length : 0;
   }
 
-  private static roundToAvailableWeight(weight: number, equipmentType: string): number {
-    // Round to nearest 5 for dumbbells and plates
-    if (equipmentType === 'dumbbell' || equipmentType === 'plate') {
-      return Math.round(weight / 5) * 5;
-    }
-
-    // Round to nearest 2.5 for barbells
-    if (equipmentType === 'barbell') {
-      return Math.round(weight / 2.5) * 2.5;
-    }
-
-    // Round to nearest 10 for machines
-    if (equipmentType === 'machine') {
-      return Math.round(weight / 10) * 10;
-    }
-
-    // Default to nearest 5
-    return Math.round(weight / 5) * 5;
+  /**
+   * Round a weight to the nearest real-world increment for its equipment.
+   * Delegates to the canonical rounder in oneRepMax.ts (single source of truth)
+   * rather than re-deriving per-equipment steps here. `equipmentType` is already
+   * a mapped `EquipmentType` (from getEquipmentType at the call site), so it is
+   * passed straight through — re-mapping it would default it to bodyweight.
+   */
+  private static roundToAvailableWeight(weight: number, equipmentType: EquipmentType): number {
+    return roundToIncrement(weight, equipmentType);
   }
 
   private static calculateConfidence(
