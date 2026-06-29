@@ -31,12 +31,13 @@ import {
 import { ExerciseEditModal } from '../components/ExerciseEditModal';
 import { WorkoutCompletionModal } from '../components/WorkoutCompletionModal';
 import { EndWorkoutModal } from '../components/EndWorkoutModal';
-import { DeloadSuggestion } from '../components/workout/DeloadSuggestion';
 import { WorkoutTopBar } from '../components/workout/player/WorkoutTopBar';
 import { ExerciseDeck } from '../components/workout/player/ExerciseDeck';
 import { ExercisePlayCard } from '../components/workout/player/ExercisePlayCard';
 import { RestTimerBar } from '../components/workout/player/RestTimerBar';
+import { WelcomeBackSuggestion } from '../components/workout/player/WelcomeBackSuggestion';
 import { useProgressionRecommendation } from '../hooks/useProgressionRecommendation';
+import { ProgressiveOverloadService } from '../services/progressiveOverloadService';
 import { inSessionSuggestion } from '../lib/progression/inSession';
 import { Button } from '../components/ui/button';
 import { Card } from '../components/ui/card';
@@ -110,20 +111,25 @@ export default function WorkoutPage() {
 
   const [editingExercise, setEditingExercise] = useState<WorkoutExercise | null>(null);
   const [showEditModal, setShowEditModal] = useState(false);
-  const [showDeloadModal, setShowDeloadModal] = useState(false);
   const [showEndWorkoutModal, setShowEndWorkoutModal] = useState(false);
   // Live in-session cue after a logged set (reduce/repeat only) + the load the
   // lifter chose to apply to the remaining sets of this exercise.
   const [suggestion, setSuggestion] = useState<InSessionDecision | null>(null);
   const [appliedWeight, setAppliedWeight] = useState<number | null>(null);
+  // Whether the lifter has answered the opt-in welcome-back prompt for the
+  // CURRENT exercise (applied the lighter load or kept the full load). Tracked
+  // per exercise so the prompt doesn't re-pop after they decide; reset on change.
+  const [welcomeBackAnswered, setWelcomeBackAnswered] = useState(false);
 
   // Track if workout context has been loaded to prevent duplicate calls
   const contextLoadedRef = useRef<string | null>(null);
 
-  // A new exercise starts clean: no carried-over cue or applied load.
+  // A new exercise starts clean: no carried-over cue, applied load, or answered
+  // welcome-back prompt.
   useEffect(() => {
     setSuggestion(null);
     setAppliedWeight(null);
+    setWelcomeBackAnswered(false);
   }, [activeWorkout?.currentExerciseIndex]);
 
   // Moving to another set dismisses the transient cue (the applied load persists
@@ -184,14 +190,19 @@ export default function WorkoutPage() {
     setShowEditModal(true);
   }, []);
 
-  // Effect to check for deload when recommendation loads
-  useEffect(() => {
-    if (activeWorkout && progressionHook.recommendation?.deloadApplied &&
-        progressionHook.recommendation.daysSinceLastWorkout &&
-        progressionHook.recommendation.daysSinceLastWorkout >= 14) {
-      setShowDeloadModal(true);
-    }
-  }, [progressionHook.recommendation, activeWorkout]);
+  // Opt-in "welcome back" suggestion for the current exercise. Derived from the
+  // pure delegate off the lifter's last working load (previousWeight, falling
+  // back to the recommended load) and the calendar gap — it returns null for
+  // anything under ~3 weeks, so a normal cadence never triggers it. The data
+  // naturally gates this to authed users with prior history (anon/demo have no
+  // daysSinceLastWorkout/previousWeight), mirroring the in-session cue.
+  const rec = progressionHook.recommendation;
+  const layoffSuggestion = useMemo(() => {
+    if (!rec || rec.daysSinceLastWorkout == null) return null;
+    const lastWeight = rec.previousWeight ?? rec.recommendedWeight;
+    if (!lastWeight) return null;
+    return ProgressiveOverloadService.getLayoffSuggestion(rec.daysSinceLastWorkout, lastWeight);
+  }, [rec]);
 
   if (!activeWorkout) {
     // If we're viewing a shared workout, wrap with SharedWorkoutLoader
@@ -607,17 +618,18 @@ export default function WorkoutPage() {
         isSharedWorkout={isViewingSharedWorkout}
       />
 
-      {/* Deload Suggestion Slide-out - Only for authenticated users */}
-      {!isAnonymousUser && progressionHook.showDeloadSuggestion && progressionHook.recommendation && (
-        <DeloadSuggestion
-          weeksSinceLastWorkout={Math.ceil((progressionHook.recommendation.daysSinceLastWorkout || 14) / 7)}
-          suggestedDeloadPercentage={15}
-          previousWeight={progressionHook.recommendation.previousWeight || 0}
-          suggestedWeight={progressionHook.recommendation.recommendedWeight || 0}
-          exerciseName={currentExercise?.exercise.name || ''}
-          onAccept={progressionHook.applyDeload}
-          onDecline={progressionHook.declineDeload}
-          onClose={() => setShowDeloadModal(false)}
+      {/* Opt-in welcome-back after a real layoff — shows the CORRECT reduction
+          and never cuts the load on its own. Gated by the data (a suggestion only
+          exists with prior history) + the per-exercise answered flag, not auth. */}
+      {layoffSuggestion && !welcomeBackAnswered && (
+        <WelcomeBackSuggestion
+          suggestion={layoffSuggestion}
+          exerciseName={currentExercise.exercise.name}
+          onApply={(weight) => {
+            setAppliedWeight(weight);
+            setWelcomeBackAnswered(true);
+          }}
+          onDismiss={() => setWelcomeBackAnswered(true)}
         />
       )}
     </>
