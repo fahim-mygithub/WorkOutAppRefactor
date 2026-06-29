@@ -155,3 +155,17 @@ describe('ProgressiveOverloadService.getRecommendation — delegates the next-se
     expect(rec.reasoning).toMatch(/rebuild/i);
   });
 });
+
+describe('ProgressiveOverloadService.getInSessionDecision — cut is based on the weight actually lifted', () => {
+  it('reduces off the logged weight, not the prescribed/history weight', () => {
+    const decision = ProgressiveOverloadService.getInSessionDecision(
+      { repMin: 10, repMax: 12, weight: 100, setIndex: 0, totalSets: 3 }, // prescribed/history load = 100
+      { weight: 80, reps: 9 }, // a touch short of the floor at the lifted 80
+    );
+
+    expect(decision.action).toBe('reduce');
+    // round5(80 * 0.9) = 70 — derived from the lifted 80, NOT the prescribed 100.
+    expect(decision.suggestedWeight).toBe(70);
+    expect(decision.suggestedWeight).not.toBe(90); // 100 * 0.9 rounded — the old, wrong basis
+  });
+});

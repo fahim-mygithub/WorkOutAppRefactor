@@ -21,9 +21,9 @@ import {
   bandColorProgression
 } from '../config/progressionConfig';
 // Pure progression core — the service is a thin adapter that maps stored history
-// into these shapes and delegates the actual next-session decision here.
-import { nextDoubleProgression } from '../lib/progression';
-import type { Prescription, LastSession } from '../lib/progression';
+// into these shapes and delegates the actual decisions here.
+import { nextDoubleProgression, inSessionDecision } from '../lib/progression';
+import type { Prescription, LastSession, SetTarget, LoggedSet, InSessionDecision } from '../lib/progression';
 
 export class ProgressiveOverloadService {
 
@@ -595,6 +595,17 @@ export class ProgressiveOverloadService {
       deloadApplied: false,
       alternatives: []
     };
+  }
+
+  /**
+   * Real-time in-session decision after a logged set: continue, reduce, or end.
+   * Delegates to the pure core, which derives any cut from the weight ACTUALLY
+   * lifted (`logged.weight`) — the correct replacement for applyFatigueAdjustment's
+   * bug of cutting off the historical `previousWeight`. The hook rewires onto this
+   * in Phase 4; applyFatigueAdjustment is removed in Phase 6.
+   */
+  static getInSessionDecision(target: SetTarget, logged: LoggedSet): InSessionDecision {
+    return inSessionDecision(target, logged);
   }
 
   // Apply fatigue adjustment (called when user indicates fatigue)
