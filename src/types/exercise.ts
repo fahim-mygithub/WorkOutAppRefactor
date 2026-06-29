@@ -35,11 +35,14 @@ export interface ExerciseRaw {
 export interface WorkoutSet {
   id: string;
   reps: number;
+  repMin?: number; // prescribed range floor (double-progression start)
+  repMax?: number; // prescribed range ceiling (advance load when beaten)
   weight?: number;
   unit?: 'lbs' | 'kg';
   time?: number;
   distance?: number;
   rpe?: number;
+  rir?: number; // reps-in-reserve (0/1/2/3+), optional effort tap
   completed: boolean;
   failed?: boolean;
 }
