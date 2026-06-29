@@ -54,6 +54,51 @@ describe('generateCharlieDay — Push', () => {
   });
 });
 
+describe('generateCharlieDay — rep ranges (Task 2.1)', () => {
+  it('accessory from a 10–15 scheme starts at the floor: carries repMin/repMax, reps === 10 (never the Math.round 13)', () => {
+    const day = generateCharlieDay({ programId: 'p', dayType: 'push', cycleIndex: 0, cycleOrdinal: 0, oneRepMax: PUSH_1RM });
+    // exercises[1] is ss1-a (overhead press, accScheme 10–15) — a non-alternating accessory.
+    const acc = day.exercises[1].sets[0];
+    expect(acc.repMin).toBe(10);
+    expect(acc.repMax).toBe(15);
+    expect(acc.reps).toBe(10);
+    expect(acc.reps).not.toBe(13); // the old Math.round((10+15)/2) artifact
+  });
+
+  it('compound keeps its fixed targetReps as the default rep, but still carries the display range', () => {
+    // Push cycle 0 = Volume Dumbbell: fixed targetReps 12 inside an 8–15 range.
+    const day = generateCharlieDay({ programId: 'p', dayType: 'push', cycleIndex: 0, cycleOrdinal: 0, oneRepMax: PUSH_1RM });
+    const main = day.exercises[0].sets[0];
+    expect(main.reps).toBe(12); // deliberate fixed target, NOT the floor
+    expect(main.repMin).toBe(8);
+    expect(main.repMax).toBe(15);
+  });
+
+  it('heavy↔volume alternating roles use the active range floor, not a rounded midpoint', () => {
+    const LEGS: Partial<Record<OneRmKey, number>> = { 'back-squat': 300, 'front-squat': 250, deadlift: 365 };
+    // legs ss1-b (upper core) alternates: heavyReps [8,12], volumeReps [15,25].
+    const heavy = generateCharlieDay({ programId: 'p', dayType: 'legs', cycleIndex: 0, cycleOrdinal: 1, oneRepMax: LEGS });
+    const heavyCore = heavy.exercises[2].sets[0]; // ss1-b
+    expect(heavyCore.repMin).toBe(8);
+    expect(heavyCore.repMax).toBe(12);
+    expect(heavyCore.reps).toBe(8);
+
+    const volume = generateCharlieDay({ programId: 'p', dayType: 'legs', cycleIndex: 0, cycleOrdinal: 0, oneRepMax: LEGS });
+    const volCore = volume.exercises[2].sets[0]; // ss1-b
+    expect(volCore.repMin).toBe(15);
+    expect(volCore.repMax).toBe(25);
+    expect(volCore.reps).toBe(15);
+  });
+
+  it('time-based sets carry no rep range', () => {
+    const LEGS: Partial<Record<OneRmKey, number>> = { 'back-squat': 300, 'front-squat': 250, deadlift: 365 };
+    const day = generateCharlieDay({ programId: 'p', dayType: 'legs', cycleIndex: 0, cycleOrdinal: 0, oneRepMax: LEGS });
+    const sidePlank = day.exercises.find((e) => e.sets[0].time != null)!;
+    expect(sidePlank.sets[0].repMin).toBeUndefined();
+    expect(sidePlank.sets[0].repMax).toBeUndefined();
+  });
+});
+
 describe('generateCharlieDay — Pull', () => {
   const SEAL: Partial<Record<OneRmKey, number>> = { 'seal-row': 230 };
 

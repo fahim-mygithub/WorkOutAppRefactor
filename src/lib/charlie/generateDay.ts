@@ -94,19 +94,30 @@ function buildSets(
   scheme: RepScheme,
   opts: {
     reps?: number;
+    repMin?: number;
+    repMax?: number;
     weight?: number;
     timeSeconds?: number;
     idScope: string;
   },
 ): WorkoutSet[] {
+  const isTime = opts.timeSeconds != null;
   const reps = opts.reps ?? scheme.targetReps;
+  const repMin = opts.repMin ?? scheme.minReps;
+  const repMax = opts.repMax ?? scheme.maxReps;
   return Array.from({ length: scheme.sets }, (_, i) => {
     const set: WorkoutSet = {
       id: `${opts.idScope}|s${i}`,
-      reps: opts.timeSeconds != null ? 1 : reps,
+      reps: isTime ? 1 : reps,
       unit: 'lbs',
       completed: false,
     };
+    // Non-time sets carry the prescribed range so the UI shows it and double
+    // progression knows the ceiling to earn up to. Time sets have no rep range.
+    if (!isTime) {
+      set.repMin = repMin;
+      set.repMax = repMax;
+    }
     if (opts.weight != null) set.weight = opts.weight;
     if (opts.timeSeconds != null) set.time = opts.timeSeconds;
     return set;
@@ -205,18 +216,22 @@ export function generateCharlieDay(inputs: CharlieDayInputs): GeneratedDay {
       const isTime = role.progressionStyle === 'time-ladder';
       const noteParts: string[] = [];
 
-      // heavy↔volume reps for alternating roles
-      let reps = role.scheme.targetReps;
+      // Rep range for this role: the scheme's, unless heavy↔volume alternation
+      // swaps in a parity-specific range. Double progression starts at the floor,
+      // so the logged-rep default is repMin (never a rounded midpoint like 13).
+      let repMin = role.scheme.minReps;
+      let repMax = role.scheme.maxReps;
       if (role.heavyVolumeAlternates && role.heavyReps && role.volumeReps) {
-        const range = isHeavyParity ? role.heavyReps : role.volumeReps;
-        reps = Math.round((range[0] + range[1]) / 2);
+        [repMin, repMax] = isHeavyParity ? role.heavyReps : role.volumeReps;
         noteParts.push(isHeavyParity ? 'Heavy' : 'Volume');
       }
       if (pick.addedLoad) noteParts.push('Weighted (added load)');
 
       const idScope = `${supersetId}|${role.roleKey}|${pick.exerciseId}`;
       const sets = buildSets(role.scheme, {
-        reps,
+        reps: repMin,
+        repMin,
+        repMax,
         weight: pick.addedLoad ? 0 : undefined,
         timeSeconds: isTime ? 20 : undefined,
         idScope,
