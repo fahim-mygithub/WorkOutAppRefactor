@@ -15,6 +15,13 @@ export function estimateOneRepMax(weight: number, reps: number): number {
   return weight * (1 + reps / 30);
 }
 
+/** Inverse of `estimateOneRepMax`: the load that yields `oneRm` for `reps` reps.
+ *  `reps <= 1` returns `oneRm` unchanged (mirrors the Epley guard above). */
+export function loadForReps(oneRm: number, reps: number): number {
+  if (reps <= 1) return oneRm;
+  return oneRm / (1 + reps / 30);
+}
+
 /**
  * Research-validated multi-set %1RM anchors (Nuzzo 2024 reconciled to a 4-set
  * working target, ~3–5% below the single-set rep-max). Monotonically decreasing;

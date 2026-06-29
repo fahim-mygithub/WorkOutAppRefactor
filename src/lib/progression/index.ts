@@ -4,7 +4,7 @@
  * increments in; nothing here reads the progression config.
  */
 export { effortAdjustedE1RM } from './e1rm';
-export { bestSetE1RM, smoothedSessionE1RM } from './sessionE1RM';
+export { bestSetE1RM, smoothedSessionE1RM, smoothedSessions, median } from './sessionE1RM';
 export { nextDoubleProgression } from './doubleProgression';
 export { inSessionDecision } from './autoregulation';
 export { returnFromLayoffSuggestion } from './layoff';

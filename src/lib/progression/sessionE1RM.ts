@@ -3,16 +3,11 @@ import type { LoggedSet } from './types';
 
 /** Best (max) effort-adjusted e1RM across one session's sets. 0 for an empty session. */
 export function bestSetE1RM(sets: LoggedSet[]): number {
-  let best = 0;
-  for (const s of sets) {
-    const e = effortAdjustedE1RM(s.weight, s.reps, s.rir);
-    if (e > best) best = e;
-  }
-  return best;
+  return sets.reduce((best, s) => Math.max(best, effortAdjustedE1RM(s.weight, s.reps, s.rir)), 0);
 }
 
 /** Median of a non-empty numeric list (average of the two middle values when even). */
-function median(values: number[]): number {
+export function median(values: number[]): number {
   const sorted = [...values].sort((a, b) => a - b);
   const mid = Math.floor(sorted.length / 2);
   return sorted.length % 2 === 0
@@ -21,19 +16,33 @@ function median(values: number[]): number {
 }
 
 /**
+ * Smooth a session history to one number: each session collapses to its best set
+ * via `estimator`, sessions with no usable load (best ≤ 0) drop out, then the
+ * median of the last `window` real sessions. Median (not max) so a single PR set
+ * cannot jump the program and a single bad session cannot tank it. `null` when
+ * nothing usable remains. Generic over the logged-set shape so callers can supply
+ * their own per-set estimator (e.g. bodyweight-netting for pull-ups).
+ */
+export function smoothedSessions<T>(
+  sessions: ReadonlyArray<ReadonlyArray<T>>,
+  estimator: (set: T) => number,
+  window = 3,
+): number | null {
+  const bests = sessions
+    .map((sets) => sets.reduce((best, s) => Math.max(best, estimator(s)), 0))
+    .filter((e) => e > 0);
+  if (bests.length === 0) return null;
+  return median(bests.slice(-window));
+}
+
+/**
  * Smoothed session e1RM: the median of the per-session bests over the last
- * `window` sessions. Median (not max) so a single PR set cannot jump the
- * program and a single bad session cannot tank it.
- *
- * Sessions with no usable load (empty, or all bodyweight/zero-weight) have a
- * best of 0 and are filtered out first so they can't poison the median; the
- * window then applies to the remaining real sessions. `null` when nothing remains.
+ * `window` sessions, each set effort-adjusted for reps-in-reserve. `null` when
+ * there is no usable history.
  */
 export function smoothedSessionE1RM(
   sessions: LoggedSet[][],
   window = 3,
 ): number | null {
-  const bests = sessions.map(bestSetE1RM).filter((e) => e > 0);
-  if (bests.length === 0) return null;
-  return median(bests.slice(-window));
+  return smoothedSessions(sessions, (s) => effortAdjustedE1RM(s.weight, s.reps, s.rir), window);
 }
