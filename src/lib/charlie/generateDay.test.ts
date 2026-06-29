@@ -164,3 +164,66 @@ describe('generateCharlieDay — Legs', () => {
     expect(day.exercises).toHaveLength(1 + 6); // main + 3 supersets×2
   });
 });
+
+describe('generateCharlieDay — adaptive working load (Task 2.2)', () => {
+  it('seeds the compound off a smoothed e1RM when history exists (above the entered-1RM seed)', () => {
+    // Push cycle 1 = Strength Barbell (BB bench, exercise-1335, 0.85×1RM).
+    const enteredSeed = mainWeight(
+      generateCharlieDay({ programId: 'p', dayType: 'push', cycleIndex: 1, cycleOrdinal: 1, oneRepMax: PUSH_1RM }),
+    );
+    expect(enteredSeed).toBe(192.5); // 0.85 × 225
+
+    // A logged 245×3 ⇒ e1RM 245×1.1 = 269.5 ⇒ 0.85×269.5 = 229.07 ⇒ round 230 (barbell step 2.5).
+    const withHistory = mainWeight(
+      generateCharlieDay({
+        programId: 'p', dayType: 'push', cycleIndex: 1, cycleOrdinal: 1, oneRepMax: PUSH_1RM,
+        recentSessions: { 'exercise-1335': [[{ weight: 245, reps: 3 }]] },
+      }),
+    );
+    expect(withHistory).toBe(230);
+    expect(withHistory!).toBeGreaterThan(enteredSeed!);
+  });
+
+  it('no recentSessions ⇒ generated weights are byte-for-byte unchanged', () => {
+    const baseline = [0, 1, 2, 3].map((ci) =>
+      mainWeight(generateCharlieDay({ programId: 'p', dayType: 'push', cycleIndex: ci, cycleOrdinal: ci, oneRepMax: PUSH_1RM })),
+    );
+    const withEmpty = [0, 1, 2, 3].map((ci) =>
+      mainWeight(generateCharlieDay({ programId: 'p', dayType: 'push', cycleIndex: ci, cycleOrdinal: ci, oneRepMax: PUSH_1RM, recentSessions: {} })),
+    );
+    const withUnrelated = [0, 1, 2, 3].map((ci) =>
+      mainWeight(generateCharlieDay({
+        programId: 'p', dayType: 'push', cycleIndex: ci, cycleOrdinal: ci, oneRepMax: PUSH_1RM,
+        recentSessions: { 'exercise-9999': [[{ weight: 999, reps: 5 }]] },
+      })),
+    );
+    expect(baseline).toEqual([50, 192.5, 67.5, 157.5]);
+    expect(withEmpty).toEqual(baseline);
+    expect(withUnrelated).toEqual(baseline);
+  });
+
+  it('weighted pull-up: derives added load from a trainable max when history + bodyweight exist', () => {
+    const SEAL: Partial<Record<OneRmKey, number>> = { 'seal-row': 230 };
+    // Heavy pull-up (cycle 2, exercise-177, targetReps 5). No history ⇒ +35 default.
+    const noHistory = generateCharlieDay({ programId: 'p', dayType: 'pull', cycleIndex: 2, cycleOrdinal: 2, oneRepMax: SEAL, pullup: { bodyweight: 180 } });
+    expect(mainWeight(noHistory)).toBe(35);
+
+    // Logged +90×5 at 180 bw ⇒ trainable max 135; prescribing 5 reps reproduces ≈ +90.
+    const withHistory = generateCharlieDay({
+      programId: 'p', dayType: 'pull', cycleIndex: 2, cycleOrdinal: 2, oneRepMax: SEAL,
+      pullup: { bodyweight: 180 },
+      recentSessions: { 'exercise-177': [[{ weight: 90, reps: 5 }]] },
+    });
+    expect(mainWeight(withHistory)).toBe(90);
+    expect(withHistory.exercises[0].notes).toContain('+ 90 lb');
+  });
+
+  it('weighted pull-up: history without a bodyweight to net against keeps the heavy/volume default', () => {
+    const SEAL: Partial<Record<OneRmKey, number>> = { 'seal-row': 230 };
+    const day = generateCharlieDay({
+      programId: 'p', dayType: 'pull', cycleIndex: 2, cycleOrdinal: 2, oneRepMax: SEAL,
+      recentSessions: { 'exercise-177': [[{ weight: 90, reps: 5 }]] }, // no pullup.bodyweight
+    });
+    expect(mainWeight(day)).toBe(35);
+  });
+});

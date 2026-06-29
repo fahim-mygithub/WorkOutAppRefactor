@@ -23,7 +23,9 @@ import {
   PULL_VERTICAL_POOL,
 } from './definition';
 import { accessoryPickForOrdinal } from './accessories';
-import { seedWorkingWeight } from './progression';
+import { pullupTrainable1RM, seedWorkingWeight } from './progression';
+import { smoothedSessionE1RM } from '../progression';
+import { roundToIncrement, workingWeightFor1RM } from '../oneRepMax';
 
 const EQUIP_DISPLAY: Record<EquipmentType, string> = {
   barbell: 'Barbell',
@@ -61,6 +63,13 @@ export interface CharlieDayInputs {
   lastPicks?: Record<string, string>;
   /** roleKey → chosen exerciseId (reroll / manual swap). */
   overridePicks?: Record<string, string>;
+  /**
+   * exerciseId → recent logged sessions (each session a list of working sets).
+   * When present for a %1RM compound it drives working load off a smoothed e1RM;
+   * for the weighted pull-up it drives the added load off a trainable max.
+   * Absent ⇒ the entered-1RM seed (byte-for-byte unchanged).
+   */
+  recentSessions?: Record<string, Array<Array<{ weight: number; reps: number; rir?: number }>>>;
 }
 
 export interface GeneratedDay {
@@ -124,6 +133,48 @@ function buildSets(
   });
 }
 
+/** Median of a non-empty numeric list (mean of the middle pair when even). */
+function median(xs: number[]): number {
+  const sorted = [...xs].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
+}
+
+/**
+ * Smoothed weighted-pull-up trainable 1RM from history: the best (bodyweight-net)
+ * trainable max per session via pullupTrainable1RM, then the median of the last
+ * `window` per-session bests (median so a single PR set can't jump the program).
+ * Null when no session has a usable set.
+ */
+function smoothedPullupTrainable1RM(
+  sessions: ReadonlyArray<ReadonlyArray<{ weight: number; reps: number }>>,
+  bodyweight: number,
+  window = 3,
+): number | null {
+  const bests = sessions
+    .map((sets) =>
+      sets.reduce((best, s) => Math.max(best, pullupTrainable1RM(s.weight, bodyweight, s.reps)), 0),
+    )
+    .filter((e) => e > 0);
+  if (bests.length === 0) return null;
+  return median(bests.slice(-window));
+}
+
+/**
+ * Added load that nets `reps` reps at the given trainable 1RM (inverse of the
+ * Epley estimate in oneRepMax), rounded to the equipment's real-world step and
+ * clamped at 0 (= bodyweight only).
+ */
+function addedLoadForReps(
+  trainable1RM: number,
+  bodyweight: number,
+  reps: number,
+  equipment: EquipmentType,
+): number {
+  const totalForReps = (bodyweight + trainable1RM) / (1 + Math.max(0, reps) / 30);
+  return Math.max(0, roundToIncrement(totalForReps - bodyweight, equipment));
+}
+
 function poolForRole(role: AccessoryRole, compound: CompoundEntry): ReadonlyArray<AccessoryOption> {
   if (role.pool) return role.pool;
   // Plane-driven (Pull SS1/SS2): opposite/same plane vs the compound.
@@ -167,16 +218,37 @@ export function generateCharlieDay(inputs: CharlieDayInputs): GeneratedDay {
     const lift = entry.lift;
     const scheme = entry.scheme;
     const ex = resolve({ id: lift.exerciseId, name: lift.exerciseName, equipment: lift.equipment });
+    const history = inputs.recentSessions?.[lift.exerciseId];
     let weight: number | undefined;
     const noteParts: string[] = [];
     if (lift.loadMode === 'percent1rm') {
-      const oneRm = lift.oneRmKey ? oneRepMax[lift.oneRmKey] : undefined;
-      weight = oneRm && oneRm > 0 ? seedWorkingWeight(entry, oneRm) : undefined;
+      // History-driven: a smoothed e1RM from logged sessions drives the working
+      // weight once it exists; otherwise fall back to the entered-1RM seed.
+      const e1rm = history ? smoothedSessionE1RM(history) : null;
+      if (e1rm != null) {
+        weight = workingWeightFor1RM(e1rm, scheme.percentOf1RM, lift.equipment, {
+          micro: scheme.microLoad,
+        });
+      } else {
+        const oneRm = lift.oneRmKey ? oneRepMax[lift.oneRmKey] : undefined;
+        weight = oneRm && oneRm > 0 ? seedWorkingWeight(entry, oneRm) : undefined;
+      }
     } else {
-      // weighted-bodyweight (pull-up): seed added load by heavy/volume
-      const added = scheme.id.startsWith('heavy')
-        ? pullup?.heavyAddedLoad ?? 35
-        : pullup?.volumeAddedLoad ?? 0;
+      // weighted-bodyweight (pull-up): drive the added load off a trainable max
+      // when history (and a bodyweight to net against) exist; else heavy/volume default.
+      const bodyweight = pullup?.bodyweight;
+      let added: number | undefined;
+      if (history && bodyweight && bodyweight > 0) {
+        const trainable = smoothedPullupTrainable1RM(history, bodyweight);
+        if (trainable != null) {
+          added = addedLoadForReps(trainable, bodyweight, scheme.targetReps, lift.equipment);
+        }
+      }
+      if (added == null) {
+        added = scheme.id.startsWith('heavy')
+          ? pullup?.heavyAddedLoad ?? 35
+          : pullup?.volumeAddedLoad ?? 0;
+      }
       weight = added;
       noteParts.push(added > 0 ? `${lift.exerciseName} + ${added} lb` : 'Bodyweight');
     }
