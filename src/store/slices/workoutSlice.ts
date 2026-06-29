@@ -2,6 +2,7 @@ import { createSlice, type PayloadAction } from '@reduxjs/toolkit';
 import type { ActiveWorkout, RestTimer, WorkoutExercise, WorkoutSet } from '../../types/exercise';
 import type { ExperienceLevel, ProgressionTracking } from '../../types/progression';
 import { computeTargetEndTime } from '../../lib/restTimer';
+import { prescribedFloor } from '../../lib/progression/setPrescription';
 
 export interface WorkoutState {
   activeWorkout: ActiveWorkout | null;
@@ -131,11 +132,11 @@ const workoutSlice = createSlice({
         // `failed` is a real, written field: did the LOGGED reps fall below the
         // prescribed range floor (repMin, or the single configured reps)? Read the
         // prescription BEFORE the assign overwrites `reps` with the logged value.
-        const prescribedFloor = set.repMin ?? set.reps;
+        const floor = prescribedFloor(set);
         const loggedReps = setData.reps ?? set.reps;
         Object.assign(set, setData, {
           completed: true,
-          failed: loggedReps < prescribedFloor,
+          failed: loggedReps < floor,
         });
         // Optional effort tap; only written when the lifter actually logged it.
         if (rir !== undefined) set.rir = rir;

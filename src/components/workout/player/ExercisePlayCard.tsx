@@ -9,6 +9,7 @@ import { Pencil, BookOpen, Dumbbell, History, Link2, Check } from 'lucide-react'
 import type { WorkoutExercise, WorkoutSet } from '../../../types/exercise';
 import type { ExerciseHistory } from '../../../types/exerciseHistory';
 import type { InSessionDecision } from '@/types/progression';
+import { formatRepRange } from '@/lib/progression/setPrescription';
 import { transformVideoUrl } from '../../../utils/videoHelpers';
 import { SetInput } from '../../SetInput';
 import { InSessionSuggestion } from './InSessionSuggestion';
@@ -72,8 +73,9 @@ function Clip({ url, reduced, contain = false }: { url: string; reduced: boolean
 /** Reps cell: the prescribed range ("10–15") for a not-yet-logged set with a real
  *  range, otherwise the single (logged or fixed) rep count. */
 function fmtReps(s: WorkoutSet): string {
-  if (!s.completed && s.repMin != null && s.repMax != null && s.repMin !== s.repMax) {
-    return `${s.repMin}–${s.repMax}`;
+  if (!s.completed) {
+    const range = formatRepRange(s);
+    if (range) return range;
   }
   return `${s.reps}`;
 }

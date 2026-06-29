@@ -4,6 +4,7 @@ import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { cn } from '@/lib/utils';
+import { prescribedFloor, formatRepRange } from '@/lib/progression/setPrescription';
 
 /** Optional reps-in-reserve taps. `3` renders as "3+" (3 or more left in the
  *  tank); an unset value means the lifter skipped logging effort for this set. */
@@ -47,7 +48,7 @@ export const SetInput: React.FC<SetInputProps> = ({
     // With a prescribed range, default to the floor (repMin) — double-progression
     // starts at the bottom of the range and only the load advances once it's beaten.
     // Handle both reps and weight separately to avoid issues with first-time exercises
-    let defaultReps = set?.repMin ?? set?.reps ?? 0;
+    let defaultReps = set ? prescribedFloor(set) : 0;
     let defaultWeight = set?.weight || 0;
 
     // If the set already has both values (completed set), use them
@@ -93,6 +94,11 @@ export const SetInput: React.FC<SetInputProps> = ({
     };
   };
 
+  // Re-derives reps/weight from the smart defaults whenever the set (or the
+  // unstable allSets/previousSet identities) change. RIR is deliberately NOT reset
+  // here — it lives in the set-identity effect below so an in-progress tap survives
+  // this effect's re-fires. Re-deriving reps/weight mid-edit is safe today because
+  // no action mutates the sets array during a single set's edit.
   useEffect(() => {
     if (set) {
       const { reps: defaultReps, weight: defaultWeight } = getSmartDefaults();
@@ -261,10 +267,7 @@ export const SetInput: React.FC<SetInputProps> = ({
   // Prescribed rep range — shown as a hint beside the editable Reps field. Only a
   // real range (floor ≠ ceiling) is surfaced; a single configured rep count is
   // already carried by the input's default value, so no separate hint is needed.
-  const repMin = set?.repMin;
-  const repMax = set?.repMax;
-  const repRangeLabel =
-    repMin != null && repMax != null && repMin !== repMax ? `${repMin}–${repMax}` : null;
+  const repRangeLabel = set ? formatRepRange(set) : null;
 
   return (
     <div className={cn('rounded-lg bg-surface-subtle', compact ? 'p-3' : 'p-4')}>
@@ -351,8 +354,11 @@ export const SetInput: React.FC<SetInputProps> = ({
                 // Tapping the active chip clears it back to skipped.
                 onClick={() => setRir(selected ? undefined : opt.value)}
                 className={cn(
-                  'flex-1 rounded-md border text-center font-num font-tabular leading-none transition-colors',
-                  compact ? 'py-1 text-caption' : 'py-1.5 text-body-sm',
+                  // min-h-touch-min keeps each chip at the 44px tap floor even in
+                  // the compact player; the flex centers the label inside it.
+                  'flex min-h-touch-min flex-1 items-center justify-center rounded-md border font-num font-tabular leading-none transition-colors',
+                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface',
+                  compact ? 'text-caption' : 'text-body-sm',
                   selected
                     ? 'border-accent bg-accent/10 text-accent'
                     : 'border-board-line/25 bg-surface-subtle text-ink-muted',

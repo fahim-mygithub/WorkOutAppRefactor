@@ -1,5 +1,6 @@
 import type { InSessionDecision } from '../../types/progression';
 import { inSessionDecision } from './autoregulation';
+import { prescribedFloor } from './setPrescription';
 import type { LoggedSet } from './types';
 
 /** The prescription read off a just-logged set. The range floor falls back to the
@@ -28,7 +29,7 @@ export function decideInSession(
 ): InSessionDecision {
   return inSessionDecision(
     {
-      repMin: set.repMin ?? set.reps,
+      repMin: prescribedFloor(set),
       repMax: set.repMax ?? set.reps,
       weight: logged.weight,
       setIndex,
@@ -36,4 +37,21 @@ export function decideInSession(
     },
     logged,
   );
+}
+
+/**
+ * The card-worthy slice of a per-set decision: only an actionable `reduce`/
+ * `repeat` becomes a visible cue; `continue`/`end` stay silent (return `null`)
+ * to keep the no-scroll player calm. Pure — same account-free inputs as
+ * `decideInSession` — so the player wires `setSuggestion(inSessionSuggestion(...))`
+ * directly and this gating stays unit-testable without a render harness.
+ */
+export function inSessionSuggestion(
+  set: PrescribedSet,
+  logged: LoggedSet,
+  setIndex: number,
+  totalSets: number,
+): InSessionDecision | null {
+  const decision = decideInSession(set, logged, setIndex, totalSets);
+  return decision.action === 'reduce' || decision.action === 'repeat' ? decision : null;
 }

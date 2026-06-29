@@ -7,9 +7,10 @@ export { effortAdjustedE1RM } from './e1rm';
 export { bestSetE1RM, smoothedSessionE1RM, smoothedSessions, median } from './sessionE1RM';
 export { nextDoubleProgression } from './doubleProgression';
 export { inSessionDecision } from './autoregulation';
-export { decideInSession } from './inSession';
+export { decideInSession, inSessionSuggestion } from './inSession';
 export { returnFromLayoffSuggestion } from './layoff';
 export { round5 } from './round';
+export { prescribedFloor, formatRepRange } from './setPrescription';
 
 // Public contract types for downstream callers (e.g. the Phase 3 service adapter).
 export type { LoggedSet } from './types';

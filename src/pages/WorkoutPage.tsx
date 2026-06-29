@@ -37,7 +37,7 @@ import { ExerciseDeck } from '../components/workout/player/ExerciseDeck';
 import { ExercisePlayCard } from '../components/workout/player/ExercisePlayCard';
 import { RestTimerBar } from '../components/workout/player/RestTimerBar';
 import { useProgressionRecommendation } from '../hooks/useProgressionRecommendation';
-import { decideInSession } from '../lib/progression/inSession';
+import { inSessionSuggestion } from '../lib/progression/inSession';
 import { Button } from '../components/ui/button';
 import { Card } from '../components/ui/card';
 import { Exercise, WorkoutExercise, WorkoutSet } from '../types/exercise';
@@ -270,13 +270,10 @@ export default function WorkoutPage() {
     // Per-set, in-session cue from the load ACTUALLY lifted — pure and account-
     // free (no uid needed), so it works for anonymous/demo users too. Replaces the
     // old cumulative "consecutive failed sets" threshold (which had a counter bug):
-    // each set now gets its own decision. Only reduce/repeat surface a card;
-    // continue/end stay silent to keep the no-scroll player calm.
+    // each set now gets its own decision. inSessionSuggestion returns null for
+    // continue/end, so those stay silent and keep the no-scroll player calm.
     if (loggedSet) {
-      const decision = decideInSession(loggedSet, { reps, weight, rir }, setIndex, totalSets);
-      setSuggestion(
-        decision.action === 'reduce' || decision.action === 'repeat' ? decision : null,
-      );
+      setSuggestion(inSessionSuggestion(loggedSet, { reps, weight, rir }, setIndex, totalSets));
     }
 
     // Check if current exercise is part of a superset

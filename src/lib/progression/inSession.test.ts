@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { decideInSession } from './inSession';
+import { decideInSession, inSessionSuggestion } from './inSession';
 import { round5 } from './round';
 
 // Three working sets, currently on set 1 of 3 (more remain) so an in-session
@@ -37,5 +37,25 @@ describe('decideInSession — player wiring', () => {
     expect(d.action).toBe('reduce');
     expect(d.suggestedWeight).toBe(round5(60 * 0.9)); // 55
     expect(d.message).toBeTruthy();
+  });
+});
+
+describe('inSessionSuggestion — card gating', () => {
+  const ranged = { reps: 10, repMin: 10, repMax: 15 };
+
+  it('returns the decision when it is an actionable reduce', () => {
+    const s = inSessionSuggestion(ranged, { reps: 8, weight: 95 }, SET_INDEX, TOTAL_SETS);
+    expect(s?.action).toBe('reduce');
+    expect(s?.suggestedWeight).toBe(round5(95 * 0.9));
+  });
+
+  it('returns null on a good set (continue stays silent)', () => {
+    const s = inSessionSuggestion(ranged, { reps: 12, weight: 95, rir: 2 }, SET_INDEX, TOTAL_SETS);
+    expect(s).toBeNull();
+  });
+
+  it('returns null on the last set (end stays silent)', () => {
+    const s = inSessionSuggestion(ranged, { reps: 8, weight: 95 }, 2, 3);
+    expect(s).toBeNull();
   });
 });
