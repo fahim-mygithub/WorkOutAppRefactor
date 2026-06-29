@@ -135,6 +135,28 @@ describe('ProgressiveOverloadService.getRecommendation — delegates the next-se
     expect(rec.deloadApplied).toBe(false);
   });
 
+  it('advances when every set hit the top with NO RIR recorded (missing effort = sufficient)', async () => {
+    // The common real-world case: no RIR logged at all. Absence of effort data
+    // must not block a clean top-of-range session from advancing.
+    mockHistory(makeHistory({ weight: 60, actualReps: [10, 10, 10], targetReps: 10 }));
+
+    const rec = await ProgressiveOverloadService.getRecommendation('user-1', dumbbellBench, 3, 'standard', 10);
+
+    expect(rec.action).toBe('increase');
+    expect(rec.recommendedWeight).toBe(65);
+  });
+
+  it('ignores a partial (length-mismatched) RIR record rather than gating effort on it', async () => {
+    // Only the first set recorded RIR (=3). A misaligned RIR array is dropped, so
+    // effort is treated as sufficient and a clean top session still advances.
+    mockHistory(makeHistory({ weight: 60, actualReps: [10, 10, 10], targetReps: 10, rir: [3] }));
+
+    const rec = await ProgressiveOverloadService.getRecommendation('user-1', dumbbellBench, 3, 'standard', 10);
+
+    expect(rec.action).toBe('increase');
+    expect(rec.recommendedWeight).toBe(65);
+  });
+
   it('holds the load when the range was not fully earned (partial session)', async () => {
     mockHistory(makeHistory({ weight: 60, actualReps: [10, 9, 8], targetReps: 10 }));
 

@@ -18,8 +18,7 @@ import {
   getNextBandColor,
   getPreviousBandColor,
   getEquipmentType,
-  isTimeBasedExercise,
-  bandColorProgression
+  isTimeBasedExercise
 } from '../config/progressionConfig';
 // Pure progression core — the service is a thin adapter that maps stored history
 // into these shapes and delegates the actual decisions here.
@@ -267,8 +266,12 @@ export class ProgressiveOverloadService {
   private static toLastSession(history: ExerciseHistory): LastSession {
     const sets = history.sets;
     const weight = Math.max(...sets.map(s => s.weight));
-    const reps = sets.map(s => s.actualReps);
-    const rirValues = sets.map(s => s.rir);
+    // Carried-weight filter: judge the heaviest load only against the reps (and
+    // RIR) of sets performed AT that weight, so a top-set + back-off/drop-set
+    // session isn't gated by lighter sets. For straight sets this is every set.
+    const topSets = sets.filter(s => s.weight === weight);
+    const reps = topSets.map(s => s.actualReps);
+    const rirValues = topSets.map(s => s.rir);
     const rir = rirValues.every((r): r is number => typeof r === 'number')
       ? rirValues as number[]
       : undefined;
