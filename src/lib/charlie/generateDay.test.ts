@@ -184,6 +184,18 @@ describe('generateCharlieDay — adaptive working load (Task 2.2)', () => {
     expect(withHistory!).toBeGreaterThan(enteredSeed!);
   });
 
+  it('follows history DOWN below the entered seed (the entered 1RM is not a floor)', () => {
+    // A logged 185×3 ⇒ e1RM 185×1.1 = 203.5 ⇒ 0.85×203.5 = 172.97 ⇒ round 172.5 (< 192.5 seed).
+    const belowSeed = mainWeight(
+      generateCharlieDay({
+        programId: 'p', dayType: 'push', cycleIndex: 1, cycleOrdinal: 1, oneRepMax: PUSH_1RM,
+        recentSessions: { 'exercise-1335': [[{ weight: 185, reps: 3 }]] },
+      }),
+    );
+    expect(belowSeed).toBe(172.5);
+    expect(belowSeed!).toBeLessThan(192.5);
+  });
+
   it('no recentSessions ⇒ generated weights are byte-for-byte unchanged', () => {
     const baseline = [0, 1, 2, 3].map((ci) =>
       mainWeight(generateCharlieDay({ programId: 'p', dayType: 'push', cycleIndex: ci, cycleOrdinal: ci, oneRepMax: PUSH_1RM })),
