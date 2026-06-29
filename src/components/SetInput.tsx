@@ -33,9 +33,11 @@ export const SetInput: React.FC<SetInputProps> = ({
 
   // Smart defaults logic
   const getSmartDefaults = () => {
-    // First priority: Use configured reps from the set (e.g., from "4x8" parsing)
+    // First priority: Use configured reps from the set (e.g., from "4x8" parsing).
+    // With a prescribed range, default to the floor (repMin) — double-progression
+    // starts at the bottom of the range and only the load advances once it's beaten.
     // Handle both reps and weight separately to avoid issues with first-time exercises
-    let defaultReps = set?.reps || 0;
+    let defaultReps = set?.repMin ?? set?.reps ?? 0;
     let defaultWeight = set?.weight || 0;
 
     // If the set already has both values (completed set), use them
@@ -238,6 +240,14 @@ export const SetInput: React.FC<SetInputProps> = ({
     return 'last completed set';
   };
 
+  // Prescribed rep range — shown as a hint beside the editable Reps field. Only a
+  // real range (floor ≠ ceiling) is surfaced; a single configured rep count is
+  // already carried by the input's default value, so no separate hint is needed.
+  const repMin = set?.repMin;
+  const repMax = set?.repMax;
+  const repRangeLabel =
+    repMin != null && repMax != null && repMin !== repMax ? `${repMin}–${repMax}` : null;
+
   return (
     <div className={cn('rounded-lg bg-surface-subtle', compact ? 'p-3' : 'p-4')}>
       {!compact && isUsingSmartDefaults() && (
@@ -250,12 +260,22 @@ export const SetInput: React.FC<SetInputProps> = ({
 
       <div className={cn('grid grid-cols-2 items-end gap-3', compact ? 'mb-2.5' : 'mb-4')}>
         <div>
-          <Label
-            htmlFor="set-reps"
-            className={cn('block font-marker uppercase tracking-wider text-ink-muted', compact ? 'mb-1 text-[10px]' : 'mb-2 text-caption')}
-          >
-            Reps
-          </Label>
+          <div className={cn('flex items-baseline justify-between gap-1', compact ? 'mb-1' : 'mb-2')}>
+            <Label
+              htmlFor="set-reps"
+              className={cn('block font-marker uppercase tracking-wider text-ink-muted', compact ? 'text-[10px]' : 'text-caption')}
+            >
+              Reps
+            </Label>
+            {repRangeLabel && (
+              <span
+                className={cn('font-num font-tabular leading-none text-ink-subtle', compact ? 'text-[10px]' : 'text-caption')}
+                aria-label={`Target ${repRangeLabel} reps`}
+              >
+                {repRangeLabel}
+              </span>
+            )}
+          </div>
           <Input
             id="set-reps"
             type="number"

@@ -63,11 +63,22 @@ function Clip({ url, reduced, contain = false }: { url: string; reduced: boolean
   );
 }
 
-/** Compact per-set readout: "8×70", a time hold, or just reps when bodyweight. */
+/** Reps cell: the prescribed range ("10–15") for a not-yet-logged set with a real
+ *  range, otherwise the single (logged or fixed) rep count. */
+function fmtReps(s: WorkoutSet): string {
+  if (!s.completed && s.repMin != null && s.repMax != null && s.repMin !== s.repMax) {
+    return `${s.repMin}–${s.repMax}`;
+  }
+  return `${s.reps}`;
+}
+
+/** Compact per-set readout: "8×70" (or "10–15×70" for a prescribed range), a time
+ *  hold, or just reps when bodyweight. */
 function fmtSet(s: WorkoutSet): string {
   if (s.time != null) return `${s.time}s`;
-  if (s.weight && s.weight > 0) return `${s.reps}×${s.weight}`;
-  return `${s.reps}`;
+  const reps = fmtReps(s);
+  if (s.weight && s.weight > 0) return `${reps}×${s.weight}`;
+  return reps;
 }
 
 export const ExercisePlayCard: React.FC<ExercisePlayCardProps> = ({
