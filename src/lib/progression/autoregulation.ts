@@ -1,18 +1,13 @@
 import type { InSessionDecision } from '../../types/progression';
+import type { LoggedSet } from './types';
 import { round5 } from './round';
 
-interface SetTarget {
+export interface SetTarget {
   repMin: number;
   repMax: number;
   weight: number;
   setIndex: number;
   totalSets: number;
-}
-
-interface LoggedSet {
-  reps: number;
-  weight: number;
-  rir?: number;
 }
 
 /**
@@ -22,6 +17,9 @@ interface LoggedSet {
  * lifted — never a historical target. (This fixes a known bug where a cut was
  * applied to the prescribed weight instead of the one the lifter used.) Cuts are
  * rounded to the nearest 5 lb. Bodyweight sets never get a numeric cut.
+ *
+ * Note: the `InSessionDecision` action 'repeat' and the `suggestedReps` field are
+ * reserved for a future redo-the-set path and are intentionally unused here today.
  */
 export function inSessionDecision(t: SetTarget, logged: LoggedSet): InSessionDecision {
   const isLastSet = t.setIndex >= t.totalSets - 1;

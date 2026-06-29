@@ -57,4 +57,17 @@ describe('nextDoubleProgression', () => {
     expect(next.advanced).toBe(false);
     expect(next.reason).toMatch(/rebuild to range floor/i);
   });
+
+  it('never advances on an empty session (no logged sets is not a PR)', () => {
+    const next = nextDoubleProgression(p, { weight: 100, reps: [] }, 5);
+    expect(next.advanced).toBe(false);
+    expect(next.weight).not.toBe(105);
+  });
+
+  it('holds (does not advance) when fewer sets than prescribed were logged, even at the top', () => {
+    // 2 logged sets against a 3-set prescription — incomplete, so no load jump.
+    const next = nextDoubleProgression(p, { weight: 100, reps: [12, 12] }, 5);
+    expect(next.advanced).toBe(false);
+    expect(next.weight).toBe(100);
+  });
 });

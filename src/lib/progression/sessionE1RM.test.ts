@@ -51,4 +51,10 @@ describe('smoothedSessionE1RM', () => {
     // last 3 bests = [70, 80, 90] -> median 80; the first two are ignored
     expect(smoothedSessionE1RM(sessions, 3)).toBeCloseTo(80, 5);
   });
+  it('returns null when every session is empty (no usable load data)', () => {
+    expect(smoothedSessionE1RM([[]])).toBeNull();
+  });
+  it('ignores empty sessions instead of letting their 0 poison the median', () => {
+    expect(smoothedSessionE1RM([[], [{ weight: 150, reps: 1 }]])).toBeCloseTo(150, 5);
+  });
 });

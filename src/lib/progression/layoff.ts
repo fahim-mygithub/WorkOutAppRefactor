@@ -1,11 +1,11 @@
 import { round5 } from './round';
 
-interface LayoffInput {
+export interface LayoffInput {
   daysSinceLastWorkout: number;
   lastWeight: number;
 }
 
-interface LayoffSuggestion {
+export interface LayoffSuggestion {
   suggestedWeight: number;
   reductionPct: number;
   optional: true;

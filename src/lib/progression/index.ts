@@ -9,3 +9,10 @@ export { nextDoubleProgression } from './doubleProgression';
 export { inSessionDecision } from './autoregulation';
 export { returnFromLayoffSuggestion } from './layoff';
 export { round5 } from './round';
+
+// Public contract types for downstream callers (e.g. the Phase 3 service adapter).
+export type { LoggedSet } from './types';
+export type { Prescription, LastSession, NextPrescription } from './doubleProgression';
+export type { SetTarget } from './autoregulation';
+export type { LayoffInput, LayoffSuggestion } from './layoff';
+export type { InSessionDecision } from '../../types/progression';
