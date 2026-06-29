@@ -26,22 +26,22 @@ import {
   nextSupersetExercise,
   completeSuperset,
   updateExercise,
-  setShowCompletionModal,
-  recordProgressionOutcome
+  setShowCompletionModal
 } from '../store/slices/workoutSlice';
 import { ExerciseEditModal } from '../components/ExerciseEditModal';
 import { WorkoutCompletionModal } from '../components/WorkoutCompletionModal';
 import { EndWorkoutModal } from '../components/EndWorkoutModal';
 import { DeloadSuggestion } from '../components/workout/DeloadSuggestion';
-import { FatigueCheck } from '../components/workout/FatigueCheck';
 import { WorkoutTopBar } from '../components/workout/player/WorkoutTopBar';
 import { ExerciseDeck } from '../components/workout/player/ExerciseDeck';
 import { ExercisePlayCard } from '../components/workout/player/ExercisePlayCard';
 import { RestTimerBar } from '../components/workout/player/RestTimerBar';
 import { useProgressionRecommendation } from '../hooks/useProgressionRecommendation';
+import { decideInSession } from '../lib/progression/inSession';
 import { Button } from '../components/ui/button';
 import { Card } from '../components/ui/card';
 import { Exercise, WorkoutExercise, WorkoutSet } from '../types/exercise';
+import type { InSessionDecision } from '../types/progression';
 
 /** Build a calendar-shaped WorkoutSummary from a finished ActiveWorkout, for the
  *  local performed store (so completed Charlie days render in the loginless demo). */
@@ -111,18 +111,26 @@ export default function WorkoutPage() {
   const [editingExercise, setEditingExercise] = useState<WorkoutExercise | null>(null);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showDeloadModal, setShowDeloadModal] = useState(false);
-  const [showFatigueModal, setShowFatigueModal] = useState(false);
-  const [fatigueSetInfo, setFatigueSetInfo] = useState<{ weight: number; setNumber: number } | null>(null);
-  const [failedSetsCount, setFailedSetsCount] = useState(0);
   const [showEndWorkoutModal, setShowEndWorkoutModal] = useState(false);
+  // Live in-session cue after a logged set (reduce/repeat only) + the load the
+  // lifter chose to apply to the remaining sets of this exercise.
+  const [suggestion, setSuggestion] = useState<InSessionDecision | null>(null);
+  const [appliedWeight, setAppliedWeight] = useState<number | null>(null);
 
   // Track if workout context has been loaded to prevent duplicate calls
   const contextLoadedRef = useRef<string | null>(null);
 
-  // Reset failed sets count when exercise changes
+  // A new exercise starts clean: no carried-over cue or applied load.
   useEffect(() => {
-    setFailedSetsCount(0);
+    setSuggestion(null);
+    setAppliedWeight(null);
   }, [activeWorkout?.currentExerciseIndex]);
+
+  // Moving to another set dismisses the transient cue (the applied load persists
+  // for the rest of the exercise via the recommendedWeight autofill path).
+  useEffect(() => {
+    setSuggestion(null);
+  }, [activeWorkout?.currentSetIndex]);
 
   // Memoize exercise IDs to prevent unnecessary re-calculations
   // Use workout ID as dependency instead of the entire exercises array
@@ -247,32 +255,28 @@ export default function WorkoutPage() {
     : [];
 
   const handleCompleteSet = (reps: number, weight: number, rir?: number) => {
+    const setIndex = activeWorkout.currentSetIndex;
+    const totalSets = currentExercise.sets.length;
+    // Snapshot the prescription before the set is mutated, for the live decision.
+    const loggedSet = currentSet;
+
     dispatch(completeSet({
       exerciseIndex: activeWorkout.currentExerciseIndex,
-      setIndex: activeWorkout.currentSetIndex,
-      setData: { reps, weight, rir }
+      setIndex,
+      setData: { reps, weight },
+      rir
     }));
 
-    // Check for failed set (if reps are significantly less than target)
-    if (currentSet) {
-      const targetReps = currentSet.reps || 8; // Default target
-      const setFailed = reps < targetReps * 0.8;
-
-      if (setFailed) {
-        const newFailedCount = failedSetsCount + 1;
-        setFailedSetsCount(newFailedCount);
-
-        // Determine threshold based on whether we have previous data
-        const hasPreviousData = currentExercise?.exercise?.id && previousPerformances[currentExercise.exercise.id] != null;
-        const requiredFailedSets = hasPreviousData ? 2 : 3; // More conservative for first-time exercises
-
-        // Only trigger fatigue check after multiple consecutive failed sets
-        if (newFailedCount >= requiredFailedSets) {
-          setFatigueSetInfo({ weight, setNumber: activeWorkout.currentSetIndex + 1 });
-          setShowFatigueModal(true);
-          progressionHook.checkForFailedSet(currentSet, activeWorkout.currentSetIndex);
-        }
-      }
+    // Per-set, in-session cue from the load ACTUALLY lifted — pure and account-
+    // free (no uid needed), so it works for anonymous/demo users too. Replaces the
+    // old cumulative "consecutive failed sets" threshold (which had a counter bug):
+    // each set now gets its own decision. Only reduce/repeat surface a card;
+    // continue/end stay silent to keep the no-scroll player calm.
+    if (loggedSet) {
+      const decision = decideInSession(loggedSet, { reps, weight, rir }, setIndex, totalSets);
+      setSuggestion(
+        decision.action === 'reduce' || decision.action === 'repeat' ? decision : null,
+      );
     }
 
     // Check if current exercise is part of a superset
@@ -319,6 +323,18 @@ export default function WorkoutPage() {
       exerciseIndex: activeWorkout.currentExerciseIndex,
       setIndex: activeWorkout.currentSetIndex
     }));
+  };
+
+  // Apply the suggested cut to the remaining sets: route it through the same
+  // recommendedWeight autofill SetInput already honors, so each upcoming set
+  // pre-fills with the reduced load. Dismiss the cue either way.
+  const handleApplySuggestion = (weight: number) => {
+    setAppliedWeight(weight);
+    setSuggestion(null);
+  };
+
+  const handleKeepSuggestion = () => {
+    setSuggestion(null);
   };
 
   const handleJumpToSet = (setIndex: number) => {
@@ -554,12 +570,15 @@ export default function WorkoutPage() {
                 ? previousPerformances[currentExercise.exercise.id] || null
                 : null
             }
-            recommendedWeight={progressionHook.recommendation?.recommendedWeight}
+            recommendedWeight={appliedWeight ?? progressionHook.recommendation?.recommendedWeight}
             recommendedReps={progressionHook.recommendation?.recommendedReps}
             onEditSets={() => handleEditExercise(currentExercise)}
             onCompleteSet={handleCompleteSet}
             onUncompleteSet={handleUncompleteSet}
             onJumpToSet={handleJumpToSet}
+            suggestion={suggestion}
+            onApplySuggestion={handleApplySuggestion}
+            onKeepSuggestion={handleKeepSuggestion}
           />
         </ExerciseDeck>
 
@@ -602,30 +621,6 @@ export default function WorkoutPage() {
           onAccept={progressionHook.applyDeload}
           onDecline={progressionHook.declineDeload}
           onClose={() => setShowDeloadModal(false)}
-        />
-      )}
-
-      {/* Fatigue Check Slide-out - Only for authenticated users */}
-      {!isAnonymousUser && showFatigueModal && fatigueSetInfo && (
-        <FatigueCheck
-          exerciseName={currentExercise?.exercise.name || ''}
-          currentWeight={fatigueSetInfo.weight}
-          setNumber={fatigueSetInfo.setNumber}
-          onFatigued={() => {
-            progressionHook.applyFatigue();
-            setShowFatigueModal(false);
-            // Record fatigue in Redux
-            dispatch(recordProgressionOutcome({
-              exerciseId: currentExercise?.exercise.id || '',
-              outcome: 'failed',
-              failureReason: 'fatigue'
-            }));
-          }}
-          onNotFatigued={() => {
-            progressionHook.continuePlan();
-            setShowFatigueModal(false);
-          }}
-          onClose={() => setShowFatigueModal(false)}
         />
       )}
     </>

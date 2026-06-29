@@ -7,6 +7,7 @@ export { effortAdjustedE1RM } from './e1rm';
 export { bestSetE1RM, smoothedSessionE1RM, smoothedSessions, median } from './sessionE1RM';
 export { nextDoubleProgression } from './doubleProgression';
 export { inSessionDecision } from './autoregulation';
+export { decideInSession } from './inSession';
 export { returnFromLayoffSuggestion } from './layoff';
 export { round5 } from './round';
 

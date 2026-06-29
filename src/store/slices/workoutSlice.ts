@@ -121,14 +121,26 @@ const workoutSlice = createSlice({
       }
     },
 
-    completeSet: (state, action: PayloadAction<{ exerciseIndex: number; setIndex: number; setData: Partial<WorkoutSet> }>) => {
+    completeSet: (state, action: PayloadAction<{ exerciseIndex: number; setIndex: number; setData: Partial<WorkoutSet>; rir?: number }>) => {
       if (!state.activeWorkout) return;
 
-      const { exerciseIndex, setIndex, setData } = action.payload;
+      const { exerciseIndex, setIndex, setData, rir } = action.payload;
       const exercise = state.activeWorkout.exercises[exerciseIndex];
       if (exercise && exercise.sets[setIndex]) {
-        Object.assign(exercise.sets[setIndex], setData, { completed: true });
-        // No additional logic here - let the UI handle progression via nextSupersetExercise action
+        const set = exercise.sets[setIndex];
+        // `failed` is a real, written field: did the LOGGED reps fall below the
+        // prescribed range floor (repMin, or the single configured reps)? Read the
+        // prescription BEFORE the assign overwrites `reps` with the logged value.
+        const prescribedFloor = set.repMin ?? set.reps;
+        const loggedReps = setData.reps ?? set.reps;
+        Object.assign(set, setData, {
+          completed: true,
+          failed: loggedReps < prescribedFloor,
+        });
+        // Optional effort tap; only written when the lifter actually logged it.
+        if (rir !== undefined) set.rir = rir;
+        // No additional logic here - the UI drives progression via the per-set
+        // in-session decision and the nextSupersetExercise action.
       }
     },
 

@@ -8,8 +8,10 @@ import { useReducedMotion } from 'framer-motion';
 import { Pencil, BookOpen, Dumbbell, History, Link2, Check } from 'lucide-react';
 import type { WorkoutExercise, WorkoutSet } from '../../../types/exercise';
 import type { ExerciseHistory } from '../../../types/exerciseHistory';
+import type { InSessionDecision } from '@/types/progression';
 import { transformVideoUrl } from '../../../utils/videoHelpers';
 import { SetInput } from '../../SetInput';
+import { InSessionSuggestion } from './InSessionSuggestion';
 import { IconButton } from '@/components/ui/icon-button';
 import { Modal, ModalContent, ModalTitle, ModalDescription } from '@/components/ui/modal';
 import { cn } from '@/lib/utils';
@@ -27,6 +29,10 @@ interface ExercisePlayCardProps {
   onCompleteSet: (reps: number, weight: number, rir?: number) => void;
   onUncompleteSet: () => void;
   onJumpToSet: (index: number) => void;
+  /** Live cue shown under the input after a logged set (null = nothing to show). */
+  suggestion?: InSessionDecision | null;
+  onApplySuggestion?: (weight: number) => void;
+  onKeepSuggestion?: () => void;
 }
 
 /** A single looping muted clip that fills its box, with a glyph placeholder behind
@@ -93,6 +99,9 @@ export const ExercisePlayCard: React.FC<ExercisePlayCardProps> = ({
   onCompleteSet,
   onUncompleteSet,
   onJumpToSet,
+  suggestion,
+  onApplySuggestion,
+  onKeepSuggestion,
 }) => {
   const reduced = useReducedMotion() ?? false;
   const [showInstructions, setShowInstructions] = useState(false);
@@ -239,6 +248,18 @@ export const ExercisePlayCard: React.FC<ExercisePlayCardProps> = ({
           recommendedReps={recommendedReps}
         />
       </div>
+
+      {/* Live in-session cue — sits right under the input; the flex clip above
+          absorbs its height so the card still fits without scrolling. */}
+      {suggestion && onApplySuggestion && onKeepSuggestion && (
+        <div className="shrink-0">
+          <InSessionSuggestion
+            decision={suggestion}
+            onApply={onApplySuggestion}
+            onKeep={onKeepSuggestion}
+          />
+        </div>
+      )}
 
       {/* Instructions popup — the clip(s) shown in full (uncropped) and stacked,
           then the steps, all scrollable. */}
