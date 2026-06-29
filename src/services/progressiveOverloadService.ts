@@ -28,7 +28,8 @@ export class ProgressiveOverloadService {
     exercise: Exercise,
     currentSets: number,
     experienceLevel: ExperienceLevel = 'standard',
-    configuredReps?: number
+    configuredReps?: number,
+    configuredWeight?: number
   ): Promise<ProgressionRecommendation> {
 
     try {
@@ -36,7 +37,7 @@ export class ProgressiveOverloadService {
       const lastPerformance = await this.getLastPerformance(userId, exercise.id);
 
       if (!lastPerformance) {
-        return this.getFirstTimeRecommendation(exercise, currentSets, experienceLevel, configuredReps);
+        return this.getFirstTimeRecommendation(exercise, currentSets, experienceLevel, configuredReps, configuredWeight);
       }
 
       // Step 2: Calculate days since last workout and determine deload
@@ -508,7 +509,8 @@ export class ProgressiveOverloadService {
     exercise: Exercise,
     currentSets: number,
     experienceLevel: ExperienceLevel,
-    configuredReps?: number
+    configuredReps?: number,
+    configuredWeight?: number
   ): ProgressionRecommendation {
     const isBodyweight = exercise.equipment.toLowerCase() === 'bodyweight';
     const isTimeBased = isTimeBasedExercise(exercise.name);
@@ -560,11 +562,20 @@ export class ProgressiveOverloadService {
       recommendedReps = isStrength ? 5 : 10;
     }
 
+    // Prefer the weight prescribed by the workout (e.g. "12 × 60") over the generic
+    // equipment default — the plan already knows the intended load for this session.
+    const hasPrescribedWeight = configuredWeight !== undefined && configuredWeight > 0;
+    const recommendedWeight = hasPrescribedWeight
+      ? configuredWeight
+      : startingWeights[equipmentType] || 10;
+
     return {
       action: 'maintain',
-      recommendedWeight: startingWeights[equipmentType] || 10,
+      recommendedWeight,
       recommendedReps,
-      reasoning: 'First time performing this exercise. Starting with conservative weight.',
+      reasoning: hasPrescribedWeight
+        ? 'First time performing this exercise. Starting with your planned weight.'
+        : 'First time performing this exercise. Starting with conservative weight.',
       confidence: 'low',
       deloadApplied: false,
       alternatives: []

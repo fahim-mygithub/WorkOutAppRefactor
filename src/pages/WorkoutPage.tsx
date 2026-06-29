@@ -167,7 +167,8 @@ export default function WorkoutPage() {
     exercise: currentExercise?.exercise as Exercise,
     currentSets: currentExercise?.sets.length || 0,
     userId: user?.uid,
-    configuredReps: currentExercise?.sets?.[0]?.reps // Pass configured reps from first set
+    configuredReps: currentExercise?.sets?.[0]?.reps, // Pass configured reps from first set
+    configuredWeight: currentExercise?.sets?.[0]?.weight // Prescribed load (e.g. "12 × 60") seeds the first-session weight
   });
 
   const handleEditExercise = useCallback((exercise: WorkoutExercise) => {

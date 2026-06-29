@@ -27,6 +27,7 @@ interface UseProgressionRecommendationProps {
   currentSets: number;
   userId?: string;
   configuredReps?: number; // Reps configured in the parsed workout
+  configuredWeight?: number; // Prescribed working load from the planned/parsed workout
 }
 
 interface UseProgressionRecommendationReturn {
@@ -56,7 +57,8 @@ export const useProgressionRecommendation = ({
   exercise,
   currentSets,
   userId,
-  configuredReps
+  configuredReps,
+  configuredWeight
 }: UseProgressionRecommendationProps): UseProgressionRecommendationReturn => {
   // Get user from Redux store if not provided
   const reduxUser = useAppSelector(state => state.user.currentUser);
@@ -91,7 +93,8 @@ export const useProgressionRecommendation = ({
         exercise,
         currentSets,
         experienceLevel,
-        configuredReps
+        configuredReps,
+        configuredWeight
       );
 
       setRecommendation(rec);
@@ -121,7 +124,7 @@ export const useProgressionRecommendation = ({
     } finally {
       setIsLoading(false);
     }
-  }, [effectiveUserId, exercise, currentSets, experienceLevel, configuredReps]);
+  }, [effectiveUserId, exercise, currentSets, experienceLevel, configuredReps, configuredWeight]);
 
   // Update experience level when user's default progression rate changes
   useEffect(() => {
