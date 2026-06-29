@@ -45,6 +45,8 @@ export interface ProgressionRecommendation {
   action: ProgressionAction;
   recommendedWeight?: number;
   recommendedReps?: number;
+  recommendedRepMin?: number;
+  recommendedRepMax?: number;
   recommendedTime?: number; // For time-based exercises
   recommendedVariation?: string; // For bodyweight exercises
   recommendedBand?: BandColor; // For band-assisted exercises
@@ -55,6 +57,16 @@ export interface ProgressionRecommendation {
   deloadApplied: boolean;
   daysSinceLastWorkout?: number;
   alternatives?: AlternativeProgression[];
+  source?: 'seed' | 'e1rm' | 'double-progression' | 'first-time' | 'layoff';
+}
+
+export type InSessionAction = 'continue' | 'reduce' | 'repeat' | 'end';
+
+export interface InSessionDecision {
+  action: InSessionAction;
+  suggestedWeight?: number;   // for 'reduce'/'repeat'; based on the weight ACTUALLY lifted
+  suggestedReps?: number;
+  message: string;            // user-facing, one line
 }
 
 export interface AlternativeProgression {

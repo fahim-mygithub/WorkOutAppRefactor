@@ -6,6 +6,7 @@ export interface PerformedSet {
   unit: 'lbs' | 'kg';
   completed: boolean;
   rpe?: number; // Rate of Perceived Exertion (1-10)
+  rir?: number; // reps-in-reserve, optional
   notes?: string;
 }
 
