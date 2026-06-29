@@ -169,3 +169,54 @@ describe('ProgressiveOverloadService.getInSessionDecision — cut is based on th
     expect(decision.suggestedWeight).not.toBe(90); // 100 * 0.9 rounded — the old, wrong basis
   });
 });
+
+describe('ProgressiveOverloadService.getRecommendation — a calendar gap no longer cuts the load', () => {
+  it('does not reduce the recommended load after a 16-day gap', async () => {
+    mockHistory(makeHistory({
+      weight: 60,
+      actualReps: [10, 10, 9],
+      targetReps: 12,
+      workoutDate: daysAgo(16),
+    }));
+
+    const rec = await ProgressiveOverloadService.getRecommendation('user-1', dumbbellBench, 3, 'standard', 12);
+
+    // Previously a ≥14-day gap forced a 15% deload (60 → 51). Now the gap is
+    // informational only: hold at 60, no deload.
+    expect(rec.deloadApplied).toBe(false);
+    expect(rec.action).not.toBe('deload');
+    expect(rec.recommendedWeight).toBe(60);
+    expect(rec.daysSinceLastWorkout).toBe(16);
+  });
+});
+
+describe('ProgressiveOverloadService.getLayoffSuggestion — opt-in, never silently applied', () => {
+  it('offers an optional 10% reduction after ~3.5 weeks off', () => {
+    const s = ProgressiveOverloadService.getLayoffSuggestion(25, 100);
+
+    expect(s).not.toBeNull();
+    expect(s!.reductionPct).toBe(10);
+    expect(s!.optional).toBe(true);
+    expect(s!.suggestedWeight).toBe(90); // round5(100 * 0.9)
+  });
+
+  it('returns null for a short gap', () => {
+    expect(ProgressiveOverloadService.getLayoffSuggestion(10, 100)).toBeNull();
+  });
+});
+
+describe('ProgressiveOverloadService.calculateDaysSince — floors whole days, guards future dates', () => {
+  const svc = ProgressiveOverloadService as unknown as {
+    calculateDaysSince(date: Date | string): number;
+  };
+
+  it('floors a partial day down (16d 18h → 16)', () => {
+    const past = new Date(Date.now() - (16 * 24 + 18) * 60 * 60 * 1000);
+    expect(svc.calculateDaysSince(past)).toBe(16);
+  });
+
+  it('clamps a future-dated workout to zero', () => {
+    const future = new Date(Date.now() + 5 * 24 * 60 * 60 * 1000);
+    expect(svc.calculateDaysSince(future)).toBe(0);
+  });
+});

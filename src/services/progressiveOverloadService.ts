@@ -22,8 +22,15 @@ import {
 } from '../config/progressionConfig';
 // Pure progression core — the service is a thin adapter that maps stored history
 // into these shapes and delegates the actual decisions here.
-import { nextDoubleProgression, inSessionDecision } from '../lib/progression';
-import type { Prescription, LastSession, SetTarget, LoggedSet, InSessionDecision } from '../lib/progression';
+import { nextDoubleProgression, inSessionDecision, returnFromLayoffSuggestion } from '../lib/progression';
+import type {
+  Prescription,
+  LastSession,
+  SetTarget,
+  LoggedSet,
+  InSessionDecision,
+  LayoffSuggestion
+} from '../lib/progression';
 
 export class ProgressiveOverloadService {
 
@@ -60,16 +67,14 @@ export class ProgressiveOverloadService {
         recommendation = this.calculateTimeBasedProgression(
           lastPerformance,
           analysis,
-          experienceLevel,
-          1
+          experienceLevel
         );
       } else if (exercise.equipment.toLowerCase() === 'bodyweight') {
         recommendation = this.calculateBodyweightProgression(
           exercise,
           lastPerformance,
           analysis,
-          experienceLevel,
-          1
+          experienceLevel
         );
       } else {
         const prescription = this.buildPrescription(currentSets, isStrength, configuredReps);
@@ -114,15 +119,11 @@ export class ProgressiveOverloadService {
   private static calculateDaysSince(workoutDate: Date | string): number {
     const lastDate = new Date(workoutDate);
     const today = new Date();
-    const diffTime = Math.abs(today.getTime() - lastDate.getTime());
-    return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-  }
-
-  private static getDeloadFactor(daysSince: number): number {
-    if (daysSince >= 30) return defaultDeloadFactors.monthPlusGap;
-    if (daysSince >= 21) return defaultDeloadFactors.threeWeekGap;
-    if (daysSince >= 14) return defaultDeloadFactors.twoWeekGap;
-    return 1.0; // No deload needed
+    const diffMs = today.getTime() - lastDate.getTime();
+    // Guard future-dated history (clock skew / bad data) — never report a negative gap.
+    if (diffMs <= 0) return 0;
+    // Floor to whole elapsed days: a 16.7-day gap is 16 days, not 17.
+    return Math.floor(diffMs / (1000 * 60 * 60 * 24));
   }
 
   private static analyzePerformance(history: ExerciseHistory): PerformanceAnalysis {
@@ -276,8 +277,7 @@ export class ProgressiveOverloadService {
     exercise: Exercise,
     lastPerformance: ExerciseHistory,
     analysis: PerformanceAnalysis,
-    experienceLevel: ExperienceLevel,
-    deloadFactor: number
+    experienceLevel: ExperienceLevel
   ): ProgressionRecommendation {
 
     const progression = bodyweightProgressions[exercise.name];
@@ -359,19 +359,13 @@ export class ProgressiveOverloadService {
       }
     }
 
-    // Apply deload if needed
-    if (deloadFactor < 1) {
-      action = 'deload';
-      reasoning = `It's been ${lastPerformance.daysSinceLastWorkout || 14}+ days. Consider easier variation or reduced reps.`;
-    }
-
     return {
       action,
       recommendedVariation,
       recommendedReps: lastPerformance.sets[0]?.targetReps || 8,
       reasoning,
-      confidence: this.calculateConfidence(analysis, deloadFactor < 1),
-      deloadApplied: deloadFactor < 1,
+      confidence: this.calculateConfidence(analysis, false),
+      deloadApplied: false,
       alternatives: []
     };
   }
@@ -379,8 +373,7 @@ export class ProgressiveOverloadService {
   private static calculateTimeBasedProgression(
     lastPerformance: ExerciseHistory,
     analysis: PerformanceAnalysis,
-    experienceLevel: ExperienceLevel,
-    deloadFactor: number
+    experienceLevel: ExperienceLevel
   ): ProgressionRecommendation {
 
     // Extract time from last performance (assuming stored in notes or a custom field)
@@ -404,19 +397,12 @@ export class ProgressiveOverloadService {
       reasoning = 'Continue with current time to build consistency.';
     }
 
-    // Apply deload if needed
-    if (deloadFactor < 1) {
-      recommendedTime = Math.round(recommendedTime * deloadFactor);
-      action = 'deload';
-      reasoning = `Been away for a while. Reduced time for re-adaptation.`;
-    }
-
     return {
       action,
       recommendedTime,
       reasoning,
-      confidence: this.calculateConfidence(analysis, deloadFactor < 1),
-      deloadApplied: deloadFactor < 1,
+      confidence: this.calculateConfidence(analysis, false),
+      deloadApplied: false,
       alternatives: []
     };
   }
@@ -606,6 +592,19 @@ export class ProgressiveOverloadService {
    */
   static getInSessionDecision(target: SetTarget, logged: LoggedSet): InSessionDecision {
     return inSessionDecision(target, logged);
+  }
+
+  /**
+   * Opt-in "welcome back" suggestion after a layoff — NOT an automatic load cut.
+   * The recommendation engine no longer reduces the working load for a calendar
+   * gap; instead the UI can offer this optional, honest reduction. Returns null
+   * when no suggestion is warranted (gap under ~3 weeks, or no last weight).
+   */
+  static getLayoffSuggestion(
+    daysSinceLastWorkout: number,
+    lastWeight: number
+  ): LayoffSuggestion | null {
+    return returnFromLayoffSuggestion({ daysSinceLastWorkout, lastWeight });
   }
 
   // Apply fatigue adjustment (called when user indicates fatigue)
