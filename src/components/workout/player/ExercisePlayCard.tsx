@@ -131,7 +131,10 @@ export const ExercisePlayCard: React.FC<ExercisePlayCardProps> = ({
         aria-label={instructions.length > 0 ? `Show instructions for ${title}` : undefined}
       >
         {videoLinks.length >= 2 ? (
-          <div className="grid h-full grid-cols-2 gap-px">
+          // Two clips stack vertically (full-width landscape rows) rather than
+          // side-by-side — a tall, narrow column cover-crops the movement out of
+          // frame, whereas a wide row keeps the whole exercise visible.
+          <div className="grid h-full grid-rows-2 gap-px">
             <Clip url={videoLinks[0]} reduced={reduced} />
             <Clip url={videoLinks[1]} reduced={reduced} />
           </div>
