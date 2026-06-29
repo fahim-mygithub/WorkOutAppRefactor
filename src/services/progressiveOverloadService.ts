@@ -20,6 +20,10 @@ import {
   isTimeBasedExercise,
   bandColorProgression
 } from '../config/progressionConfig';
+// Pure progression core — the service is a thin adapter that maps stored history
+// into these shapes and delegates the actual next-session decision here.
+import { nextDoubleProgression } from '../lib/progression';
+import type { Prescription, LastSession } from '../lib/progression';
 
 export class ProgressiveOverloadService {
 
@@ -36,19 +40,17 @@ export class ProgressiveOverloadService {
       // Step 1: Get last performance (minimum 1 session needed)
       const lastPerformance = await this.getLastPerformance(userId, exercise.id);
 
-      if (!lastPerformance) {
+      if (!lastPerformance || lastPerformance.sets.length === 0) {
         return this.getFirstTimeRecommendation(exercise, currentSets, experienceLevel, configuredReps, configuredWeight);
       }
 
-      // Step 2: Calculate days since last workout and determine deload
+      // Step 2: Days since last workout is informational context for the UI.
       const daysSinceLastWorkout = this.calculateDaysSince(lastPerformance.workoutDate);
-      const deloadFactor = this.getDeloadFactor(daysSinceLastWorkout);
-      const needsDeload = deloadFactor < 1;
 
       // Step 3: Determine progression type (strength vs hypertrophy)
       const isStrength = currentSets < 5;
 
-      // Step 4: Analyze last performance
+      // Step 4: Analyze last performance (drives confidence + alternatives)
       const analysis = this.analyzePerformance(lastPerformance);
 
       // Step 5: Calculate recommendation based on exercise type
@@ -59,7 +61,7 @@ export class ProgressiveOverloadService {
           lastPerformance,
           analysis,
           experienceLevel,
-          deloadFactor
+          1
         );
       } else if (exercise.equipment.toLowerCase() === 'bodyweight') {
         recommendation = this.calculateBodyweightProgression(
@@ -67,24 +69,25 @@ export class ProgressiveOverloadService {
           lastPerformance,
           analysis,
           experienceLevel,
-          deloadFactor
+          1
         );
       } else {
+        const prescription = this.buildPrescription(currentSets, isStrength, configuredReps);
         recommendation = this.calculateWeightProgression(
           exercise,
           lastPerformance,
           analysis,
           isStrength,
           experienceLevel,
-          deloadFactor
+          prescription
         );
       }
 
       // Step 6: Add context about days since last workout
       recommendation.daysSinceLastWorkout = daysSinceLastWorkout;
 
-      // Step 7: Generate alternatives if needed
-      if (recommendation.action === 'decrease' || needsDeload) {
+      // Step 7: Generate alternatives only when scaling back
+      if (recommendation.action === 'decrease') {
         recommendation.alternatives = this.generateAlternatives(exercise, lastPerformance);
       }
 
@@ -204,70 +207,69 @@ export class ProgressiveOverloadService {
     analysis: PerformanceAnalysis,
     isStrength: boolean,
     experienceLevel: ExperienceLevel,
-    deloadFactor: number
+    prescription: Prescription
   ): ProgressionRecommendation {
 
     const equipmentType = getEquipmentType(exercise.equipment);
-    const increments = equipmentIncrements[equipmentType];
     const incrementType = isStrength ? 'strength' : 'hypertrophy';
-    const increment = increments[incrementType][experienceLevel];
+    const increment = equipmentIncrements[equipmentType][incrementType][experienceLevel];
 
-    // Get last weight (assuming all sets had similar weight)
-    const lastWeight = Math.max(...lastPerformance.sets.map(s => s.weight));
-    const lastReps = lastPerformance.sets[0]?.targetReps || 8;
+    // Map the stored session into the core's shape and delegate the decision.
+    // Double progression advances or holds the load — it never auto-cuts.
+    const last = this.toLastSession(lastPerformance);
+    const next = nextDoubleProgression(prescription, last, increment);
 
-    let recommendedWeight = lastWeight;
-    let action: ProgressionAction;
-    let reasoning: string;
-
-    if (analysis.shouldIncrease) {
-      recommendedWeight = lastWeight + increment;
-      action = 'increase';
-      reasoning = `All sets completed successfully. Increasing by ${increment}lbs (${experienceLevel} progression).`;
-    } else if (analysis.shouldMaintain) {
-      action = 'maintain';
-      if (analysis.isDroppingReps) {
-        reasoning = 'Reps dropping across sets. Maintain weight to build consistency.';
-      } else {
-        reasoning = 'Good performance. Maintain weight for another session to solidify.';
-      }
-    } else if (analysis.shouldDecrease) {
-      recommendedWeight = lastWeight * 0.9;
-      action = 'decrease';
-      if (analysis.failurePattern === 'early') {
-        reasoning = 'Failed early sets. Weight too heavy. Reducing by 10%.';
-      } else {
-        reasoning = `Only completed ${Math.round(analysis.repCompletion * 100)}% of target reps. Reducing weight.`;
-      }
-    } else {
-      action = 'maintain';
-      reasoning = 'Performance analysis inconclusive. Maintain current weight.';
-    }
-
-    // Apply deload if needed
-    let deloadApplied = false;
-    if (deloadFactor < 1) {
-      recommendedWeight = Math.round(recommendedWeight * deloadFactor);
-      action = 'deload';
-      deloadApplied = true;
-      const deloadPercentage = Math.round((1 - deloadFactor) * 100);
-      reasoning = `It's been ${lastPerformance.daysSinceLastWorkout || 14}+ days since last workout. Applied ${deloadPercentage}% deload for safety.`;
-    }
-
-    // Round to practical weight
-    recommendedWeight = this.roundToAvailableWeight(recommendedWeight, equipmentType);
+    const recommendedWeight = this.roundToAvailableWeight(next.weight, equipmentType);
+    const action: ProgressionAction = next.advanced ? 'increase' : 'maintain';
 
     return {
       action,
       recommendedWeight,
-      recommendedReps: lastReps,
-      previousWeight: lastWeight,
-      previousReps: lastReps,
-      reasoning,
-      confidence: this.calculateConfidence(analysis, deloadApplied),
-      deloadApplied,
+      recommendedReps: next.repTarget,
+      recommendedRepMin: next.repMin,
+      recommendedRepMax: next.repMax,
+      previousWeight: last.weight,
+      previousReps: Math.max(...last.reps),
+      reasoning: next.reason,
+      confidence: this.calculateConfidence(analysis, false),
+      deloadApplied: false,
+      source: 'double-progression',
       alternatives: []
     };
+  }
+
+  /**
+   * Build the double-progression prescription from the planned session. The
+   * service only receives a single `configuredReps`, so the rep range is a
+   * single-value range (repMin === repMax). When the planned reps are absent we
+   * fall back to a sensible default (5 for low-rep strength, 10 for hypertrophy).
+   * (Phase 4 can thread an explicit repMin/repMax through the hook for true ranges.)
+   */
+  private static buildPrescription(
+    currentSets: number,
+    isStrength: boolean,
+    configuredReps?: number
+  ): Prescription {
+    const reps = configuredReps && configuredReps > 0 ? configuredReps : (isStrength ? 5 : 10);
+    return { repMin: reps, repMax: reps, sets: currentSets };
+  }
+
+  /**
+   * Map a stored `ExerciseHistory` into the core's `LastSession`. The carried
+   * load is the heaviest set's weight; reps are each set's actual reps; RIR is
+   * only supplied when every set recorded it (a partial RIR record is dropped so
+   * the core's effort gate isn't fed a misaligned array). Callers must guard the
+   * empty-sets case before calling (see getRecommendation's first-time branch).
+   */
+  private static toLastSession(history: ExerciseHistory): LastSession {
+    const sets = history.sets;
+    const weight = Math.max(...sets.map(s => s.weight));
+    const reps = sets.map(s => s.actualReps);
+    const rirValues = sets.map(s => s.rir);
+    const rir = rirValues.every((r): r is number => typeof r === 'number')
+      ? rirValues as number[]
+      : undefined;
+    return { weight, reps, rir };
   }
 
   private static calculateBodyweightProgression(
@@ -573,11 +575,14 @@ export class ProgressiveOverloadService {
       action: 'maintain',
       recommendedWeight,
       recommendedReps,
+      recommendedRepMin: recommendedReps,
+      recommendedRepMax: recommendedReps,
       reasoning: hasPrescribedWeight
         ? 'First time performing this exercise. Starting with your planned weight.'
         : 'First time performing this exercise. Starting with conservative weight.',
       confidence: 'low',
       deloadApplied: false,
+      source: hasPrescribedWeight ? 'seed' : 'first-time',
       alternatives: []
     };
   }
