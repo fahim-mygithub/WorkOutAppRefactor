@@ -12,7 +12,6 @@ import type { ExerciseHistory, PerformedSet } from '../types/exerciseHistory';
 import type { Exercise } from '../types/exercise';
 import {
   equipmentIncrements,
-  defaultDeloadFactors,
   bodyweightProgressions,
   timeBasedIncrements,
   getNextBandColor,
@@ -582,9 +581,8 @@ export class ProgressiveOverloadService {
   /**
    * Real-time in-session decision after a logged set: continue, reduce, or end.
    * Delegates to the pure core, which derives any cut from the weight ACTUALLY
-   * lifted (`logged.weight`) — the correct replacement for applyFatigueAdjustment's
-   * bug of cutting off the historical `previousWeight`. The hook rewires onto this
-   * in Phase 4; applyFatigueAdjustment is removed in Phase 6.
+   * lifted (`logged.weight`) — the correct replacement for the old fatigue
+   * adjustment's bug of cutting off the historical `previousWeight`.
    */
   static getInSessionDecision(target: SetTarget, logged: LoggedSet): InSessionDecision {
     return inSessionDecision(target, logged);
@@ -601,41 +599,5 @@ export class ProgressiveOverloadService {
     lastWeight: number
   ): LayoffSuggestion | null {
     return returnFromLayoffSuggestion({ daysSinceLastWorkout, lastWeight });
-  }
-
-  // Apply fatigue adjustment (called when user indicates fatigue)
-  static applyFatigueAdjustment(
-    recommendation: ProgressionRecommendation
-  ): ProgressionRecommendation {
-    const fatigueMultiplier = defaultDeloadFactors.fatiguedToday;
-    const adjustedRecommendation = { ...recommendation };
-
-    if (adjustedRecommendation.recommendedWeight && adjustedRecommendation.previousWeight) {
-      if (adjustedRecommendation.action === 'increase') {
-        // If we were going to increase, maintain at previous weight instead (no increase)
-        adjustedRecommendation.recommendedWeight = adjustedRecommendation.previousWeight;
-        adjustedRecommendation.action = 'maintain';
-        adjustedRecommendation.reasoning = 'Fatigue detected - maintaining at current weight instead of increasing.';
-      } else if (adjustedRecommendation.action === 'maintain' || adjustedRecommendation.action === 'decrease') {
-        // If we were maintaining or decreasing, apply 15% deload
-        adjustedRecommendation.recommendedWeight = Math.round(
-          adjustedRecommendation.previousWeight * fatigueMultiplier
-        );
-        adjustedRecommendation.action = 'decrease';
-        adjustedRecommendation.reasoning = 'Fatigue detected - applying 15% weight reduction (deload) for recovery.';
-      }
-    } else if (adjustedRecommendation.recommendedWeight) {
-      // Fallback for cases without previous weight data
-      adjustedRecommendation.recommendedWeight = Math.round(
-        adjustedRecommendation.recommendedWeight * fatigueMultiplier
-      );
-      adjustedRecommendation.action = 'decrease';
-      adjustedRecommendation.reasoning = 'Fatigue detected - applying 15% weight reduction for recovery.';
-    }
-
-    // Don't modify reps/set structure when fatigued - only adjust weight
-    // The user should maintain their planned set structure
-
-    return adjustedRecommendation;
   }
 }

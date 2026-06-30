@@ -5,7 +5,7 @@ import type {
   ExperienceLevel,
   ProgressionTracking
 } from '../types/progression';
-import type { Exercise, WorkoutSet } from '../types/exercise';
+import type { Exercise } from '../types/exercise';
 import { useAppSelector } from '../store/hooks';
 
 // Convert user-friendly progression rate to technical experience level
@@ -35,8 +35,6 @@ interface UseProgressionRecommendationReturn {
   isLoading: boolean;
   error: string | null;
   experienceLevel: ExperienceLevel;
-  showDeloadSuggestion: boolean;
-  showFatigueCheck: boolean;
   progressionTracking: ProgressionTracking | null;
   acceptedRecommendation: boolean;
 
@@ -45,11 +43,6 @@ interface UseProgressionRecommendationReturn {
   acceptRecommendation: () => void;
   modifyRecommendation: (weight?: number, reps?: number) => void;
   dismissRecommendation: () => void;
-  applyDeload: () => void;
-  declineDeload: () => void;
-  applyFatigue: () => void;
-  continuePlan: () => void;
-  checkForFailedSet: (set: WorkoutSet, setNumber: number) => void;
   refreshRecommendation: () => Promise<void>;
 }
 
@@ -72,11 +65,8 @@ export const useProgressionRecommendation = ({
   const [experienceLevel, setExperienceLevel] = useState<ExperienceLevel>(
     mapProgressionRateToExperienceLevel(userPreferences.defaultProgressionRate)
   );
-  const [showDeloadSuggestion, setShowDeloadSuggestion] = useState(false);
-  const [showFatigueCheck, setShowFatigueCheck] = useState(false);
   const [progressionTracking, setProgressionTracking] = useState<ProgressionTracking | null>(null);
   const [acceptedRecommendation, setAcceptedRecommendation] = useState(false);
-  const [failedSetInfo, setFailedSetInfo] = useState<{ weight: number; setNumber: number } | null>(null);
 
   // Load recommendation
   const loadRecommendation = useCallback(async () => {
@@ -104,11 +94,6 @@ export const useProgressionRecommendation = ({
 
       // Auto-accept the recommendation by default so weight gets pre-populated
       setAcceptedRecommendation(true);
-
-      // Check if deload suggestion should be shown
-      if (rec.deloadApplied && rec.daysSinceLastWorkout && rec.daysSinceLastWorkout >= 14) {
-        setShowDeloadSuggestion(true);
-      }
 
       // Initialize progression tracking
       setProgressionTracking({
@@ -184,73 +169,6 @@ export const useProgressionRecommendation = ({
     setAcceptedRecommendation(false);
   }, []);
 
-  const applyDeload = useCallback(() => {
-    setShowDeloadSuggestion(false);
-    // Deload is already applied in the recommendation
-    acceptRecommendation();
-  }, [acceptRecommendation]);
-
-  const declineDeload = useCallback(() => {
-    if (!recommendation) return;
-
-    setShowDeloadSuggestion(false);
-
-    // Recalculate without deload
-    const originalWeight = recommendation.previousWeight || recommendation.recommendedWeight || 0;
-    const adjustedRec = {
-      ...recommendation,
-      recommendedWeight: originalWeight,
-      deloadApplied: false,
-      reasoning: 'Deload declined. Using previous weight.'
-    };
-
-    setRecommendation(adjustedRec);
-  }, [recommendation]);
-
-  const applyFatigue = useCallback(() => {
-    if (!recommendation) return;
-
-    setShowFatigueCheck(false);
-
-    // Apply fatigue adjustment
-    const fatigueAdjusted = ProgressiveOverloadService.applyFatigueAdjustment(recommendation);
-    setRecommendation(fatigueAdjusted);
-
-    // Set accepted recommendation to true so the adjusted weight auto-fills in remaining sets
-    setAcceptedRecommendation(true);
-
-    if (progressionTracking) {
-      setProgressionTracking({
-        ...progressionTracking,
-        progressionFollowed: true,
-        failureReason: 'fatigue',
-        actualWeight: fatigueAdjusted.recommendedWeight,
-        actualReps: fatigueAdjusted.recommendedReps
-      });
-    }
-  }, [recommendation, progressionTracking]);
-
-  const continuePlan = useCallback(() => {
-    setShowFatigueCheck(false);
-    // Continue with current plan, no changes
-  }, []);
-
-  const checkForFailedSet = useCallback((set: WorkoutSet, setNumber: number) => {
-    // Check if set was failed (didn't hit target reps)
-    if (!set.completed || (set.reps > 0 && set.failed)) {
-      setFailedSetInfo({ weight: set.weight || 0, setNumber });
-      setShowFatigueCheck(true);
-
-      // Update tracking
-      if (progressionTracking) {
-        setProgressionTracking({
-          ...progressionTracking,
-          outcomeRating: 'failed'
-        });
-      }
-    }
-  }, [progressionTracking]);
-
   const refreshRecommendation = useCallback(async () => {
     await loadRecommendation();
   }, [loadRecommendation]);
@@ -260,19 +178,12 @@ export const useProgressionRecommendation = ({
     isLoading,
     error,
     experienceLevel,
-    showDeloadSuggestion,
-    showFatigueCheck,
     progressionTracking,
     acceptedRecommendation,
     setExperienceLevel,
     acceptRecommendation,
     modifyRecommendation,
     dismissRecommendation,
-    applyDeload,
-    declineDeload,
-    applyFatigue,
-    continuePlan,
-    checkForFailedSet,
     refreshRecommendation
   };
 };
