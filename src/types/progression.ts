@@ -43,6 +43,10 @@ export interface ProgressionConfig {
 
 export interface ProgressionRecommendation {
   action: ProgressionAction;
+  /** The exercise this recommendation was computed for. Lets consumers ignore a
+   *  stale rec the async hook is still holding during a reload (prevents showing
+   *  one exercise's numbers under another's name). */
+  exerciseId?: string;
   recommendedWeight?: number;
   recommendedReps?: number;
   recommendedRepMin?: number;

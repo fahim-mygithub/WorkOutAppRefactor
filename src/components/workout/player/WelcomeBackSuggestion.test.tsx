@@ -24,6 +24,7 @@ describe('WelcomeBackSuggestion', () => {
     render(
       <WelcomeBackSuggestion
         suggestion={tenPct}
+        previousWeight={100}
         exerciseName="Bench Press"
         onApply={vi.fn()}
         onDismiss={vi.fn()}
@@ -39,12 +40,49 @@ describe('WelcomeBackSuggestion', () => {
     expect(screen.getByRole('button', { name: /use 90 lb/i })).toBeInTheDocument();
   });
 
+  it('shows the REAL previous weight passed in (no inverse reconstruction)', async () => {
+    render(
+      <WelcomeBackSuggestion
+        suggestion={tenPct}
+        previousWeight={100}
+        exerciseName="Bench Press"
+        onApply={vi.fn()}
+        onDismiss={vi.fn()}
+      />,
+    );
+    await screen.findByRole('dialog');
+    expect(screen.getByText(/100 lb/i)).toBeInTheDocument();
+  });
+
+  it('renders an off-grid previous weight verbatim (e.g. 52.5, not double-rounded to 50)', async () => {
+    // round5(suggestedWeight/(1−pct/100)) used to drift this; the prop is shown as-is.
+    const offGrid: LayoffSuggestion = {
+      suggestedWeight: 47.5,
+      reductionPct: 10,
+      optional: true,
+      message: '~3 weeks off — optional 10% lighter to ease back in',
+    };
+    render(
+      <WelcomeBackSuggestion
+        suggestion={offGrid}
+        previousWeight={52.5}
+        exerciseName="Lateral Raise"
+        onApply={vi.fn()}
+        onDismiss={vi.fn()}
+      />,
+    );
+    await screen.findByRole('dialog');
+    expect(screen.getByText(/52\.5 lb/i)).toBeInTheDocument();
+    expect(screen.queryByText(/50 lb/i)).not.toBeInTheDocument();
+  });
+
   it('applies the suggested (lighter) load when "Use" is tapped', async () => {
     const user = userEvent.setup();
     const onApply = vi.fn();
     render(
       <WelcomeBackSuggestion
         suggestion={tenPct}
+        previousWeight={100}
         exerciseName="Bench Press"
         onApply={onApply}
         onDismiss={vi.fn()}
@@ -61,6 +99,7 @@ describe('WelcomeBackSuggestion', () => {
     render(
       <WelcomeBackSuggestion
         suggestion={tenPct}
+        previousWeight={100}
         exerciseName="Bench Press"
         onApply={onApply}
         onDismiss={onDismiss}
@@ -71,10 +110,28 @@ describe('WelcomeBackSuggestion', () => {
     expect(onApply).not.toHaveBeenCalled();
   });
 
+  it('dismisses when the sheet is closed via Escape (backdrop/Escape path)', async () => {
+    const user = userEvent.setup();
+    const onDismiss = vi.fn();
+    render(
+      <WelcomeBackSuggestion
+        suggestion={tenPct}
+        previousWeight={100}
+        exerciseName="Bench Press"
+        onApply={vi.fn()}
+        onDismiss={onDismiss}
+      />,
+    );
+    await screen.findByRole('dialog');
+    await user.keyboard('{Escape}');
+    expect(onDismiss).toHaveBeenCalled();
+  });
+
   it('renders a 20% suggestion dynamically — the percentage is never hardcoded', async () => {
     render(
       <WelcomeBackSuggestion
         suggestion={twentyPct}
+        previousWeight={100}
         exerciseName="Back Squat"
         onApply={vi.fn()}
         onDismiss={vi.fn()}

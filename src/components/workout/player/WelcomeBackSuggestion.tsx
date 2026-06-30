@@ -5,15 +5,16 @@
 // REAL reductionPct from the pure layoff delegate and lets the lifter choose to
 // ease in lighter or keep the full load. Bottom-sheet so it stays clear of the
 // no-scroll player flow.
-import React, { useState } from 'react';
+import React from 'react';
 import { Sparkles, TrendingDown } from 'lucide-react';
 import type { LayoffSuggestion } from '@/lib/progression';
-import { round5 } from '@/lib/progression';
 import { Sheet, SheetContent, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 
 interface WelcomeBackSuggestionProps {
   suggestion: LayoffSuggestion;
+  /** The full (pre-cut) working load — shown verbatim as what we're easing FROM. */
+  previousWeight: number;
   exerciseName: string;
   /** Apply the lighter easing-in load to the working sets. */
   onApply: (weight: number) => void;
@@ -23,34 +24,20 @@ interface WelcomeBackSuggestionProps {
 
 export const WelcomeBackSuggestion: React.FC<WelcomeBackSuggestionProps> = ({
   suggestion,
+  previousWeight,
   exerciseName,
   onApply,
   onDismiss,
 }) => {
-  // Mirror the sheet's open state so the exit animation can play; the parent also
-  // unmounts us once answered (per-exercise flag), so this is mostly for the
-  // backdrop/Escape path.
-  const [open, setOpen] = useState(true);
-
-  // Backdrop / Escape / "Keep full load" all resolve to a dismissal.
+  // The parent unmounts us on every dismissal path (per-exercise answered flag),
+  // so there's no exit animation to preserve — render open and treat any Radix
+  // close (backdrop / Escape) as an honest, instant dismissal.
   const handleOpenChange = (next: boolean) => {
-    setOpen(next);
     if (!next) onDismiss();
   };
 
-  const handleApply = () => {
-    onApply(suggestion.suggestedWeight);
-    // Close directly (not through onOpenChange) so we don't also fire onDismiss.
-    setOpen(false);
-  };
-
-  // The full (pre-cut) load reconstructed from the suggestion — the component is
-  // intentionally fed only the suggestion, so we invert the reduction to show the
-  // lifter what they're easing down FROM. round5 keeps it on the plate grid.
-  const fullLoad = round5(suggestion.suggestedWeight / (1 - suggestion.reductionPct / 100));
-
   return (
-    <Sheet open={open} onOpenChange={handleOpenChange}>
+    <Sheet open onOpenChange={handleOpenChange}>
       <SheetContent>
         {/* Header */}
         <p className="font-marker text-caption uppercase tracking-wide text-ink-subtle">
@@ -73,7 +60,7 @@ export const WelcomeBackSuggestion: React.FC<WelcomeBackSuggestionProps> = ({
             <div className="space-y-1">
               <div className="flex items-center gap-2">
                 <span className="font-marker text-body-sm text-ink-subtle">Full load</span>
-                <span className="font-num font-tabular font-semibold text-ink">{fullLoad} lb</span>
+                <span className="font-num font-tabular font-semibold text-ink">{previousWeight} lb</span>
               </div>
               <div className="flex items-center gap-2">
                 <TrendingDown className="h-4 w-4 text-accent" aria-hidden="true" />
@@ -95,10 +82,14 @@ export const WelcomeBackSuggestion: React.FC<WelcomeBackSuggestionProps> = ({
 
         {/* Actions — opt-in: nothing changes unless the lifter taps "Use …". */}
         <div className="mt-4 flex gap-2">
-          <Button variant="primary" onClick={handleApply} className="flex-1">
+          <Button
+            variant="primary"
+            onClick={() => onApply(suggestion.suggestedWeight)}
+            className="flex-1"
+          >
             Use {suggestion.suggestedWeight} lb
           </Button>
-          <Button variant="secondary" onClick={() => handleOpenChange(false)} className="flex-1">
+          <Button variant="secondary" onClick={onDismiss} className="flex-1">
             Keep full load
           </Button>
         </div>

@@ -97,7 +97,10 @@ export const useProgressionRecommendation = ({
         configuredWeight
       );
 
-      setRecommendation(rec);
+      // Stamp the rec with the exercise it was computed for, so consumers can
+      // discard a stale rec still held during an async reload (the modify/
+      // fatigue/decline paths spread `...recommendation`, preserving the stamp).
+      setRecommendation({ ...rec, exerciseId: exercise.id });
 
       // Auto-accept the recommendation by default so weight gets pre-populated
       setAcceptedRecommendation(true);

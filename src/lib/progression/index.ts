@@ -9,6 +9,7 @@ export { nextDoubleProgression } from './doubleProgression';
 export { inSessionDecision } from './autoregulation';
 export { decideInSession, inSessionSuggestion } from './inSession';
 export { returnFromLayoffSuggestion } from './layoff';
+export { welcomeBackSuggestion } from './welcomeBack';
 export { round5 } from './round';
 export { prescribedFloor, formatRepRange } from './setPrescription';
 
@@ -17,4 +18,5 @@ export type { LoggedSet } from './types';
 export type { Prescription, LastSession, NextPrescription } from './doubleProgression';
 export type { SetTarget } from './autoregulation';
 export type { LayoffInput, LayoffSuggestion } from './layoff';
+export type { WelcomeBackRecommendation, WelcomeBackView } from './welcomeBack';
 export type { InSessionDecision } from '../../types/progression';

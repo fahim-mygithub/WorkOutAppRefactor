@@ -37,8 +37,8 @@ import { ExercisePlayCard } from '../components/workout/player/ExercisePlayCard'
 import { RestTimerBar } from '../components/workout/player/RestTimerBar';
 import { WelcomeBackSuggestion } from '../components/workout/player/WelcomeBackSuggestion';
 import { useProgressionRecommendation } from '../hooks/useProgressionRecommendation';
-import { ProgressiveOverloadService } from '../services/progressiveOverloadService';
 import { inSessionSuggestion } from '../lib/progression/inSession';
+import { welcomeBackSuggestion } from '../lib/progression/welcomeBack';
 import { Button } from '../components/ui/button';
 import { Card } from '../components/ui/card';
 import { Exercise, WorkoutExercise, WorkoutSet } from '../types/exercise';
@@ -112,24 +112,27 @@ export default function WorkoutPage() {
   const [editingExercise, setEditingExercise] = useState<WorkoutExercise | null>(null);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showEndWorkoutModal, setShowEndWorkoutModal] = useState(false);
-  // Live in-session cue after a logged set (reduce/repeat only) + the load the
-  // lifter chose to apply to the remaining sets of this exercise.
+  // Live in-session cue after a logged set (reduce/repeat only).
   const [suggestion, setSuggestion] = useState<InSessionDecision | null>(null);
-  const [appliedWeight, setAppliedWeight] = useState<number | null>(null);
-  // Whether the lifter has answered the opt-in welcome-back prompt for the
-  // CURRENT exercise (applied the lighter load or kept the full load). Tracked
-  // per exercise so the prompt doesn't re-pop after they decide; reset on change.
-  const [welcomeBackAnswered, setWelcomeBackAnswered] = useState(false);
+  // Applied "lighter" loads keyed by exercise IDENTITY (catalog exercise id). A
+  // chosen reduction (welcome-back OR in-session) pre-fills the working sets via
+  // recommendedWeight; keying by id — not the current index — means it survives
+  // the index cycling within a superset (A→B→A→B). Cleared when the page remounts
+  // for a new workout.
+  const [appliedWeights, setAppliedWeights] = useState<Record<string, number>>({});
+  // Exercises whose opt-in welcome-back prompt the lifter has answered (applied
+  // the lighter load OR kept the full load). Keyed by exercise identity so the
+  // prompt doesn't re-pop on superset rounds or back-nav.
+  const [answeredIds, setAnsweredIds] = useState<Set<string>>(() => new Set());
 
   // Track if workout context has been loaded to prevent duplicate calls
   const contextLoadedRef = useRef<string | null>(null);
 
-  // A new exercise starts clean: no carried-over cue, applied load, or answered
-  // welcome-back prompt.
+  // A new exercise starts with no carried-over transient cue. (The applied load
+  // and the answered-prompt set are keyed by exercise identity, not index, so
+  // they deliberately persist across superset rounds and back-nav.)
   useEffect(() => {
     setSuggestion(null);
-    setAppliedWeight(null);
-    setWelcomeBackAnswered(false);
   }, [activeWorkout?.currentExerciseIndex]);
 
   // Moving to another set dismisses the transient cue (the applied load persists
@@ -190,19 +193,12 @@ export default function WorkoutPage() {
     setShowEditModal(true);
   }, []);
 
-  // Opt-in "welcome back" suggestion for the current exercise. Derived from the
-  // pure delegate off the lifter's last working load (previousWeight, falling
-  // back to the recommended load) and the calendar gap — it returns null for
-  // anything under ~3 weeks, so a normal cadence never triggers it. The data
-  // naturally gates this to authed users with prior history (anon/demo have no
-  // daysSinceLastWorkout/previousWeight), mirroring the in-session cue.
-  const rec = progressionHook.recommendation;
-  const layoffSuggestion = useMemo(() => {
-    if (!rec || rec.daysSinceLastWorkout == null) return null;
-    const lastWeight = rec.previousWeight ?? rec.recommendedWeight;
-    if (!lastWeight) return null;
-    return ProgressiveOverloadService.getLayoffSuggestion(rec.daysSinceLastWorkout, lastWeight);
-  }, [rec]);
+  // Persist an applied load / an answered welcome-back prompt by exercise
+  // identity (see the appliedWeights / answeredIds state notes).
+  const applyLoadToExercise = (exerciseId: string, weight: number) =>
+    setAppliedWeights((prev) => ({ ...prev, [exerciseId]: weight }));
+  const markWelcomeBackAnswered = (exerciseId: string) =>
+    setAnsweredIds((prev) => (prev.has(exerciseId) ? prev : new Set(prev).add(exerciseId)));
 
   if (!activeWorkout) {
     // If we're viewing a shared workout, wrap with SharedWorkoutLoader
@@ -337,7 +333,7 @@ export default function WorkoutPage() {
   // recommendedWeight autofill SetInput already honors, so each upcoming set
   // pre-fills with the reduced load. Dismiss the cue either way.
   const handleApplySuggestion = (weight: number) => {
-    setAppliedWeight(weight);
+    applyLoadToExercise(currentExercise.exercise.id, weight);
     setSuggestion(null);
   };
 
@@ -542,6 +538,16 @@ export default function WorkoutPage() {
     : `ex:${activeWorkout.currentExerciseIndex}`;
   const cardsLeft = Math.max(0, groupKeys.length - groupKeys.indexOf(curGroupKey) - 1);
 
+  // Opt-in welcome-back gate (pure): null unless the CURRENT exercise's rec
+  // signals a real layoff and the lifter hasn't already answered for it. The
+  // exerciseId match also discards a stale rec held during an async reload, so
+  // the sheet never flashes one exercise's numbers under another's name.
+  const welcomeBack = welcomeBackSuggestion(
+    progressionHook.recommendation,
+    currentExercise.exercise.id,
+    answeredIds,
+  );
+
   return (
     <>
       {/* No-scroll player: slim top bar, swipeable exercise deck, rest-timer bar.
@@ -578,7 +584,7 @@ export default function WorkoutPage() {
                 ? previousPerformances[currentExercise.exercise.id] || null
                 : null
             }
-            recommendedWeight={appliedWeight ?? progressionHook.recommendation?.recommendedWeight}
+            recommendedWeight={appliedWeights[currentExercise.exercise.id] ?? progressionHook.recommendation?.recommendedWeight}
             recommendedReps={progressionHook.recommendation?.recommendedReps}
             onEditSets={() => handleEditExercise(currentExercise)}
             onCompleteSet={handleCompleteSet}
@@ -618,18 +624,19 @@ export default function WorkoutPage() {
         isSharedWorkout={isViewingSharedWorkout}
       />
 
-      {/* Opt-in welcome-back after a real layoff — shows the CORRECT reduction
-          and never cuts the load on its own. Gated by the data (a suggestion only
-          exists with prior history) + the per-exercise answered flag, not auth. */}
-      {layoffSuggestion && !welcomeBackAnswered && (
+      {/* Opt-in welcome-back after a real layoff — shows the CORRECT reduction and
+          the REAL previous load, and never cuts the load on its own. Gated by the
+          pure helper (data + per-exercise answered set), not auth. */}
+      {welcomeBack && (
         <WelcomeBackSuggestion
-          suggestion={layoffSuggestion}
+          suggestion={welcomeBack.suggestion}
+          previousWeight={welcomeBack.previousWeight}
           exerciseName={currentExercise.exercise.name}
           onApply={(weight) => {
-            setAppliedWeight(weight);
-            setWelcomeBackAnswered(true);
+            applyLoadToExercise(currentExercise.exercise.id, weight);
+            markWelcomeBackAnswered(currentExercise.exercise.id);
           }}
-          onDismiss={() => setWelcomeBackAnswered(true)}
+          onDismiss={() => markWelcomeBackAnswered(currentExercise.exercise.id)}
         />
       )}
     </>
