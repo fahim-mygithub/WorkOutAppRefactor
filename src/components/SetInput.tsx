@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Check, X, Edit3, Save } from 'lucide-react';
+import { Check, X, Edit3, Save, Minus, Plus, Undo2 } from 'lucide-react';
 import { Button } from './ui/button';
-import { Input } from './ui/input';
-import { Label } from './ui/label';
+import { IconButton } from './ui/icon-button';
 import { cn } from '@/lib/utils';
 import { prescribedFloor, formatRepRange } from '@/lib/progression/setPrescription';
 
@@ -14,6 +13,10 @@ const RIR_OPTIONS: { value: number; label: string }[] = [
   { value: 2, label: '2' },
   { value: 3, label: '3+' },
 ];
+
+// Stable fallback: a fresh `[]` default would change identity every render and
+// re-fire the smart-defaults effect, clobbering stepper/typed edits.
+const NO_SETS: any[] = [];
 
 interface SetInputProps {
   set: any;
@@ -32,7 +35,7 @@ export const SetInput: React.FC<SetInputProps> = ({
   onComplete,
   onUncomplete,
   previousSet,
-  allSets = [],
+  allSets = NO_SETS,
   recommendedWeight,
   recommendedReps,
   compact = false,
@@ -154,98 +157,66 @@ export const SetInput: React.FC<SetInputProps> = ({
   if (set?.completed) {
     if (isEditing) {
       return (
-        <div className="rounded-lg border-2 border-success/50 bg-success/15 p-4">
-          <p className="mb-3 font-marker text-title text-success">
-            Edit completed set
-          </p>
-          <div className="mb-4 grid grid-cols-2 gap-4">
-            <div>
-              <Label
-                htmlFor="set-edit-reps"
-                className="mb-2 block font-marker text-caption uppercase tracking-wider text-ink-muted"
-              >
-                Reps
-              </Label>
-              <Input
-                id="set-edit-reps"
-                type="number"
-                inputMode="numeric"
-                value={reps}
-                onChange={(e) => setReps(parseInt(e.target.value) || 0)}
-                onFocus={(e) => e.target.select()}
-                onKeyDown={handleInputKeyDown}
-                autoComplete="off"
-                className="h-16 text-center text-display"
-              />
-            </div>
-            <div>
-              <Label
-                htmlFor="set-edit-weight"
-                className="mb-2 block font-marker text-caption uppercase tracking-wider text-ink-muted"
-              >
-                Weight <span className="normal-case text-ink-subtle">(lbs)</span>
-              </Label>
-              <Input
-                id="set-edit-weight"
-                type="number"
-                inputMode="decimal"
-                step="0.5"
-                value={weight}
-                onChange={(e) => setWeight(parseFloat(e.target.value) || 0)}
-                onFocus={(e) => e.target.select()}
-                onKeyDown={handleInputKeyDown}
-                autoComplete="off"
-                className="h-16 text-center text-display"
-              />
-            </div>
+        <div className={cn('rounded-3xl bg-surface-raised/40', compact ? 'p-3' : 'p-4')}>
+          <p className="mb-3 text-body-sm font-semibold text-accent-2">Edit logged set</p>
+          <div className="space-y-2">
+            <Stepper
+              id="set-edit-weight"
+              label="Weight"
+              unit="lb"
+              value={weight}
+              step={WEIGHT_STEP}
+              decimal
+              compact={compact}
+              onChange={setWeight}
+              onKeyDown={handleInputKeyDown}
+            />
+            <Stepper
+              id="set-edit-reps"
+              label="Reps"
+              unit="reps"
+              value={reps}
+              step={1}
+              compact={compact}
+              onChange={setReps}
+              onKeyDown={handleInputKeyDown}
+            />
           </div>
-          <div className="flex gap-2">
-            <Button onClick={handleSaveEdit} className="flex-1">
-              <Save className="h-4 w-4" />
-              <span>Save</span>
-            </Button>
-            <Button variant="secondary" onClick={handleCancelEdit} className="flex-1">
-              <X className="h-4 w-4" />
+          <div className="mt-3 grid grid-cols-2 gap-2">
+            <Button variant="secondary" size="lg" onClick={handleCancelEdit}>
+              <X className="h-4 w-4" aria-hidden="true" />
               <span>Cancel</span>
+            </Button>
+            <Button size="lg" onClick={handleSaveEdit}>
+              <Save className="h-4 w-4" aria-hidden="true" />
+              <span>Save</span>
             </Button>
           </div>
         </div>
       );
     }
 
+    // Logged: ice = done. The numbers stay large so the lifter can confirm at
+    // a glance; edit / undo are quiet secondary pills.
     return (
-      <div className={cn('rounded-lg border-2 border-success/50 bg-success/15', compact ? 'p-3' : 'p-4')}>
-        <div className="flex items-center justify-between">
-          <div>
-            <p className={cn('font-marker text-success', compact ? 'text-body' : 'text-title')}>Set done ✓</p>
-            <p className="text-body-sm text-ink-muted">
-              <span className="font-num font-tabular text-ink">{set.reps}</span>{' '}
-              reps ×{' '}
-              <span className="font-num font-tabular text-ink">
-                {set.weight}
-              </span>{' '}
-              lbs
-            </p>
-          </div>
-          <div className="flex gap-2">
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={handleEdit}
-              title="Edit Set"
-            >
-              <Edit3 className="h-4 w-4" />
-            </Button>
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={onUncomplete}
-              title="Mark Incomplete"
-            >
-              <X className="h-4 w-4" />
-            </Button>
-          </div>
+      <div className={cn('flex items-center gap-3 rounded-3xl bg-accent-2/10', compact ? 'p-3' : 'p-4')}>
+        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-accent-2 text-accent-2-fg">
+          <Check className="h-5 w-5" strokeWidth={3} aria-hidden="true" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="text-body-sm font-semibold text-accent-2">Set logged</p>
+          <p className="font-display font-tabular text-title text-ink">
+            {set.weight}
+            <span className="font-sans text-body-sm font-normal tracking-normal text-ink-muted [font-stretch:100%]"> lb × </span>
+            {set.reps}
+          </p>
         </div>
+        <IconButton variant="secondary" size="md" onClick={handleEdit} aria-label="Edit set">
+          <Edit3 className="h-4 w-4" />
+        </IconButton>
+        <IconButton variant="secondary" size="md" onClick={onUncomplete} aria-label="Undo set">
+          <Undo2 className="h-4 w-4" />
+        </IconButton>
       </div>
     );
   }
@@ -259,90 +230,63 @@ export const SetInput: React.FC<SetInputProps> = ({
   };
 
   const getDefaultSource = () => {
-    if (recommendedWeight !== undefined) return 'progression recommendation';
-    if (previousSet?.reps && previousSet?.weight) return 'previous set';
-    return 'last completed set';
+    if (recommendedWeight !== undefined) return 'your progression';
+    if (previousSet?.reps && previousSet?.weight) return 'your previous set';
+    return 'your last logged set';
   };
 
-  // Prescribed rep range — shown as a hint beside the editable Reps field. Only a
+  // Prescribed rep range — shown as the target under the Reps number. Only a
   // real range (floor ≠ ceiling) is surfaced; a single configured rep count is
-  // already carried by the input's default value, so no separate hint is needed.
+  // already carried by the stepper's default value.
   const repRangeLabel = set ? formatRepRange(set) : null;
 
   return (
-    <div className={cn('rounded-lg bg-surface-subtle', compact ? 'p-3' : 'p-4')}>
+    <div>
       {!compact && isUsingSmartDefaults() && (
-        <div className="mb-3 rounded-md border border-accent/40 bg-accent/10 p-2">
-          <p className="font-hand text-body-sm text-accent">
-            Auto-filled from {getDefaultSource()}
-          </p>
-        </div>
+        <p className="mb-2 text-center text-body-sm text-ink-muted">
+          Filled from {getDefaultSource()}
+        </p>
       )}
 
-      <div className={cn('grid grid-cols-2 items-end gap-3', compact ? 'mb-2.5' : 'mb-4')}>
-        <div>
-          <div className={cn('flex items-baseline justify-between gap-1', compact ? 'mb-1' : 'mb-2')}>
-            <Label
-              htmlFor="set-reps"
-              className={cn('block font-marker uppercase tracking-wider text-ink-muted', compact ? 'text-[10px]' : 'text-caption')}
-            >
-              Reps
-            </Label>
-            {repRangeLabel && (
-              <span
-                className={cn('font-num font-tabular leading-none text-ink-subtle', compact ? 'text-[10px]' : 'text-caption')}
-                aria-label={`Target ${repRangeLabel} reps`}
-              >
-                {repRangeLabel}
-              </span>
-            )}
-          </div>
-          <Input
-            id="set-reps"
-            type="number"
-            inputMode="numeric"
-            value={reps}
-            onChange={(e) => setReps(parseInt(e.target.value) || 0)}
-            onFocus={(e) => e.target.select()}
-            onKeyDown={handleInputKeyDown}
-            autoComplete="off"
-            className={cn('text-center', compact ? 'h-12 text-2xl' : 'h-16 text-display')}
-          />
-        </div>
-        <div>
-          <Label
-            htmlFor="set-weight"
-            className={cn('block font-marker uppercase tracking-wider text-ink-muted', compact ? 'mb-1 text-[10px]' : 'mb-2 text-caption')}
-          >
-            Weight <span className="normal-case text-ink-subtle">(lbs)</span>
-          </Label>
-          <Input
-            id="set-weight"
-            type="number"
-            inputMode="decimal"
-            step="0.5"
-            value={weight}
-            onChange={(e) => setWeight(parseFloat(e.target.value) || 0)}
-            onFocus={(e) => e.target.select()}
-            onKeyDown={handleInputKeyDown}
-            autoComplete="off"
-            className={cn('text-center', compact ? 'h-12 text-2xl' : 'h-16 text-display')}
-          />
-        </div>
+      <div className={cn(compact ? 'space-y-1' : 'space-y-3')}>
+        <Stepper
+          id="set-weight"
+          label="Weight"
+          unit="lb"
+          value={weight}
+          step={WEIGHT_STEP}
+          decimal
+          compact={compact}
+          onChange={setWeight}
+          onKeyDown={handleInputKeyDown}
+        />
+        <Stepper
+          id="set-reps"
+          label="Reps"
+          unit="reps"
+          hint={
+            repRangeLabel ? (
+              <>
+                target <span aria-label={`Target ${repRangeLabel} reps`}>{repRangeLabel}</span>
+              </>
+            ) : undefined
+          }
+          value={reps}
+          step={1}
+          compact={compact}
+          accent
+          onChange={setReps}
+          onKeyDown={handleInputKeyDown}
+        />
       </div>
 
-      {/* Optional reps-in-reserve tap — unset by default (skippable). Kept on one
-          tight row so it stays unobtrusive in the no-scroll compact player. */}
-      <div className={cn('flex items-center gap-2', compact ? 'mb-2.5' : 'mb-4')}>
-        <span
-          className={cn(
-            'shrink-0 font-marker uppercase tracking-wider text-ink-muted',
-            compact ? 'text-[10px]' : 'text-caption',
-          )}
-        >
-          RIR
+      {/* Optional reps-in-reserve tap — unset by default (skippable). Ice when
+          chosen: it's information about the set, not the next action. */}
+      <div className={cn('flex items-center gap-2', compact ? 'mt-2' : 'mt-4')}>
+        <span className="w-12 shrink-0 text-caption leading-tight text-ink-muted">
+          Reps left
         </span>
-        <div className="flex flex-1 gap-1" role="group" aria-label="Reps in reserve">
+        <div className="flex flex-1 gap-1.5" role="group" aria-label="Reps in reserve">
           {RIR_OPTIONS.map((opt) => {
             const selected = rir === opt.value;
             return (
@@ -354,14 +298,11 @@ export const SetInput: React.FC<SetInputProps> = ({
                 // Tapping the active chip clears it back to skipped.
                 onClick={() => setRir(selected ? undefined : opt.value)}
                 className={cn(
-                  // min-h-touch-min keeps each chip at the 44px tap floor even in
-                  // the compact player; the flex centers the label inside it.
-                  'flex min-h-touch-min flex-1 items-center justify-center rounded-md border font-num font-tabular leading-none transition-colors',
+                  'flex min-h-touch-min flex-1 items-center justify-center rounded-full font-num font-tabular text-body-sm font-semibold leading-none transition-colors duration-snap',
                   'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface',
-                  compact ? 'text-caption' : 'text-body-sm',
                   selected
-                    ? 'border-accent bg-accent/10 text-accent'
-                    : 'border-board-line/25 bg-surface-subtle text-ink-muted',
+                    ? 'bg-accent-2 text-accent-2-fg'
+                    : 'bg-surface-raised text-ink-muted hover:text-ink',
                 )}
               >
                 {opt.label}
@@ -371,15 +312,101 @@ export const SetInput: React.FC<SetInputProps> = ({
         </div>
       </div>
 
-      {/* Stays a colored, labeled action — just smaller in compact (md vs lg). */}
+      {/* The one forward action on the screen. */}
       <Button
         onClick={handleComplete}
-        size={compact ? 'md' : 'lg'}
-        className={cn('w-full', !compact && 'text-title')}
+        size={compact ? 'lg' : 'xl'}
+        className={cn('w-full', compact ? 'mt-2.5 text-[18px] font-bold' : 'mt-5')}
       >
-        <Check className={compact ? 'h-4 w-4' : 'h-5 w-5'} />
-        <span>Complete Set</span>
+        <Check className="h-5 w-5" strokeWidth={3} aria-hidden="true" />
+        <span>Log set</span>
       </Button>
     </div>
   );
 };
+
+const WEIGHT_STEP = 5;
+
+interface StepperProps {
+  id: string;
+  label: string;
+  unit: string;
+  value: number;
+  step: number;
+  onChange: (value: number) => void;
+  onKeyDown: (e: React.KeyboardEvent) => void;
+  /** Allow decimal entry (weight). */
+  decimal?: boolean;
+  compact?: boolean;
+  /** Tint the number ice (reps) to separate it from the load. */
+  accent?: boolean;
+  /** Replaces the unit caption under the number (e.g. the target rep range). */
+  hint?: React.ReactNode;
+}
+
+/**
+ * One Tempo stepper row: round − / + on either side of a big editable number.
+ * The number is a real <input type="number"> (tap to type) with a visually
+ * hidden label, so the value stays accessible and testable by label.
+ */
+function Stepper({
+  id,
+  label,
+  unit,
+  value,
+  step,
+  onChange,
+  onKeyDown,
+  decimal = false,
+  compact = false,
+  accent = false,
+  hint,
+}: StepperProps) {
+  const nudge = (dir: 1 | -1) => {
+    const next = Math.max(0, Math.round((value + dir * step) * 100) / 100);
+    onChange(next);
+  };
+  const noun = label.toLowerCase();
+  const btn = cn(
+    'flex shrink-0 items-center justify-center rounded-full bg-surface-raised text-ink transition-[background-color,transform] duration-snap',
+    'hover:bg-surface-raised/70 active:scale-95',
+    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface',
+    compact ? 'h-12 w-12' : 'h-14 w-14',
+  );
+  return (
+    <div className="flex items-center gap-2">
+      <button type="button" className={btn} aria-label={`Decrease ${noun}`} onClick={() => nudge(-1)}>
+        <Minus className="h-5 w-5" strokeWidth={2.5} aria-hidden="true" />
+      </button>
+      <div className="flex min-w-0 flex-1 flex-col items-center">
+        <label htmlFor={id} className="sr-only">
+          {label}
+        </label>
+        <input
+          id={id}
+          type="number"
+          inputMode={decimal ? 'decimal' : 'numeric'}
+          step={decimal ? '0.5' : '1'}
+          value={value}
+          onChange={(e) =>
+            onChange((decimal ? parseFloat(e.target.value) : parseInt(e.target.value, 10)) || 0)
+          }
+          onFocus={(e) => e.target.select()}
+          onKeyDown={onKeyDown}
+          autoComplete="off"
+          className={cn(
+            'w-full rounded-2xl bg-transparent text-center font-display font-tabular leading-none outline-none',
+            'focus-visible:bg-surface-raised/50 focus-visible:ring-2 focus-visible:ring-accent',
+            '[appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none',
+            compact ? 'h-12 text-[44px]' : 'h-16 text-metric',
+            accent ? 'text-accent-2' : 'text-ink',
+          )}
+        />
+        <span className="text-caption leading-tight text-ink-muted">{hint ?? unit}</span>
+      </div>
+      <button type="button" className={btn} aria-label={`Increase ${noun}`} onClick={() => nudge(1)}>
+        <Plus className="h-5 w-5" strokeWidth={2.5} aria-hidden="true" />
+      </button>
+    </div>
+  );
+}

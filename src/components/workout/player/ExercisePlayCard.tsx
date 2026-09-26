@@ -1,8 +1,7 @@
-// ExercisePlayCard — one exercise, sized to fit the no-scroll player: the demo
-// clip up top (with an Instructions button that opens a popup and a "last time"
-// chip), the current-set input directly beneath, and tappable set pips. The clip
-// flexes to fill whatever height is left after the fixed input, so the whole card
-// fits without scrolling on small phones.
+// ExercisePlayCard — one exercise, sized to fit the no-scroll player (Tempo):
+// set position + display-voice name, the demo clip (secondary; flexes into the
+// leftover height and opens instructions), set chips (ice = done, amber ring =
+// current), one "last time" line, then the big-stepper set input.
 import React, { useState } from 'react';
 import { useReducedMotion } from 'framer-motion';
 import { Pencil, BookOpen, Dumbbell, History, Link2, Check } from 'lucide-react';
@@ -44,9 +43,9 @@ function Clip({ url, reduced, contain = false }: { url: string; reduced: boolean
   const [errored, setErrored] = useState(false);
   const src = url ? transformVideoUrl(url) : '';
   return (
-    <div className="relative h-full w-full overflow-hidden bg-surface-subtle">
+    <div className="relative h-full w-full overflow-hidden bg-surface-raised">
       <div className="absolute inset-0 flex items-center justify-center">
-        <Dumbbell className="h-8 w-8 text-ink-subtle/40" aria-hidden="true" />
+        <Dumbbell className="h-8 w-8 text-ink-subtle/60" aria-hidden="true" />
       </div>
       {src && !errored && (
         <video
@@ -112,40 +111,40 @@ export const ExercisePlayCard: React.FC<ExercisePlayCardProps> = ({
   const title = exercise.customTitle || exercise.exercise.name;
   const sets = exercise.sets ?? [];
 
-  return (
-    <div className="relative flex h-full flex-col gap-2 px-4 pb-2 pt-2">
-      {/* Superset edge label — signals this card alternates between two movements */}
-      {supersetPartners.length > 0 && (
-        <span
-          aria-hidden="true"
-          className="pointer-events-none absolute right-0.5 top-1/2 -translate-y-1/2 font-marker text-[10px] uppercase tracking-[0.3em] text-accent/70"
-          style={{ writingMode: 'vertical-rl' }}
-        >
-          Superset
-        </span>
-      )}
+  const lastSets = previousPerformance?.sets ?? [];
+  const lastLine = lastSets
+    .map((s) => (s.weight > 0 ? `${s.weight}×${s.actualReps}` : `${s.actualReps} reps`))
+    .join(', ');
 
-      {/* Title + superset partner + edit */}
-      <div className="flex shrink-0 items-start justify-between gap-2">
+  return (
+    <div className="relative flex h-full flex-col gap-3 px-4 pb-4 pt-4">
+      {/* Where you are + what it is. Set position in ice (information), the
+          movement name in the display voice. */}
+      <div className="flex shrink-0 items-start justify-between gap-3">
         <div className="min-w-0">
-          <h2 className="truncate font-marker text-title leading-tight text-ink">{title}</h2>
+          <p className="font-num font-tabular text-body-sm font-semibold text-accent-2">
+            Set {Math.min(currentSetIndex + 1, Math.max(sets.length, 1))} of {sets.length}
+          </p>
+          <h2 className="mt-1 line-clamp-2 font-display text-[28px] leading-[1.05] text-ink">
+            {title}
+          </h2>
           {supersetPartners.length > 0 && (
-            <span className="mt-0.5 inline-flex items-center gap-1 text-caption text-accent">
-              <Link2 size={12} aria-hidden="true" />
-              with {supersetPartners.join(' + ')}
-            </span>
+            <p className="mt-1 inline-flex items-center gap-1 text-body-sm text-ink-muted">
+              <Link2 size={14} aria-hidden="true" className="text-accent-2" />
+              Superset with {supersetPartners.join(' + ')}
+            </p>
           )}
         </div>
-        <IconButton variant="ghost" size="sm" aria-label="Edit sets" onClick={onEditSets}>
-          <Pencil size={16} />
+        <IconButton variant="secondary" size="md" aria-label="Edit sets" onClick={onEditSets}>
+          <Pencil size={18} />
         </IconButton>
       </div>
 
-      {/* Clip(s) — flex to fill remaining height. Tapping anywhere opens the
-          instructions popup; the chip is the visible affordance for it. */}
+      {/* Clip(s) — secondary: flexes into whatever height is left. Tapping
+          opens the instructions sheet. */}
       <div
         className={cn(
-          'relative min-h-0 flex-1 overflow-hidden rounded-xl border border-board-line/20',
+          'relative min-h-[88px] flex-1 overflow-hidden rounded-2xl bg-surface-raised',
           instructions.length > 0 && 'cursor-pointer',
         )}
         onClick={instructions.length > 0 ? () => setShowInstructions(true) : undefined}
@@ -164,44 +163,16 @@ export const ExercisePlayCard: React.FC<ExercisePlayCardProps> = ({
           <Clip url={videoLinks[0] ?? ''} reduced={reduced} />
         )}
 
-        {/* instructions affordance */}
         {instructions.length > 0 && (
-          <span className="pointer-events-none absolute bottom-2 right-2 inline-flex items-center gap-1 rounded-full bg-ink/65 px-2.5 py-1 text-caption font-medium text-surface-raised backdrop-blur-sm">
+          <span className="pointer-events-none absolute bottom-2 right-2 inline-flex items-center gap-1.5 rounded-full bg-surface/85 px-3 py-1.5 text-caption font-semibold text-ink backdrop-blur-sm">
             <BookOpen size={13} aria-hidden="true" />
-            Instructions
+            How to
           </span>
         )}
       </div>
 
-      {/* Previous workout — what you actually logged last time for this exercise */}
-      <div className="flex shrink-0 items-center gap-2 rounded-lg bg-surface-subtle px-2.5 py-1.5">
-        <History size={12} className="shrink-0 text-ink-subtle" aria-hidden="true" />
-        {previousPerformance && previousPerformance.sets?.length ? (
-          <>
-            <span className="shrink-0 font-marker text-[10px] uppercase tracking-wide text-ink-subtle">
-              Last
-            </span>
-            <div className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto">
-              {previousPerformance.sets.map((s, i) => (
-                <span key={i} className="shrink-0 font-num font-tabular text-caption text-ink-muted">
-                  {s.weight > 0 ? (
-                    <>
-                      <span className="text-ink">{s.weight}</span>×{s.actualReps}
-                    </>
-                  ) : (
-                    `${s.actualReps} reps`
-                  )}
-                </span>
-              ))}
-            </div>
-          </>
-        ) : (
-          <span className="text-caption text-ink-subtle">First time — set your baseline today</span>
-        )}
-      </div>
-
-      {/* Per-set overview — each set's reps×weight + status, tappable to jump */}
-      <div className="flex shrink-0 items-stretch gap-1.5">
+      {/* Sets as chips: ice = done, amber ring = current. Tap to jump. */}
+      <div className="-mx-4 flex shrink-0 gap-1.5 overflow-x-auto px-4 [scrollbar-width:none]">
         {sets.map((s, i) => {
           const done = s.completed;
           const cur = i === currentSetIndex;
@@ -209,33 +180,37 @@ export const ExercisePlayCard: React.FC<ExercisePlayCardProps> = ({
             <button
               key={s.id ?? i}
               type="button"
-              aria-label={`Go to set ${i + 1}`}
+              aria-label={`Go to set ${i + 1}${done ? ', done' : ''}`}
+              aria-current={cur ? 'step' : undefined}
               onClick={() => onJumpToSet(i)}
               className={cn(
-                'flex-1 rounded-md border px-1 py-1 text-center leading-none transition-colors',
+                'inline-flex h-9 shrink-0 items-center gap-1 rounded-full px-3 font-num font-tabular text-body-sm transition-colors duration-snap',
+                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent',
                 done
-                  ? 'border-success/40 bg-success/15'
+                  ? 'bg-accent-2/15 text-accent-2'
                   : cur
-                    ? 'border-accent bg-accent/10 ring-1 ring-accent/40'
-                    : 'border-board-line/25 bg-surface-subtle',
+                    ? 'bg-surface-raised text-ink ring-2 ring-inset ring-accent'
+                    : 'bg-surface-raised text-ink-muted',
               )}
             >
-              <div className="flex items-center justify-center gap-0.5 text-[10px] text-ink-subtle">
-                {done && <Check size={9} className="text-success" aria-hidden="true" />}
-                <span>Set {i + 1}</span>
-              </div>
-              <div
-                className={cn(
-                  'mt-0.5 font-num font-tabular text-caption',
-                  done || cur ? 'text-ink' : 'text-ink-muted',
-                )}
-              >
-                {fmtSet(s)}
-              </div>
+              {done && <Check size={13} strokeWidth={3} aria-hidden="true" />}
+              {fmtSet(s)}
             </button>
           );
         })}
       </div>
+
+      {/* Last time — one quiet line. */}
+      <p className="flex shrink-0 items-center gap-2 text-body-sm text-ink-muted">
+        <History size={14} className="shrink-0" aria-hidden="true" />
+        {lastLine ? (
+          <span className="min-w-0 truncate">
+            Last time <span className="font-num font-tabular text-ink">{lastLine}</span>
+          </span>
+        ) : (
+          <span>First time. Today sets your baseline.</span>
+        )}
+      </p>
 
       {/* Current set input — compact */}
       <div className="shrink-0">
@@ -267,17 +242,15 @@ export const ExercisePlayCard: React.FC<ExercisePlayCardProps> = ({
           then the steps, all scrollable. */}
       <Modal open={showInstructions} onOpenChange={setShowInstructions}>
         <ModalContent>
-          <div className="border-b border-board-line/20 px-4 pb-3 pt-4">
-            <ModalTitle className="font-marker text-title text-ink">{title}</ModalTitle>
-            <ModalDescription className="text-caption text-ink-subtle">
-              How to perform this exercise
-            </ModalDescription>
+          <div className="px-5 pb-2 pt-5">
+            <ModalTitle className="text-title">{title}</ModalTitle>
+            <ModalDescription>How to perform this exercise</ModalDescription>
           </div>
-          <div className="space-y-4 overflow-y-auto px-4 py-4">
+          <div className="space-y-4 overflow-y-auto px-5 pb-5 pt-2">
             {videoLinks.length > 0 && (
               <div className="space-y-2">
                 {videoLinks.map((url, i) => (
-                  <div key={i} className="aspect-video w-full overflow-hidden rounded-lg border border-board-line/20">
+                  <div key={i} className="aspect-video w-full overflow-hidden rounded-2xl">
                     <Clip url={url} reduced={reduced} contain />
                   </div>
                 ))}
@@ -286,7 +259,7 @@ export const ExercisePlayCard: React.FC<ExercisePlayCardProps> = ({
             <ol className="space-y-3">
               {instructions.map((step, i) => (
                 <li key={i} className="flex gap-3 text-body-sm text-ink-muted">
-                  <span className="font-num font-bold text-accent">{i + 1}.</span>
+                  <span className="font-num font-tabular font-bold text-accent-2">{i + 1}</span>
                   <span>{step}</span>
                 </li>
               ))}

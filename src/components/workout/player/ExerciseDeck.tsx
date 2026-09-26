@@ -61,7 +61,7 @@ export const ExerciseDeck: React.FC<ExerciseDeckProps> = ({
       : { x: slideDir * 56, opacity: 0 };
 
   return (
-    <div className="relative min-h-0 flex-1" style={{ perspective: 1400 }}>
+    <div className="relative mx-3 min-h-0 flex-1" style={{ perspective: 1400 }}>
       {/* Peek stack — the exercises still to come, as a deck behind the active card.
           Rendered outer→inner so paint order stacks them; each peeks out PEEK_STEP
           more at the bottom-right. The active card (inset by layers*STEP) sits on top. */}
@@ -72,7 +72,7 @@ export const ExerciseDeck: React.FC<ExerciseDeckProps> = ({
           <div
             key={k}
             aria-hidden="true"
-            className="absolute left-0 top-0 rounded-xl border border-board-line/40 bg-surface-subtle"
+            className="absolute left-0 top-0 rounded-3xl bg-surface-raised"
             style={{ right: inset, bottom: inset, opacity: 1 - depth * 0.22 }}
           />
         );
@@ -92,7 +92,7 @@ export const ExerciseDeck: React.FC<ExerciseDeckProps> = ({
           else if (info.offset.x > SWIPE_THRESHOLD && canPrev) onPrev();
         }}
         style={{ right: cardInset, bottom: cardInset, transformStyle: 'preserve-3d' }}
-        className="absolute left-0 top-0 z-10 overflow-hidden rounded-xl border border-board-line/30 bg-surface-raised shadow-e2 [touch-action:pan-y]"
+        className="absolute left-0 top-0 z-10 overflow-hidden rounded-3xl bg-surface-subtle [touch-action:pan-y]"
       >
         {children}
       </motion.div>
@@ -103,7 +103,7 @@ export const ExerciseDeck: React.FC<ExerciseDeckProps> = ({
           type="button"
           onClick={onPrev}
           aria-label="Previous exercise"
-          className="absolute left-0 top-1/2 z-20 -translate-y-1/2 rounded-r-lg bg-surface-raised/80 py-3 pl-0.5 pr-1 text-ink-muted backdrop-blur-sm transition-colors hover:text-ink"
+          className="absolute -left-2 top-1/2 z-20 flex h-11 w-7 -translate-y-1/2 items-center justify-center rounded-full bg-surface-raised/90 text-ink-muted backdrop-blur-sm transition-colors hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
         >
           <ChevronLeft size={20} />
         </button>
@@ -113,7 +113,7 @@ export const ExerciseDeck: React.FC<ExerciseDeckProps> = ({
           type="button"
           onClick={onNext}
           aria-label="Next exercise"
-          className="absolute right-0 top-1/2 z-20 -translate-y-1/2 rounded-l-lg bg-surface-raised/80 py-3 pl-1 pr-0.5 text-ink-muted backdrop-blur-sm transition-colors hover:text-ink"
+          className="absolute -right-2 top-1/2 z-20 flex h-11 w-7 -translate-y-1/2 items-center justify-center rounded-full bg-surface-raised/90 text-ink-muted backdrop-blur-sm transition-colors hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
         >
           <ChevronRight size={20} />
         </button>

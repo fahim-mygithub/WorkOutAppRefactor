@@ -1,19 +1,21 @@
-// RestTimerBar — the rest timer as a single thin bar that lives at the bottom of
-// the player (above the bottom nav). Collapsed it's just a button: tap to start
-// the default rest, or tap the chevron to open quick presets + a custom timer.
-// While a rest runs, the bar becomes the countdown (its background fills as a
-// progress bar) and tapping it skips ahead.
+// RestTimerBar — the rest timer (Tempo). Idle it's one quiet bar at the bottom
+// of the player: tap to start the default rest, or the chevron for presets + a
+// custom timer. While a rest runs it TAKES OVER the player: a large amber ring
+// counting down, -15s / +15s / Skip, and an "Up next" card, so the only thing
+// on screen during rest is rest. (The player column must be `relative`.)
 //
 // This component also OWNS the countdown engine (the 1s tick, background-resume
 // reconciliation, beeps, and auto-advance on completion) — ported verbatim from
 // the old <RestTimer> widget — so exactly one engine runs on the workout page.
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { ChevronUp, Pause, Play, Plus, Minus, X } from 'lucide-react';
+import { ChevronUp, Plus, Minus, X, Timer } from 'lucide-react';
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { useAppDispatch, useAppSelector } from '../../../store/hooks';
 import {
   updateRestTimer,
   stopRestTimer,
   startRestTimer,
+  adjustRestTimer,
   nextSet,
   advanceToNextSupersetRound,
   setShowCompletionModal,
@@ -22,6 +24,8 @@ import {
 import { remainingSeconds, isElapsed } from '../../../lib/restTimer';
 import { Sheet, SheetContent, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
+import { formatRepRange } from '@/lib/progression/setPrescription';
 import { cn } from '@/lib/utils';
 
 const PRESETS: Array<{ label: string; seconds: number }> = [
@@ -37,17 +41,6 @@ function formatTime(seconds: number): string {
   const m = Math.floor(seconds / 60);
   const s = seconds % 60;
   return `${m}:${s.toString().padStart(2, '0')}`;
-}
-
-/**
- * Rest-button fill color by elapsed fraction (0 = just started → green,
- * 1 = time's up → red). Linear hue sweep so the fill visibly shifts the whole
- * way through the rest — green → amber → red — as the limit approaches.
- */
-function restFillColor(elapsedFraction: number): string {
-  const p = Math.max(0, Math.min(1, elapsedFraction));
-  const hue = 142 - 136 * p; // 142° green → ~6° red
-  return `hsl(${hue} 68% 50%)`;
 }
 
 // --- sound helpers (ported from RestTimer) ---
@@ -84,6 +77,7 @@ export const RestTimerBar: React.FC = () => {
   const [sheetOpen, setSheetOpen] = useState(false);
   const [customMinutes, setCustomMinutes] = useState(2);
   const [customSeconds, setCustomSeconds] = useState(0);
+  const reduced = useReducedMotion() ?? false;
 
   const currentExercise = activeWorkout?.exercises[activeWorkout.currentExerciseIndex];
   const defaultDuration = currentExercise?.restTime || 120;
@@ -191,98 +185,172 @@ export const RestTimerBar: React.FC = () => {
 
   const active = restTimer.isActive;
   const remaining = restTimer.timeRemaining;
-  const elapsedFraction =
-    active && restTimer.duration > 0 ? (restTimer.duration - remaining) / restTimer.duration : 0;
-  // Inactive shows the resting-green start state; active interpolates toward red.
-  const fillColor = restFillColor(elapsedFraction);
+  const remainingFraction =
+    active && restTimer.duration > 0 ? Math.max(0, Math.min(1, remaining / restTimer.duration)) : 1;
+
+  // "Up next" — the set that follows the one just logged. Supersets advance by
+  // round (partner first), so the card is omitted there rather than guessed.
+  const upNext = (() => {
+    if (!activeWorkout || !currentExercise || currentExercise.isSuperset) return null;
+    const nextInExercise = currentExercise.sets[activeWorkout.currentSetIndex + 1];
+    if (nextInExercise) {
+      return {
+        name: currentExercise.customTitle || currentExercise.exercise.name,
+        setLabel: `set ${activeWorkout.currentSetIndex + 2}`,
+        set: nextInExercise,
+      };
+    }
+    const nextExercise = activeWorkout.exercises[activeWorkout.currentExerciseIndex + 1];
+    if (!nextExercise || !nextExercise.sets[0]) return null;
+    return {
+      name: nextExercise.customTitle || nextExercise.exercise.name,
+      setLabel: 'set 1',
+      set: nextExercise.sets[0],
+    };
+  })();
 
   return (
     <>
-      <div className="shrink-0 border-t border-board-line/25 bg-surface-raised px-2 pt-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))]">
-        <div className="flex items-center gap-2">
-          {/* Main action — same shape as the Complete Set button (rounded,
-              sketch-border, font-marker), green-filled and ramping toward red as
-              the rest elapses. Label is centered; the time is spaced to the right.
-              Taller than a default button. Tap to start the default rest / skip. */}
-          <Button
-            size="lg"
-            onClick={active ? handleSkip : () => startDuration(defaultDuration)}
-            // transition: none — the fill updates every tick; a CSS color
-            // transition lags badly under the per-second re-renders.
-            style={{ backgroundColor: fillColor, color: 'hsl(210 28% 13%)', transition: 'none' }}
-            className={cn(
-              'relative min-h-[3.25rem] flex-1',
-              active && remaining <= 3 && 'animate-pulse',
-            )}
-          >
-            {active ? (
-              <>
-                <Pause size={16} className="opacity-80" aria-hidden="true" />
-                <span className="font-num font-tabular text-xl font-bold tabular-nums">
-                  {formatTime(remaining)}
-                </span>
-                <span className="absolute right-5 text-caption font-normal opacity-75">
-                  tap to skip
-                </span>
-              </>
-            ) : (
-              <>
-                <Play size={18} aria-hidden="true" />
-                <span>Start rest</span>
-                <span className="absolute right-5 font-num font-tabular text-body font-normal opacity-75">
-                  {formatTime(defaultDuration)}
-                </span>
-              </>
-            )}
-          </Button>
-
-          {/* Right side: presets while idle, cancel while resting */}
-          {active ? (
-            <button
-              type="button"
-              onClick={() => dispatch(stopRestTimer())}
-              aria-label="Cancel rest"
-              className="flex min-h-[3.25rem] shrink-0 items-center rounded-lg border border-board-line/40 px-3 text-ink-muted transition-colors hover:bg-surface-subtle hover:text-danger"
+      {/* Idle: one quiet bar at the bottom of the player. */}
+      {!active && (
+        <div className="shrink-0 px-3 pb-3 pt-2">
+          <div className="flex items-center gap-2">
+            <Button
+              variant="secondary"
+              size="lg"
+              onClick={() => startDuration(defaultDuration)}
+              className="relative flex-1 justify-start pl-5"
             >
-              <X size={18} />
-            </button>
-          ) : (
-            <button
-              type="button"
+              <Timer size={18} aria-hidden="true" className="text-ink-muted" />
+              <span>Start rest</span>
+              <span className="ml-auto pr-1 font-num font-tabular text-ink-muted">
+                {formatTime(defaultDuration)}
+              </span>
+            </Button>
+            <IconButton
+              variant="secondary"
+              size="lg"
               onClick={() => setSheetOpen(true)}
               aria-label="Rest timer options"
-              className="flex min-h-[3.25rem] shrink-0 items-center rounded-lg border border-board-line/40 px-3 text-ink-muted transition-colors hover:bg-surface-subtle hover:text-ink"
             >
               <ChevronUp size={20} />
-            </button>
-          )}
+            </IconButton>
+          </div>
         </div>
-      </div>
+      )}
+
+      {/* Resting: the timer takes over the player. */}
+      <AnimatePresence>
+        {active && (
+          <motion.section
+            key="rest"
+            aria-label="Rest timer"
+            initial={reduced ? { opacity: 0 } : { opacity: 0, scale: 0.98 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: reduced ? 0.12 : 0.28, ease: [0.32, 0.72, 0, 1] }}
+            className="absolute inset-0 z-30 flex flex-col items-center bg-surface px-4 pb-4 pt-4"
+          >
+            <div className="flex w-full items-center justify-between">
+              <span className="w-11" aria-hidden="true" />
+              <p className="text-body-sm font-semibold text-ink-muted">Rest</p>
+              <IconButton
+                variant="secondary"
+                onClick={() => dispatch(stopRestTimer())}
+                aria-label="Stop timer and stay on this set"
+              >
+                <X size={18} />
+              </IconButton>
+            </div>
+
+            <div className="relative my-auto aspect-square w-full max-w-[290px]">
+              <svg viewBox="0 0 290 290" className="h-full w-full" aria-hidden="true">
+                <circle cx="145" cy="145" r={RING_R} fill="none" strokeWidth="14" className="stroke-surface-raised" />
+                <circle
+                  cx="145"
+                  cy="145"
+                  r={RING_R}
+                  fill="none"
+                  strokeWidth="14"
+                  strokeLinecap="round"
+                  strokeDasharray={RING_C}
+                  strokeDashoffset={RING_C * (1 - remainingFraction)}
+                  transform="rotate(-90 145 145)"
+                  className="stroke-accent"
+                  style={{ transition: reduced ? 'none' : 'stroke-dashoffset 1s linear' }}
+                />
+              </svg>
+              <div className="absolute inset-0 flex flex-col items-center justify-center" aria-live="off">
+                <span
+                  role="timer"
+                  aria-label={`${formatTime(remaining)} of rest left`}
+                  className="font-display font-tabular text-[76px] leading-none text-ink"
+                >
+                  {formatTime(remaining)}
+                </span>
+                <span className="mt-2 text-body-sm text-ink-muted">
+                  of {formatTime(restTimer.duration)} rest
+                </span>
+              </div>
+            </div>
+
+            <div className="mb-5 flex w-full max-w-[320px] gap-2">
+              <Button variant="secondary" size="lg" className="flex-1" onClick={() => dispatch(adjustRestTimer(-15))}>
+                −15s
+              </Button>
+              <Button variant="secondary" size="lg" className="flex-1" onClick={() => dispatch(adjustRestTimer(15))}>
+                +15s
+              </Button>
+              <Button
+                variant="ghost"
+                size="lg"
+                className="flex-1 border-2 border-accent text-accent hover:bg-accent/10 hover:text-accent"
+                onClick={handleSkip}
+              >
+                Skip
+              </Button>
+            </div>
+
+            {upNext && (
+              <div className="w-full rounded-3xl bg-surface-subtle p-5">
+                <p className="text-caption text-ink-muted">Up next: {upNext.setLabel}</p>
+                <div className="mt-1 flex items-baseline justify-between gap-3">
+                  <p className="min-w-0 truncate text-body font-bold text-ink">{upNext.name}</p>
+                  <p className="shrink-0 font-display font-tabular text-title text-accent-2">
+                    {upNext.set.weight ? `${upNext.set.weight} × ` : ''}
+                    {formatRepRange(upNext.set) ?? upNext.set.reps}
+                  </p>
+                </div>
+              </div>
+            )}
+          </motion.section>
+        )}
+      </AnimatePresence>
 
       {/* Presets + custom timer */}
       <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
         <SheetContent className="mx-auto max-w-md">
-          <SheetTitle className="font-marker text-title text-ink">Rest timer</SheetTitle>
-          <SheetDescription className="sr-only">
-            Choose a rest duration or set a custom timer.
-          </SheetDescription>
+          <SheetTitle>Rest timer</SheetTitle>
+          <SheetDescription>Pick a length. It becomes this exercise’s default.</SheetDescription>
 
-          <div className="mt-4 grid grid-cols-3 gap-2">
+          <div className="mt-5 grid grid-cols-3 gap-2">
             {PRESETS.map((p) => {
               const isDefault = currentExercise?.restTime === p.seconds;
               return (
                 <button
                   key={p.seconds}
                   type="button"
+                  aria-pressed={isDefault}
                   onClick={() => {
                     startDuration(p.seconds);
                     setSheetOpen(false);
                   }}
                   className={cn(
-                    'rounded-lg py-3 font-num font-tabular text-body-sm transition-colors',
+                    'min-h-touch-lg rounded-full font-num font-tabular text-body font-semibold transition-colors duration-snap',
+                    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent',
                     isDefault
-                      ? 'bg-accent text-accent-fg'
-                      : 'bg-surface-subtle text-ink hover:bg-surface-subtle/70',
+                      ? 'bg-accent-2 text-accent-2-fg'
+                      : 'bg-surface-raised text-ink hover:bg-surface-raised/70',
                   )}
                 >
                   {p.label}
@@ -291,67 +359,48 @@ export const RestTimerBar: React.FC = () => {
             })}
           </div>
 
-          <div className="mt-4 border-t border-board-line/20 pt-4">
-            <p className="mb-2 text-center text-caption uppercase tracking-wide text-ink-subtle">
-              Custom
-            </p>
-            <div className="flex items-center justify-center gap-4">
+          <div className="mt-6 border-t border-hairline pt-5">
+            <p className="mb-3 text-body-sm font-semibold text-ink">Custom</p>
+            <div className="flex items-center justify-between gap-4">
               <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => adjustCustom(-1, 0)}
-                  className="rounded-md bg-surface-subtle p-2 text-ink hover:bg-surface-subtle/70"
-                  aria-label="Minus one minute"
-                >
-                  <Minus size={14} />
-                </button>
-                <span className="w-10 text-center font-num font-tabular text-body text-ink">
+                <IconButton variant="secondary" onClick={() => adjustCustom(-1, 0)} aria-label="Minus one minute">
+                  <Minus size={16} />
+                </IconButton>
+                <span className="w-12 text-center font-num font-tabular text-title text-ink">
                   {customMinutes}m
                 </span>
-                <button
-                  type="button"
-                  onClick={() => adjustCustom(1, 0)}
-                  className="rounded-md bg-surface-subtle p-2 text-ink hover:bg-surface-subtle/70"
-                  aria-label="Plus one minute"
-                >
-                  <Plus size={14} />
-                </button>
+                <IconButton variant="secondary" onClick={() => adjustCustom(1, 0)} aria-label="Plus one minute">
+                  <Plus size={16} />
+                </IconButton>
               </div>
               <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => adjustCustom(0, -15)}
-                  className="rounded-md bg-surface-subtle p-2 text-ink hover:bg-surface-subtle/70"
-                  aria-label="Minus fifteen seconds"
-                >
-                  <Minus size={14} />
-                </button>
-                <span className="w-10 text-center font-num font-tabular text-body text-ink">
+                <IconButton variant="secondary" onClick={() => adjustCustom(0, -15)} aria-label="Minus fifteen seconds">
+                  <Minus size={16} />
+                </IconButton>
+                <span className="w-12 text-center font-num font-tabular text-title text-ink">
                   {customSeconds}s
                 </span>
-                <button
-                  type="button"
-                  onClick={() => adjustCustom(0, 15)}
-                  className="rounded-md bg-surface-subtle p-2 text-ink hover:bg-surface-subtle/70"
-                  aria-label="Plus fifteen seconds"
-                >
-                  <Plus size={14} />
-                </button>
+                <IconButton variant="secondary" onClick={() => adjustCustom(0, 15)} aria-label="Plus fifteen seconds">
+                  <Plus size={16} />
+                </IconButton>
               </div>
             </div>
-            <button
-              type="button"
+            <Button
+              size="xl"
+              className="mt-5"
               onClick={() => {
                 startDuration(customMinutes * 60 + customSeconds);
                 setSheetOpen(false);
               }}
-              className="mt-4 w-full rounded-lg bg-success py-3 font-marker text-body text-ink-inverse transition-colors hover:bg-success/90"
             >
               Start {customMinutes}:{customSeconds.toString().padStart(2, '0')}
-            </button>
+            </Button>
           </div>
         </SheetContent>
       </Sheet>
     </>
   );
 };
+
+const RING_R = 130;
+const RING_C = 2 * Math.PI * RING_R;

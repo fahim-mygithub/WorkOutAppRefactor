@@ -217,6 +217,21 @@ const workoutSlice = createSlice({
       }
     },
 
+    // Nudge a running rest by ±seconds (the rest screen's -15s / +15s). Shifts
+    // the absolute anchor, never below 1s left, and grows/shrinks `duration`
+    // by the same amount so the ring's elapsed fraction stays continuous.
+    adjustRestTimer: (state, action: PayloadAction<number>) => {
+      const timer = state.restTimer;
+      if (!timer.isActive || timer.targetEndTime == null) return;
+      const now = Date.now();
+      const remaining = Math.max(0, Math.ceil((timer.targetEndTime - now) / 1000));
+      const nextRemaining = Math.max(1, remaining + action.payload);
+      const delta = nextRemaining - remaining;
+      timer.targetEndTime = computeTargetEndTime(nextRemaining, now);
+      timer.timeRemaining = nextRemaining;
+      timer.duration = Math.max(nextRemaining, timer.duration + delta);
+    },
+
     stopRestTimer: (state) => {
       state.restTimer.isActive = false;
       state.restTimer.timeRemaining = 0;
@@ -436,6 +451,7 @@ export const {
   startRestTimer,
   updateRestTimer,
   pauseRestTimer,
+  adjustRestTimer,
   stopRestTimer,
   advanceToNextSupersetRound,
   updateWorkoutDuration,

@@ -39,7 +39,7 @@ describe('SetInput — optional RIR tap', () => {
     render(<SetInput set={set} onComplete={onComplete} onUncomplete={noop} />);
 
     await user.click(screen.getByRole('button', { name: 'RIR 2' }));
-    await user.click(screen.getByRole('button', { name: /complete set/i }));
+    await user.click(screen.getByRole('button', { name: /log set/i }));
 
     expect(onComplete).toHaveBeenCalledWith(8, 50, 2);
   });
@@ -50,7 +50,7 @@ describe('SetInput — optional RIR tap', () => {
     const set = { id: 's1', reps: 8, weight: 50, completed: false };
     render(<SetInput set={set} onComplete={onComplete} onUncomplete={noop} />);
 
-    await user.click(screen.getByRole('button', { name: /complete set/i }));
+    await user.click(screen.getByRole('button', { name: /log set/i }));
 
     expect(onComplete).toHaveBeenCalledWith(8, 50, undefined);
   });
@@ -64,8 +64,38 @@ describe('SetInput — optional RIR tap', () => {
     const chip = screen.getByRole('button', { name: 'RIR 2' });
     await user.click(chip); // select
     await user.click(chip); // toggle back off
-    await user.click(screen.getByRole('button', { name: /complete set/i }));
+    await user.click(screen.getByRole('button', { name: /log set/i }));
 
     expect(onComplete).toHaveBeenCalledWith(8, 50, undefined);
+  });
+});
+
+describe('SetInput — Tempo steppers', () => {
+  it('steps weight by 5 and reps by 1, and logs the stepped values', async () => {
+    const user = userEvent.setup();
+    const onComplete = vi.fn();
+    const set = { id: 's1', reps: 8, weight: 50, completed: false };
+    render(<SetInput set={set} onComplete={onComplete} onUncomplete={noop} />);
+
+    await user.click(screen.getByRole('button', { name: /increase weight/i }));
+    await user.click(screen.getByRole('button', { name: /increase weight/i }));
+    await user.click(screen.getByRole('button', { name: /decrease reps/i }));
+    expect(screen.getByLabelText('Weight')).toHaveValue(60);
+    expect(screen.getByLabelText('Reps')).toHaveValue(7);
+
+    await user.click(screen.getByRole('button', { name: /log set/i }));
+    expect(onComplete).toHaveBeenCalledWith(7, 60, undefined);
+  });
+
+  it('never steps below zero', async () => {
+    const user = userEvent.setup();
+    const set = { id: 's1', reps: 1, weight: 0, completed: false };
+    render(<SetInput set={set} onComplete={noop} onUncomplete={noop} />);
+
+    await user.click(screen.getByRole('button', { name: /decrease weight/i }));
+    await user.click(screen.getByRole('button', { name: /decrease reps/i }));
+    await user.click(screen.getByRole('button', { name: /decrease reps/i }));
+    expect(screen.getByLabelText('Weight')).toHaveValue(0);
+    expect(screen.getByLabelText('Reps')).toHaveValue(0);
   });
 });

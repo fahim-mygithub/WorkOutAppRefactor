@@ -552,7 +552,7 @@ export default function WorkoutPage() {
     <>
       {/* No-scroll player: slim top bar, swipeable exercise deck, rest-timer bar.
           Phone-first — capped to a phone-width column and centered on wider screens. */}
-      <div className="mx-auto flex h-full w-full max-w-md flex-col overflow-hidden bg-surface">
+      <div className="relative mx-auto flex h-full w-full max-w-md flex-col overflow-hidden bg-surface">
         <WorkoutTopBar
           name={activeWorkout.name}
           overallCompletedSets={progress.completedSets}
@@ -560,6 +560,13 @@ export default function WorkoutPage() {
           overallPercentage={progress.percentage}
           currentExerciseNumber={activeWorkout.currentExerciseIndex + 1}
           totalExercises={activeWorkout.exercises.length}
+          segments={activeWorkout.exercises.map((ex, i) =>
+            ex.sets.length > 0 && ex.sets.every((s) => s.completed)
+              ? 'done'
+              : i === activeWorkout.currentExerciseIndex
+                ? 'current'
+                : 'todo',
+          )}
           onEndWorkout={handleEndWorkoutClick}
         />
 

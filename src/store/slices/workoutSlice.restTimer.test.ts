@@ -4,6 +4,7 @@ import reducer, {
   updateRestTimer,
   pauseRestTimer,
   stopRestTimer,
+  adjustRestTimer,
 } from './workoutSlice';
 import { remainingSeconds } from '../../lib/restTimer';
 
@@ -95,5 +96,29 @@ describe('workoutSlice rest timer (timestamp anchoring)', () => {
     expect(stopped.restTimer.isActive).toBe(false);
     expect(stopped.restTimer.timeRemaining).toBe(0);
     expect(stopped.restTimer.targetEndTime).toBe(null);
+  });
+
+  it('adjustRestTimer(+15) pushes the end out and grows the ring scale', () => {
+    const started = reducer(baseState(), startRestTimer({ duration: 90 }));
+    vi.setSystemTime(FIXED_NOW + 30_000); // 60s left
+    const adjusted = reducer(started, adjustRestTimer(15));
+    expect(adjusted.restTimer.targetEndTime).toBe(FIXED_NOW + 90_000 + 15_000);
+    expect(adjusted.restTimer.timeRemaining).toBe(75);
+    expect(adjusted.restTimer.duration).toBe(105);
+    expect(adjusted.restTimer.isActive).toBe(true);
+  });
+
+  it('adjustRestTimer(-15) never drops below 1s remaining', () => {
+    const started = reducer(baseState(), startRestTimer({ duration: 90 }));
+    vi.setSystemTime(FIXED_NOW + 80_000); // 10s left
+    const adjusted = reducer(started, adjustRestTimer(-15));
+    expect(adjusted.restTimer.timeRemaining).toBe(1);
+    expect(adjusted.restTimer.targetEndTime).toBe(FIXED_NOW + 80_000 + 1_000);
+    expect(adjusted.restTimer.isActive).toBe(true);
+  });
+
+  it('adjustRestTimer is a no-op when no rest is running', () => {
+    const idle = baseState();
+    expect(reducer(idle, adjustRestTimer(15)).restTimer).toEqual(idle.restTimer);
   });
 });
