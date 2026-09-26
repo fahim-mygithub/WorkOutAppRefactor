@@ -7,23 +7,10 @@ import { EditWorkoutModal } from './EditWorkoutModal';
 import { startWorkout } from '../../store/slices/workoutSlice';
 import { convertWorkoutHistoryToExercises, sanitizeWorkoutExercisesForRedux } from '../../utils/workoutConversion';
 import { useExercises } from '../../hooks/useExercises';
-import {
-  Calendar,
-  Clock,
-  Target,
-  TrendingUp,
-  Weight,
-  ChevronDown,
-  ChevronUp,
-  Trophy,
-  Hash,
-  Edit,
-  Trash2,
-  MoreVertical,
-  Play
-} from 'lucide-react';
-import { Card } from '../ui/card';
-import { IconButton } from '../ui/icon-button';
+import { Sheet, SheetContent, SheetDescription, SheetTitle } from '../ui/sheet';
+import { Button } from '../ui/button';
+import { cn } from '../../lib/utils';
+import { formatDateTime, formatDuration, formatShortDate } from './historyFormat';
 
 interface CompletedWorkoutCardProps {
   workout: WorkoutSummary;
@@ -33,6 +20,21 @@ interface CompletedWorkoutCardProps {
   userId: string;
 }
 
+const timeOnly = (date: Date | string): string => {
+  const d = date instanceof Date ? date : new Date(date);
+  if (isNaN(d.getTime())) return '—';
+  return new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit' }).format(d);
+};
+
+/**
+ * One completed session in the History list (Tempo).
+ *
+ * The row is the glance: name, when, how long, and the session volume in the
+ * number voice. Everything else (the stat block, per-exercise breakdown,
+ * notes, and the Start again / Edit / Delete actions) lives one tap away in a
+ * detail sheet. Renders an `<li>`: the parent supplies the `<ul>` card and the
+ * hairline dividers.
+ */
 export const CompletedWorkoutCard: React.FC<CompletedWorkoutCardProps> = ({
   workout,
   className = '',
@@ -43,77 +45,38 @@ export const CompletedWorkoutCard: React.FC<CompletedWorkoutCardProps> = ({
   const dispatch = useAppDispatch();
   const navigate = useNavigate();
   const { exercises: exerciseDatabase, isLoading: isLoadingExercises } = useExercises();
-  const [isExpanded, setIsExpanded] = useState(false);
-  const [showActions, setShowActions] = useState(false);
+  const [isDetailOpen, setIsDetailOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isLoadingStart, setIsLoadingStart] = useState(false);
 
-  const formatDate = (date: Date | string | null | undefined): string => {
-    if (!date) return 'N/A';
+  const formatDate = formatDateTime;
 
-    try {
-      const dateObj = date instanceof Date ? date : new Date(date);
-      if (isNaN(dateObj.getTime())) return 'Invalid Date';
-
-      return new Intl.DateTimeFormat('en-US', {
-        month: 'short',
-        day: 'numeric',
-        year: 'numeric',
-        hour: 'numeric',
-        minute: '2-digit',
-        hour12: true
-      }).format(dateObj);
-    } catch (error) {
-      console.error('Error formatting date:', error);
-      return 'Invalid Date';
-    }
-  };
-
-  const formatDuration = (minutes: number): string => {
-    const hours = Math.floor(minutes / 60);
-    const mins = minutes % 60;
-    if (hours > 0) {
-      return `${hours}h ${mins}m`;
-    }
-    return `${mins}m`;
-  };
-
-  const handleToggleExpand = (e: React.MouseEvent) => {
-    // Don't expand if clicking on action buttons
-    if ((e.target as Element).closest('.action-button')) {
-      return;
-    }
-    setIsExpanded(!isExpanded);
-  };
-
-  const handleEdit = (e: React.MouseEvent) => {
-    e.stopPropagation();
+  const handleEdit = () => {
+    // Close the detail sheet first so two dialogs never fight over focus.
+    setIsDetailOpen(false);
     setIsEditModalOpen(true);
-    setShowActions(false);
   };
 
-  const handleDelete = async (e: React.MouseEvent) => {
-    e.stopPropagation();
+  const handleDelete = async () => {
     const confirmed = window.confirm(
       `Are you sure you want to delete the workout "${workout.name}" from ${formatDate(workout.endTime)}?\n\nThis action cannot be undone.`
     );
 
     if (!confirmed) {
-      setShowActions(false);
       return;
     }
 
     setIsDeleting(true);
     try {
       await ExerciseHistoryService.deleteWorkoutHistory(userId, workout.id);
+      setIsDetailOpen(false);
       onWorkoutDeleted?.();
     } catch (error) {
       console.error('Error deleting workout:', error);
       alert('Failed to delete workout. Please try again.');
     } finally {
       setIsDeleting(false);
-      setShowActions(false);
     }
   };
 
@@ -122,16 +85,13 @@ export const CompletedWorkoutCard: React.FC<CompletedWorkoutCardProps> = ({
     onWorkoutUpdated?.();
   };
 
-  const handleStartWorkout = async (e: React.MouseEvent) => {
-    e.stopPropagation();
-
+  const handleStartWorkout = async () => {
     if (isLoadingExercises || !exerciseDatabase.length) {
       alert('Exercise database is still loading. Please wait a moment and try again.');
       return;
     }
 
     setIsLoadingStart(true);
-    setShowActions(false);
 
     try {
       // Get the exercise history for this workout
@@ -179,207 +139,112 @@ export const CompletedWorkoutCard: React.FC<CompletedWorkoutCardProps> = ({
     }
   };
 
+  const stats: { label: string; value: string }[] = [
+    { label: 'Sets', value: workout.totalSets.toLocaleString() },
+    { label: 'Reps', value: workout.totalReps.toLocaleString() },
+    { label: 'Volume', value: workout.totalVolume.toLocaleString() },
+    { label: 'Duration', value: formatDuration(workout.duration) },
+  ];
+
   return (
-    <Card elevation={1} className={`overflow-hidden transition-colors duration-snap ${className}`}>
-      {/* Header - Always Visible */}
-      <div
-        className="p-4 cursor-pointer"
-        onClick={handleToggleExpand}
+    <li className={className}>
+      <button
+        type="button"
+        onClick={() => setIsDetailOpen(true)}
+        aria-haspopup="dialog"
+        className="flex min-h-[64px] w-full items-center gap-4 px-4 py-3 text-left transition-colors duration-snap hover:bg-surface-raised/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent"
       >
-        <div className="flex items-center justify-between">
-          <div className="flex-1">
-            <div className="flex items-center gap-3 mb-2">
-              <h3 className="text-body font-semibold text-ink">{workout.name}</h3>
-              {workout.templateId && (
-                <span className="text-caption bg-accent/15 text-accent px-2 py-1 rounded">
-                  Template
-                </span>
-              )}
-            </div>
+        <span className="min-w-0 flex-1">
+          <span className="flex items-center gap-2">
+            <span className="truncate text-body font-semibold text-ink">{workout.name}</span>
+            {workout.templateId && (
+              <span className="shrink-0 rounded-full bg-surface-raised px-2 text-caption text-ink-muted">
+                Template
+              </span>
+            )}
+          </span>
+          <span className="mt-0.5 block truncate text-body-sm text-ink-muted">
+            {formatShortDate(workout.endTime)} · {formatDuration(workout.duration)} · {workout.totalSets} sets
+          </span>
+        </span>
+        <span className="shrink-0 text-right">
+          <span className="block font-num font-tabular font-wide text-title font-bold text-ink">
+            {workout.totalVolume.toLocaleString()}
+          </span>
+          <span className="block text-caption text-ink-muted">volume</span>
+        </span>
+      </button>
 
-            <div className="flex items-center gap-4 text-body-sm text-ink-muted">
-              <div className="flex items-center gap-1">
-                <Calendar className="w-4 h-4" />
-                <span>{formatDate(workout.endTime)}</span>
-              </div>
-              <div className="flex items-center gap-1">
-                <Clock className="w-4 h-4" />
-                <span>{formatDuration(workout.duration)}</span>
-              </div>
-              <div className="flex items-center gap-1">
-                <Target className="w-4 h-4" />
-                <span>{workout.totalSets} sets</span>
-              </div>
-            </div>
-          </div>
+      <Sheet open={isDetailOpen} onOpenChange={setIsDetailOpen}>
+        <SheetContent className="mx-auto max-w-lg">
+          <SheetTitle className="text-title">{workout.name}</SheetTitle>
+          <SheetDescription>
+            {formatShortDate(workout.startTime)} · {timeOnly(workout.startTime)} to {timeOnly(workout.endTime)}
+          </SheetDescription>
 
-          <div className="flex items-center gap-3">
-            {/* Quick Stats */}
-            <div className="text-right">
-              <div className="text-body font-bold text-ink">{workout.totalVolume.toLocaleString()}</div>
-              <div className="text-caption text-ink-muted">lbs volume</div>
-            </div>
+          <dl className="mt-5 grid grid-cols-2 gap-x-4 gap-y-5">
+            {stats.map((s) => (
+              <div key={s.label} className="flex min-w-0 flex-col-reverse">
+                <dt className="mt-1.5 text-caption text-ink-muted">{s.label}</dt>
+                <dd className="truncate font-display font-tabular text-display leading-none text-ink">{s.value}</dd>
+              </div>
+            ))}
+          </dl>
 
-            {/* Actions Menu */}
-            <div className="relative action-button">
-              <IconButton
+          {workout.exercisesSummary.length > 0 && (
+            <section aria-label="Exercises" className="mt-6">
+              <h3 className="mb-2 text-body-sm font-semibold text-ink">
+                {workout.totalExercises} exercise{workout.totalExercises === 1 ? '' : 's'}
+              </h3>
+              <ul className="overflow-hidden rounded-2xl bg-surface">
+                {workout.exercisesSummary.map((exercise, index) => (
+                  <li
+                    key={`${exercise.exerciseId}-${index}`}
+                    className={cn('flex items-center gap-4 px-4 py-3', index > 0 && 'border-t border-hairline')}
+                  >
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-body-sm font-semibold text-ink">{exercise.exerciseName}</span>
+                      <span className="block text-caption text-ink-muted">
+                        {exercise.sets} sets · {Math.round(exercise.reps / exercise.sets)} reps avg
+                      </span>
+                    </span>
+                    <span className="shrink-0 font-num font-tabular text-body font-semibold text-ink">
+                      {exercise.volume.toLocaleString()}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+
+          {workout.notes && (
+            <section aria-label="Notes" className="mt-6">
+              <h3 className="mb-1 text-body-sm font-semibold text-ink">Notes</h3>
+              <p className="text-body-sm text-ink-muted">{workout.notes}</p>
+            </section>
+          )}
+
+          <div className="mt-6 flex flex-col gap-2">
+            <Button size="xl" onClick={handleStartWorkout} disabled={isLoadingStart}>
+              {isLoadingStart ? 'Loading…' : 'Start again'}
+            </Button>
+            <div className="grid grid-cols-2 gap-2">
+              <Button variant="secondary" onClick={handleEdit}>
+                Edit
+              </Button>
+              <Button
                 variant="ghost"
-                size="sm"
-                aria-label="Workout actions"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setShowActions(!showActions);
-                }}
-                className="text-ink-muted"
+                className="text-danger hover:text-danger"
+                onClick={handleDelete}
                 disabled={isDeleting}
               >
-                <MoreVertical className="w-5 h-5" />
-              </IconButton>
-
-              {showActions && (
-                <div className="absolute right-0 top-8 bg-surface-raised border border-border rounded-md shadow-e3 z-10 min-w-40">
-                  <button
-                    onClick={handleStartWorkout}
-                    disabled={isLoadingStart}
-                    className="w-full text-left px-3 py-2 text-body-sm text-ink-muted hover:bg-surface-subtle flex items-center gap-2 rounded-t-md disabled:opacity-50"
-                  >
-                    <Play className="w-4 h-4" />
-                    {isLoadingStart ? 'Loading...' : 'Start Workout'}
-                  </button>
-                  <button
-                    onClick={handleEdit}
-                    className="w-full text-left px-3 py-2 text-body-sm text-ink-muted hover:bg-surface-subtle flex items-center gap-2"
-                  >
-                    <Edit className="w-4 h-4" />
-                    Edit
-                  </button>
-                  <button
-                    onClick={handleDelete}
-                    disabled={isDeleting}
-                    className="w-full text-left px-3 py-2 text-body-sm text-danger hover:bg-surface-subtle flex items-center gap-2 rounded-b-md disabled:opacity-50"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                    {isDeleting ? 'Deleting...' : 'Delete'}
-                  </button>
-                </div>
-              )}
-            </div>
-
-            {/* Expand Icon */}
-            <IconButton
-              variant="ghost"
-              size="sm"
-              aria-label={isExpanded ? 'Collapse' : 'Expand'}
-              className="text-ink-muted action-button"
-            >
-              {isExpanded ? (
-                <ChevronUp className="w-5 h-5" />
-              ) : (
-                <ChevronDown className="w-5 h-5" />
-              )}
-            </IconButton>
-          </div>
-        </div>
-
-        {/* Progress Bar */}
-        <div className="mt-3">
-          <div className="flex justify-between text-caption text-ink-muted mb-1">
-            <span>{workout.totalExercises} exercises</span>
-            <span>{workout.totalReps.toLocaleString()} reps</span>
-          </div>
-          <div className="w-full bg-surface-subtle rounded-full h-2">
-            <div
-              className="bg-gradient-to-r from-success to-accent h-2 rounded-full"
-              style={{ width: '100%' }} // All completed workouts are 100% complete
-            />
-          </div>
-        </div>
-      </div>
-
-      {/* Expanded Content */}
-      {isExpanded && (
-        <div className="border-t border-border">
-          {/* Detailed Stats */}
-          <div className="p-4 bg-surface-subtle">
-            <div className="grid grid-cols-4 gap-4 mb-4">
-              <div className="text-center">
-                <div className="flex items-center justify-center mb-1">
-                  <Target className="w-4 h-4 text-accent" />
-                </div>
-                <div className="text-body font-bold text-ink">{workout.totalSets}</div>
-                <div className="text-caption text-ink-muted">Sets</div>
-              </div>
-              <div className="text-center">
-                <div className="flex items-center justify-center mb-1">
-                  <Hash className="w-4 h-4 text-success" />
-                </div>
-                <div className="text-body font-bold text-ink">{workout.totalReps.toLocaleString()}</div>
-                <div className="text-caption text-ink-muted">Reps</div>
-              </div>
-              <div className="text-center">
-                <div className="flex items-center justify-center mb-1">
-                  <Weight className="w-4 h-4 text-muscle-core" />
-                </div>
-                <div className="text-body font-bold text-ink">{workout.totalVolume.toLocaleString()}</div>
-                <div className="text-caption text-ink-muted">Volume</div>
-              </div>
-              <div className="text-center">
-                <div className="flex items-center justify-center mb-1">
-                  <TrendingUp className="w-4 h-4 text-warning" />
-                </div>
-                <div className="text-body font-bold text-ink">{Math.round(workout.totalVolume / workout.duration)}</div>
-                <div className="text-caption text-ink-muted">Vol/Min</div>
-              </div>
-            </div>
-
-            {/* Exercise Breakdown */}
-            <div>
-              <h4 className="text-body-sm font-medium text-ink mb-3">Exercise Breakdown</h4>
-              <div className="space-y-2 max-h-48 overflow-y-auto">
-                {workout.exercisesSummary.map((exercise, index) => (
-                  <div
-                    key={`${exercise.exerciseId}-${index}`}
-                    className="flex items-center justify-between bg-surface-raised rounded p-3"
-                  >
-                    <div className="flex-1">
-                      <div className="font-medium text-ink text-body-sm">{exercise.exerciseName}</div>
-                      <div className="text-caption text-ink-muted">
-                        {exercise.sets} sets × {Math.round(exercise.reps / exercise.sets)} avg reps
-                      </div>
-                    </div>
-
-                    <div className="text-right">
-                      <div className="font-bold text-ink">{exercise.volume.toLocaleString()}</div>
-                      <div className="text-caption text-ink-muted">lbs</div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Workout Notes */}
-            {workout.notes && (
-              <div className="mt-4 p-3 bg-surface-raised rounded">
-                <h4 className="text-body-sm font-medium text-ink mb-2">Notes</h4>
-                <p className="text-body-sm text-ink-muted">{workout.notes}</p>
-              </div>
-            )}
-
-            {/* Workout Timeline */}
-            <div className="mt-4 pt-3 border-t border-border">
-              <div className="flex items-center justify-between text-caption text-ink-muted">
-                <span>Started: {formatDate(workout.startTime)}</span>
-                <span>•</span>
-                <span>Completed: {formatDate(workout.endTime)}</span>
-                <span>•</span>
-                <span>Duration: {formatDuration(workout.duration)}</span>
-              </div>
+                {isDeleting ? 'Deleting…' : 'Delete'}
+              </Button>
             </div>
           </div>
-        </div>
-      )}
+        </SheetContent>
+      </Sheet>
 
-      {/* Edit Modal */}
       {isEditModalOpen && (
         <EditWorkoutModal
           isOpen={isEditModalOpen}
@@ -389,14 +254,6 @@ export const CompletedWorkoutCard: React.FC<CompletedWorkoutCardProps> = ({
           workout={workout}
         />
       )}
-
-      {/* Click outside to close actions menu */}
-      {showActions && (
-        <div
-          className="fixed inset-0 z-0"
-          onClick={() => setShowActions(false)}
-        />
-      )}
-    </Card>
+    </li>
   );
 };

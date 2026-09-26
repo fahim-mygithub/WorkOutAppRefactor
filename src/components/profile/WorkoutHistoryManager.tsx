@@ -1,23 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { WorkoutSummary } from '../../types/exerciseHistory';
 import { ExerciseHistoryService } from '../../services/exerciseHistoryService';
-import {
-  X,
-  Trash2,
-  Calendar,
-  CheckSquare,
-  Square,
-  AlertTriangle,
-  Download,
-  Filter,
-  RotateCcw
-} from 'lucide-react';
+import { Check } from 'lucide-react';
+import { Sheet, SheetContent, SheetDescription, SheetTitle } from '../ui/sheet';
 import { Button } from '../ui/button';
-import { IconButton } from '../ui/icon-button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
-import { Card } from '../ui/card';
-import { Stack } from '../ui/stack';
+import { cn } from '../../lib/utils';
 
 interface WorkoutHistoryManagerProps {
   isOpen: boolean;
@@ -27,6 +16,12 @@ interface WorkoutHistoryManagerProps {
   initialWorkouts: WorkoutSummary[];
 }
 
+/**
+ * Bulk history tools in a bottom sheet (Tempo): an optional date range, the
+ * sessions as selectable hairline rows (ice check when selected), then the
+ * actions: export, delete selected, and the two sweeping deletes as quiet
+ * danger text. Every delete goes through a confirmation step in the same sheet.
+ */
 export const WorkoutHistoryManager: React.FC<WorkoutHistoryManagerProps> = ({
   isOpen,
   onClose,
@@ -181,224 +176,211 @@ export const WorkoutHistoryManager: React.FC<WorkoutHistoryManagerProps> = ({
     URL.revokeObjectURL(url);
   };
 
-  if (!isOpen) return null;
-
   const filteredWorkouts = filterWorkoutsByDateRange();
+  const allShownSelected = filteredWorkouts.length > 0 && selectedWorkouts.size === filteredWorkouts.length;
+
+  const handleOpenChange = (open: boolean) => {
+    if (!open && !isLoading) {
+      onClose();
+    }
+  };
+
+  const cancelConfirmation = () => {
+    setConfirmationStep('none');
+    setConfirmationText('');
+  };
 
   return (
-    <div className="fixed inset-0 bg-ink/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <Card elevation={3} className="max-w-4xl w-full max-h-[90vh] overflow-y-auto">
-        {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-border">
-          <h2 className="text-title font-bold text-ink">Manage Workout History</h2>
-          <IconButton
-            variant="ghost"
-            aria-label="Close"
-            onClick={onClose}
-          >
-            <X className="w-6 h-6" />
-          </IconButton>
-        </div>
-
+    <Sheet open={isOpen} onOpenChange={handleOpenChange}>
+      <SheetContent className="mx-auto max-w-lg">
         {confirmationStep === 'none' ? (
           <>
-            {/* Controls */}
-            <div className="p-6 border-b border-border">
-              {/* Date Range Filter */}
-              <div className="mb-4">
-                <h3 className="text-body-sm font-medium text-ink-muted mb-2 flex items-center gap-2">
-                  <Filter className="w-4 h-4" />
-                  Filter by Date Range
-                </h3>
-                <div className="flex gap-3">
-                  <Stack gap={1}>
-                    <Label htmlFor="manager-start-date" size="sm">Start Date</Label>
-                    <Input
-                      id="manager-start-date"
-                      type="date"
-                      size="sm"
-                      value={startDate}
-                      onChange={(e) => setStartDate(e.target.value)}
-                    />
-                  </Stack>
-                  <Stack gap={1}>
-                    <Label htmlFor="manager-end-date" size="sm">End Date</Label>
-                    <Input
-                      id="manager-end-date"
-                      type="date"
-                      size="sm"
-                      value={endDate}
-                      onChange={(e) => setEndDate(e.target.value)}
-                    />
-                  </Stack>
-                  <div className="flex items-end">
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      onClick={() => {
-                        setStartDate('');
-                        setEndDate('');
-                      }}
-                    >
-                      <RotateCcw className="w-4 h-4" />
-                      Clear
-                    </Button>
-                  </div>
-                </div>
+            <SheetTitle className="text-title">Manage history</SheetTitle>
+            <SheetDescription>Export sessions, or clear out the ones you don’t need.</SheetDescription>
+
+            {/* Date range filter */}
+            <div role="group" aria-labelledby="manager-range-heading" className="mt-5">
+              <div className="mb-2 flex items-center justify-between">
+                <span id="manager-range-heading" className="text-body-sm font-semibold text-ink">
+                  Date range
+                </span>
+                {(startDate || endDate) && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setStartDate('');
+                      setEndDate('');
+                    }}
+                  >
+                    Clear
+                  </Button>
+                )}
               </div>
-
-              {/* Action Buttons */}
-              <div className="flex flex-wrap gap-3">
-                <Button size="sm" onClick={exportWorkouts}>
-                  <Download className="w-4 h-4" />
-                  Export {selectedWorkouts.size > 0 ? `Selected (${selectedWorkouts.size})` : 'All'}
-                </Button>
-
-                <Button
-                  variant="danger"
-                  size="sm"
-                  onClick={handleBulkDelete}
-                  disabled={selectedWorkouts.size === 0}
-                >
-                  <Trash2 className="w-4 h-4" />
-                  Delete Selected ({selectedWorkouts.size})
-                </Button>
-
-                <Button
-                  size="sm"
-                  onClick={handleDeleteByDateRange}
-                  disabled={!startDate || !endDate}
-                  className="bg-warning text-ink-inverse hover:bg-warning/90"
-                >
-                  <Calendar className="w-4 h-4" />
-                  Delete Date Range
-                </Button>
-
-                <Button variant="danger" size="sm" onClick={handleDeleteAll}>
-                  <AlertTriangle className="w-4 h-4" />
-                  Delete All History
-                </Button>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="flex min-w-0 flex-col gap-1.5">
+                  <Label htmlFor="manager-start-date" size="sm" className="text-ink-muted">
+                    From
+                  </Label>
+                  <Input
+                    id="manager-start-date"
+                    type="date"
+                    value={startDate}
+                    onChange={(e) => setStartDate(e.target.value)}
+                    className="min-w-0 px-3"
+                  />
+                </div>
+                <div className="flex min-w-0 flex-col gap-1.5">
+                  <Label htmlFor="manager-end-date" size="sm" className="text-ink-muted">
+                    To
+                  </Label>
+                  <Input
+                    id="manager-end-date"
+                    type="date"
+                    value={endDate}
+                    onChange={(e) => setEndDate(e.target.value)}
+                    className="min-w-0 px-3"
+                  />
+                </div>
               </div>
             </div>
 
-            {/* Workout List */}
-            <div className="p-6">
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center gap-3">
-                  <button
-                    onClick={handleSelectAll}
-                    className="flex items-center gap-2 text-body-sm text-ink-muted hover:text-ink transition-colors duration-snap"
-                  >
-                    {selectedWorkouts.size === filteredWorkouts.length ? (
-                      <CheckSquare className="w-4 h-4" />
-                    ) : (
-                      <Square className="w-4 h-4" />
-                    )}
-                    Select All
-                  </button>
-                </div>
-                <div className="text-body-sm text-ink-muted">
-                  {filteredWorkouts.length} workout{filteredWorkouts.length !== 1 ? 's' : ''} shown
-                </div>
+            {/* Sessions */}
+            <div className="mt-6">
+              <div className="mb-2 flex items-center justify-between gap-3">
+                <button
+                  type="button"
+                  onClick={handleSelectAll}
+                  aria-pressed={allShownSelected}
+                  className="flex min-h-touch-min items-center gap-2 rounded-full pr-2 text-body-sm font-semibold text-ink-muted transition-colors duration-snap hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                >
+                  <CheckMark checked={allShownSelected} />
+                  Select all
+                </button>
+                <span className="text-body-sm text-ink-muted">
+                  {filteredWorkouts.length} session{filteredWorkouts.length !== 1 ? 's' : ''}
+                </span>
               </div>
 
-              <div className="space-y-2 max-h-96 overflow-y-auto">
-                {filteredWorkouts.map((workout) => (
-                  <div
-                    key={workout.id}
-                    className={`flex items-center gap-3 p-3 rounded-md border transition-colors duration-snap cursor-pointer ${
-                      selectedWorkouts.has(workout.id)
-                        ? 'bg-accent/10 border-accent'
-                        : 'bg-surface-subtle border-border hover:bg-surface-raised'
-                    }`}
-                    onClick={() => handleSelectWorkout(workout.id)}
-                  >
-                    <div className="flex-shrink-0">
-                      {selectedWorkouts.has(workout.id) ? (
-                        <CheckSquare className="w-5 h-5 text-accent" />
-                      ) : (
-                        <Square className="w-5 h-5 text-ink-subtle" />
-                      )}
-                    </div>
+              <ul className="overflow-hidden rounded-2xl bg-surface">
+                {filteredWorkouts.map((workout, i) => {
+                  const checked = selectedWorkouts.has(workout.id);
+                  return (
+                    <li key={workout.id} className={cn(i > 0 && 'border-t border-hairline')}>
+                      <button
+                        type="button"
+                        role="checkbox"
+                        aria-checked={checked}
+                        onClick={() => handleSelectWorkout(workout.id)}
+                        className="flex min-h-[60px] w-full items-center gap-3 px-4 py-2.5 text-left transition-colors duration-snap hover:bg-surface-raised/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent"
+                      >
+                        <CheckMark checked={checked} />
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-body-sm font-semibold text-ink">{workout.name}</span>
+                          <span className="block truncate text-caption text-ink-muted">
+                            {formatDate(workout.endTime)} · {workout.totalSets} sets · {workout.totalVolume.toLocaleString()} lbs
+                          </span>
+                        </span>
+                      </button>
+                    </li>
+                  );
+                })}
+                {filteredWorkouts.length === 0 && (
+                  <li className="px-4 py-5 text-body-sm text-ink-muted">No sessions in this range.</li>
+                )}
+              </ul>
+            </div>
 
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between">
-                        <h4 className="font-medium text-ink truncate">{workout.name}</h4>
-                        <span className="text-body-sm text-ink-muted">{formatDate(workout.endTime)}</span>
-                      </div>
-                      <div className="text-body-sm text-ink-muted">
-                        {workout.totalExercises} exercises • {workout.totalSets} sets • {workout.totalVolume.toLocaleString()} lbs
-                      </div>
-                    </div>
-                  </div>
-                ))}
+            {/* Actions */}
+            <div className="mt-6 flex flex-col gap-2">
+              <div className="grid grid-cols-2 gap-2">
+                <Button variant="secondary" onClick={exportWorkouts}>
+                  Export {selectedWorkouts.size > 0 ? `(${selectedWorkouts.size})` : 'all'}
+                </Button>
+                <Button variant="danger" onClick={handleBulkDelete} disabled={selectedWorkouts.size === 0}>
+                  Delete ({selectedWorkouts.size})
+                </Button>
               </div>
+              <Button
+                variant="ghost"
+                className="text-danger hover:text-danger"
+                onClick={handleDeleteByDateRange}
+                disabled={!startDate || !endDate}
+              >
+                Delete everything in the date range
+              </Button>
+              <Button variant="ghost" className="text-danger hover:text-danger" onClick={handleDeleteAll}>
+                Delete all history
+              </Button>
             </div>
           </>
         ) : (
-          /* Confirmation Step */
-          <div className="p-6">
-            <div className="text-center">
-              <AlertTriangle className="w-16 h-16 text-danger mx-auto mb-4" />
-              <h3 className="text-body font-bold text-ink mb-4">
-                {confirmationStep === 'bulk' && `Delete ${selectedWorkouts.size} Selected Workouts?`}
-                {confirmationStep === 'all' && 'Delete ALL Workout History?'}
-                {confirmationStep === 'range' && 'Delete Workouts in Date Range?'}
-              </h3>
+          /* Confirmation step */
+          <>
+            <SheetTitle className="text-title">
+              {confirmationStep === 'bulk' &&
+                `Delete ${selectedWorkouts.size} session${selectedWorkouts.size !== 1 ? 's' : ''}?`}
+              {confirmationStep === 'all' && 'Delete all history?'}
+              {confirmationStep === 'range' && 'Delete this date range?'}
+            </SheetTitle>
+            <SheetDescription>
+              {confirmationStep === 'bulk' &&
+                `This permanently deletes ${selectedWorkouts.size} selected session${selectedWorkouts.size !== 1 ? 's' : ''}. `}
+              {confirmationStep === 'range' &&
+                `This permanently deletes every session between ${formatDate(startDate)} and ${formatDate(endDate)}. `}
+              {confirmationStep === 'all' &&
+                `This permanently deletes all ${workouts.length} session${workouts.length !== 1 ? 's' : ''} in your history. `}
+              It can’t be undone.
+            </SheetDescription>
 
-              {confirmationStep === 'all' ? (
-                <div className="mb-6">
-                  <p className="text-ink-muted mb-4">
-                    This will permanently delete ALL {workouts.length} workout{workouts.length !== 1 ? 's' : ''} from your history.
-                    This action cannot be undone.
-                  </p>
-                  <p className="text-danger text-body-sm mb-4">
-                    Type "DELETE ALL WORKOUTS" to confirm:
-                  </p>
-                  <Input
-                    type="text"
-                    value={confirmationText}
-                    onChange={(e) => setConfirmationText(e.target.value)}
-                    placeholder="DELETE ALL WORKOUTS"
-                    className="max-w-md mx-auto text-center"
-                  />
-                </div>
-              ) : (
-                <p className="text-ink-muted mb-6">
-                  {confirmationStep === 'bulk' &&
-                    `This will permanently delete ${selectedWorkouts.size} selected workout${selectedWorkouts.size !== 1 ? 's' : ''}.`
-                  }
-                  {confirmationStep === 'range' &&
-                    `This will permanently delete all workouts between ${formatDate(startDate)} and ${formatDate(endDate)}.`
-                  }
-                  <br />
-                  This action cannot be undone.
-                </p>
-              )}
+            {confirmationStep === 'all' && (
+              <div className="mt-5 flex flex-col gap-1.5">
+                <Label htmlFor="manager-confirm-all" className="text-ink-muted">
+                  Type DELETE ALL WORKOUTS to confirm
+                </Label>
+                <Input
+                  id="manager-confirm-all"
+                  type="text"
+                  value={confirmationText}
+                  onChange={(e) => setConfirmationText(e.target.value)}
+                  placeholder="DELETE ALL WORKOUTS"
+                  autoComplete="off"
+                  className="font-sans"
+                />
+              </div>
+            )}
 
-              <Stack direction="row" justify="center" gap={3}>
-                <Button
-                  variant="secondary"
-                  onClick={() => {
-                    setConfirmationStep('none');
-                    setConfirmationText('');
-                  }}
-                  disabled={isLoading}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  variant="danger"
-                  onClick={() => executeDelete(confirmationStep)}
-                  disabled={isLoading || (confirmationStep === 'all' && confirmationText !== 'DELETE ALL WORKOUTS')}
-                >
-                  {isLoading ? 'Deleting...' : 'Delete Permanently'}
-                </Button>
-              </Stack>
+            <div className="mt-6 flex flex-col gap-2">
+              <Button
+                variant="danger"
+                size="lg"
+                onClick={() => executeDelete(confirmationStep)}
+                disabled={isLoading || (confirmationStep === 'all' && confirmationText !== 'DELETE ALL WORKOUTS')}
+              >
+                {isLoading ? 'Deleting…' : 'Delete permanently'}
+              </Button>
+              <Button variant="ghost" onClick={cancelConfirmation} disabled={isLoading}>
+                Cancel
+              </Button>
             </div>
-          </div>
+          </>
         )}
-      </Card>
-    </div>
+      </SheetContent>
+    </Sheet>
   );
 };
+
+/** Round selection mark: ice fill + check when on, a raised ring when off. */
+function CheckMark({ checked }: { checked: boolean }) {
+  return (
+    <span
+      aria-hidden="true"
+      className={cn(
+        'flex h-6 w-6 shrink-0 items-center justify-center rounded-full transition-colors duration-snap',
+        checked ? 'bg-accent-2 text-accent-2-fg' : 'ring-2 ring-inset ring-surface-raised',
+      )}
+    >
+      {checked && <Check className="h-4 w-4" strokeWidth={3} />}
+    </span>
+  );
+}

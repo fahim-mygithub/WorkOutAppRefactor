@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Edit2, Trash2, Search, Video, Dumbbell, Calendar, Activity } from 'lucide-react';
+import { Plus, Search } from 'lucide-react';
 import { useAppDispatch, useAppSelector } from '../../store/hooks';
 import { useAuth } from '../../contexts/AuthContext';
 import {
@@ -14,12 +14,18 @@ import {
 import { CustomExerciseModal } from '../CustomExerciseModal';
 import { CustomExercise, SaveCustomExerciseData } from '../../services/customExerciseService';
 import { ExerciseVideo } from '../ExerciseVideo';
-import { Card, CardBody } from '../ui/card';
 import { Button } from '../ui/button';
-import { IconButton } from '../ui/icon-button';
 import { Input } from '../ui/input';
-import { Sheet, SheetContent, SheetTitle } from '../ui/sheet';
+import { Skeleton } from '../ui/skeleton';
+import { Sheet, SheetContent, SheetDescription, SheetTitle } from '../ui/sheet';
+import { cn } from '../../lib/utils';
 
+/**
+ * The user's own exercises (Tempo): a search pill over one subtle card of
+ * hairline rows (name, muscle group and equipment muted, usage on the right).
+ * Tapping a row opens a detail sheet with the full instructions, the video
+ * when there is one, and Edit / Delete.
+ */
 export const CustomExerciseList: React.FC = () => {
   const dispatch = useAppDispatch();
   const { user } = useAuth();
@@ -31,7 +37,10 @@ export const CustomExerciseList: React.FC = () => {
   const [selectedExercise, setSelectedExercise] = useState<CustomExercise | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
-  const [selectedVideoExercise, setSelectedVideoExercise] = useState<CustomExercise | null>(null);
+  // The exercise shown in the detail sheet. Kept after closing so the sheet's
+  // exit animation doesn't flash empty.
+  const [detailExercise, setDetailExercise] = useState<CustomExercise | null>(null);
+  const [isDetailOpen, setIsDetailOpen] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null);
 
   useEffect(() => {
@@ -47,6 +56,8 @@ export const CustomExerciseList: React.FC = () => {
   };
 
   const handleEdit = (exercise: CustomExercise) => {
+    // Close the detail sheet first so two dialogs never fight over focus.
+    setIsDetailOpen(false);
     setSelectedExercise(exercise);
     setIsEditMode(true);
     setIsModalOpen(true);
@@ -77,6 +88,13 @@ export const CustomExerciseList: React.FC = () => {
       exerciseId
     }));
     setShowDeleteConfirm(null);
+    setIsDetailOpen(false);
+  };
+
+  const openDetail = (exercise: CustomExercise) => {
+    setShowDeleteConfirm(null);
+    setDetailExercise(exercise);
+    setIsDetailOpen(true);
   };
 
   const filteredExercises = customExercises.filter(exercise =>
@@ -87,184 +105,174 @@ export const CustomExerciseList: React.FC = () => {
 
   if (!user) {
     return (
-      <div className="text-center py-12">
-        <p className="text-ink-muted">Please log in to manage custom exercises</p>
-      </div>
+      <p className="py-12 text-center text-body-sm text-ink-muted">
+        Sign in to manage your custom exercises.
+      </p>
     );
   }
 
+  const detail = detailExercise;
+  const videoLinks = detail?.videoLinks ?? [];
+
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <div>
-          <h2 className="text-title font-bold text-ink">My Custom Exercises</h2>
-          <p className="text-ink-muted mt-1">
-            Create and manage your personalized exercise library
-          </p>
+    <section aria-labelledby="custom-exercises-heading">
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <h2 id="custom-exercises-heading" className="font-wide text-title font-bold text-ink">
+            Custom exercises
+          </h2>
+          <p className="text-body-sm text-ink-muted">Your own moves, alongside the library.</p>
         </div>
-        <Button onClick={handleCreateNew}>
-          <Plus className="w-5 h-5" />
-          Create Exercise
-        </Button>
+        {customExercises.length > 0 && (
+          <Button variant="secondary" size="sm" onClick={handleCreateNew}>
+            <Plus className="h-4 w-4" aria-hidden="true" />
+            New
+          </Button>
+        )}
       </div>
 
-      {/* Search Bar */}
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-ink-subtle w-5 h-5 z-10" />
-        <Input
-          type="text"
-          placeholder="Search custom exercises..."
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          className="pl-10"
-        />
-      </div>
-
-      {/* Error Message */}
-      {error && (
-        <div className="bg-danger/10 border border-danger text-danger px-4 py-3 rounded-md">
-          {error}
+      {customExercises.length > 0 && (
+        <div className="relative mb-3">
+          <Search
+            className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-subtle"
+            aria-hidden="true"
+          />
+          <Input
+            type="search"
+            aria-label="Search custom exercises"
+            placeholder="Search custom exercises"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="rounded-full pl-11 font-sans"
+          />
         </div>
       )}
 
-      {/* Loading State */}
+      {error && (
+        <p role="alert" className="mb-3 rounded-2xl bg-danger/10 px-4 py-3 text-body-sm text-danger">
+          {error}
+        </p>
+      )}
+
       {isLoading ? (
-        <div className="flex justify-center py-12">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-accent"></div>
+        <div className="flex flex-col gap-2" aria-busy="true">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <Skeleton key={i} className="h-16 rounded-2xl" />
+          ))}
         </div>
       ) : filteredExercises.length === 0 ? (
-        <Card elevation={1}>
-          <CardBody className="text-center py-12">
-            <Dumbbell className="w-16 h-16 text-ink-subtle mx-auto mb-4" />
-            <h3 className="text-body font-medium text-ink mb-2">
-              {searchTerm ? 'No exercises found' : 'No custom exercises yet'}
-            </h3>
-            <p className="text-ink-muted mb-4">
-              {searchTerm
-                ? 'Try adjusting your search terms'
-                : 'Create your first custom exercise to get started'}
-            </p>
-            {!searchTerm && (
-              <Button onClick={handleCreateNew}>
-                Create Your First Exercise
-              </Button>
-            )}
-          </CardBody>
-        </Card>
+        <div className="rounded-[20px] bg-surface-subtle px-5 py-6">
+          <p className="text-body font-semibold text-ink">
+            {searchTerm ? 'No matches' : 'No custom exercises yet'}
+          </p>
+          <p className="mt-1 text-body-sm text-ink-muted">
+            {searchTerm
+              ? 'Try a different name, muscle group or piece of equipment.'
+              : 'Add a move the library doesn’t have and use it in any workout.'}
+          </p>
+          {!searchTerm && (
+            <Button className="mt-4" onClick={handleCreateNew}>
+              <Plus className="h-4 w-4" aria-hidden="true" />
+              Create exercise
+            </Button>
+          )}
+        </div>
       ) : (
-        /* Exercise Grid */
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filteredExercises.map((exercise) => (
-            <Card
-              key={exercise.id}
-              elevation={1}
-              className="p-4 hover:bg-surface-subtle transition-colors duration-snap"
-            >
-              {/* Exercise Header */}
-              <div className="flex justify-between items-start mb-3">
-                <div className="flex-1">
-                  <h3 className="text-body font-semibold text-ink truncate">
-                    {exercise.name}
-                  </h3>
-                  <div className="flex items-center space-x-2 text-body-sm text-ink-muted mt-1">
-                    <span className="bg-surface-subtle px-2 py-1 rounded">
-                      {exercise.muscleGroup}
-                    </span>
-                    <span className="bg-surface-subtle px-2 py-1 rounded">
-                      {exercise.equipment}
-                    </span>
-                  </div>
-                </div>
-                <div className="flex space-x-1">
-                  {exercise.videoLinks && exercise.videoLinks.length > 0 && (
-                    <IconButton
-                      variant="ghost"
-                      size="sm"
-                      aria-label="View video"
-                      onClick={() => setSelectedVideoExercise(exercise)}
-                      className="text-accent"
-                    >
-                      <Video className="w-4 h-4" />
-                    </IconButton>
-                  )}
-                  <IconButton
-                    variant="ghost"
-                    size="sm"
-                    aria-label="Edit exercise"
-                    onClick={() => handleEdit(exercise)}
-                    className="text-ink-muted"
-                  >
-                    <Edit2 className="w-4 h-4" />
-                  </IconButton>
-                  <IconButton
-                    variant="ghost"
-                    size="sm"
-                    aria-label="Delete exercise"
-                    onClick={() => setShowDeleteConfirm(exercise.id || null)}
-                    className="text-danger"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </IconButton>
-                </div>
-              </div>
+        <ul className="overflow-hidden rounded-[20px] bg-surface-subtle">
+          {filteredExercises.map((exercise, i) => (
+            <li key={exercise.id} className={cn(i > 0 && 'border-t border-hairline')}>
+              <button
+                type="button"
+                onClick={() => openDetail(exercise)}
+                aria-haspopup="dialog"
+                className="flex min-h-[64px] w-full items-center gap-4 px-4 py-3 text-left transition-colors duration-snap hover:bg-surface-raised/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent"
+              >
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-body font-semibold text-ink">{exercise.name}</span>
+                  <span className="mt-0.5 block truncate text-body-sm text-ink-muted">
+                    {exercise.muscleGroup} · {exercise.equipment}
+                  </span>
+                </span>
+                <span className="shrink-0 text-right">
+                  <span className="block font-num font-tabular font-wide text-title font-bold text-ink">
+                    {exercise.usageCount}
+                  </span>
+                  <span className="block text-caption text-ink-muted">
+                    {exercise.usageCount === 1 ? 'use' : 'uses'}
+                  </span>
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
 
-              {/* Exercise Details */}
-              <div className="space-y-2">
-                <div className="flex items-center text-body-sm text-ink-muted">
-                  <Activity className="w-4 h-4 mr-2" />
-                  <span>Difficulty: {exercise.difficulty}</span>
-                </div>
-                <div className="flex items-center text-body-sm text-ink-muted">
-                  <Calendar className="w-4 h-4 mr-2" />
-                  <span>Used {exercise.usageCount} times</span>
-                </div>
-                {exercise.updatedAt && (
-                  <div className="text-caption text-ink-subtle">
-                    Updated {formatDistanceToNowHelper(exercise.updatedAt)}
-                  </div>
-                )}
-              </div>
+      {/* Detail sheet */}
+      <Sheet open={isDetailOpen} onOpenChange={setIsDetailOpen}>
+        <SheetContent className="mx-auto max-w-lg">
+          {detail && (
+            <>
+              <SheetTitle className="text-title">{detail.name}</SheetTitle>
+              <SheetDescription>
+                {detail.muscleGroup} · {detail.equipment} · {detail.difficulty}
+              </SheetDescription>
 
-              {/* Instructions Preview */}
-              {exercise.instructions && exercise.instructions.length > 0 && (
-                <div className="mt-3 pt-3 border-t border-border">
-                  <p className="text-body-sm text-ink-muted line-clamp-2">
-                    {exercise.instructions[0]}
-                  </p>
+              <p className="mt-2 text-caption text-ink-muted">
+                Used {detail.usageCount} time{detail.usageCount === 1 ? '' : 's'}
+                {detail.updatedAt && ` · updated ${formatDistanceToNowHelper(detail.updatedAt)}`}
+              </p>
+
+              {videoLinks.length > 0 && (
+                <div className="mt-5 overflow-hidden rounded-2xl">
+                  <ExerciseVideo
+                    videoUrl={videoLinks[0]}
+                    fallbackVideoUrls={videoLinks.slice(1)}
+                    exerciseName={detail.name}
+                  />
                 </div>
               )}
 
-              {/* Delete Confirmation */}
-              {showDeleteConfirm === exercise.id && (
-                <div className="mt-3 p-3 bg-danger/10 border border-danger rounded-md">
-                  <p className="text-body-sm text-danger mb-2">
-                    Delete this exercise permanently?
-                  </p>
-                  <div className="flex space-x-2">
-                    <Button
-                      variant="danger"
-                      size="sm"
-                      onClick={() => handleDelete(exercise.id!)}
-                      className="flex-1"
-                    >
+              {detail.instructions && detail.instructions.length > 0 && (
+                <section aria-label="Instructions" className="mt-5">
+                  <h3 className="mb-2 text-body-sm font-semibold text-ink">How to do it</h3>
+                  <ol className="flex list-decimal flex-col gap-1.5 pl-5 text-body-sm text-ink-muted marker:text-ink-subtle">
+                    {detail.instructions.map((step, i) => (
+                      <li key={i}>{step}</li>
+                    ))}
+                  </ol>
+                </section>
+              )}
+
+              {showDeleteConfirm === detail.id ? (
+                <div className="mt-6 rounded-2xl bg-danger/10 p-4">
+                  <p className="text-body-sm font-semibold text-danger">Delete this exercise permanently?</p>
+                  <div className="mt-3 grid grid-cols-2 gap-2">
+                    <Button variant="danger" onClick={() => handleDelete(detail.id!)}>
                       Delete
                     </Button>
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      onClick={() => setShowDeleteConfirm(null)}
-                      className="flex-1"
-                    >
+                    <Button variant="secondary" onClick={() => setShowDeleteConfirm(null)}>
                       Cancel
                     </Button>
                   </div>
                 </div>
+              ) : (
+                <div className="mt-6 grid grid-cols-2 gap-2">
+                  <Button variant="secondary" onClick={() => handleEdit(detail)}>
+                    Edit
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    className="text-danger hover:text-danger"
+                    onClick={() => setShowDeleteConfirm(detail.id || null)}
+                  >
+                    Delete
+                  </Button>
+                </div>
               )}
-            </Card>
-          ))}
-        </div>
-      )}
+            </>
+          )}
+        </SheetContent>
+      </Sheet>
 
       {/* Custom Exercise Modal */}
       <CustomExerciseModal
@@ -277,35 +285,7 @@ export const CustomExerciseList: React.FC = () => {
         }}
         onSave={handleSave}
       />
-
-      {/* Video Modal */}
-      <Sheet
-        open={!!(selectedVideoExercise && selectedVideoExercise.videoLinks && selectedVideoExercise.videoLinks.length > 0)}
-        onOpenChange={(open) => {
-          if (!open) setSelectedVideoExercise(null);
-        }}
-      >
-        <SheetContent className="max-w-4xl mx-auto">
-          {selectedVideoExercise && (
-            <>
-              <SheetTitle className="text-title mb-4">
-                {selectedVideoExercise.name}
-              </SheetTitle>
-              <ExerciseVideo
-                exercise={{
-                  ...selectedVideoExercise,
-                  id: selectedVideoExercise.id || '',
-                  muscleGroups: [selectedVideoExercise.muscleGroup],
-                  searchKeywords: [],
-                  createdAt: selectedVideoExercise.createdAt.toISOString(),
-                  updatedAt: selectedVideoExercise.updatedAt.toISOString()
-                }}
-              />
-            </>
-          )}
-        </SheetContent>
-      </Sheet>
-    </div>
+    </section>
   );
 };
 

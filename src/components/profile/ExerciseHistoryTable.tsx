@@ -1,9 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { ExerciseHistory, ExerciseStats } from '../../types/exerciseHistory';
 import { useAppDispatch, useAppSelector } from '../../store/hooks';
 import { loadExerciseHistory, loadExerciseStats } from '../../store/slices/exerciseHistorySlice';
-import { Trophy, Calendar, Weight, Repeat, BarChart3, ChevronDown, ChevronUp } from 'lucide-react';
-import { Card, CardBody } from '../ui/card';
+import { Trophy } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Skeleton } from '../ui/skeleton';
 import {
@@ -13,6 +11,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '../ui/select';
+import { cn } from '../../lib/utils';
 
 interface ExerciseHistoryTableProps {
   exerciseId?: string;
@@ -21,6 +20,11 @@ interface ExerciseHistoryTableProps {
   limit?: number;
 }
 
+/**
+ * One exercise's history (Tempo): three headline numbers, an optional
+ * configuration filter, then sessions as hairline rows with the volume in the
+ * number voice. Shows `limit` rows until expanded.
+ */
 export const ExerciseHistoryTable: React.FC<ExerciseHistoryTableProps> = ({
   exerciseId,
   exerciseName,
@@ -76,214 +80,127 @@ export const ExerciseHistoryTable: React.FC<ExerciseHistoryTableProps> = ({
 
   if (isLoadingHistory && exerciseHistory.length === 0) {
     return (
-      <Card elevation={1} aria-busy="true">
-        <CardBody className="p-6 space-y-4">
-          <Skeleton className="h-6 w-1/3" />
-          <div className="space-y-3">
-            {Array.from({ length: 5 }).map((_, i) => (
-              <Skeleton key={i} className="h-12" />
-            ))}
-          </div>
-        </CardBody>
-      </Card>
+      <section aria-busy="true" className="flex flex-col gap-2">
+        <Skeleton className="h-6 w-1/3" />
+        {Array.from({ length: 5 }).map((_, i) => (
+          <Skeleton key={i} className="h-14 rounded-2xl" />
+        ))}
+      </section>
     );
   }
 
   if (exerciseHistory.length === 0) {
     return (
-      <Card elevation={1}>
-        <CardBody className="p-6">
-          <div className="text-center py-8">
-            <BarChart3 className="h-12 w-12 text-ink-subtle mx-auto mb-4" />
-            <h3 className="text-body font-medium text-ink mb-2">
-              No Exercise History
-            </h3>
-            <p className="text-ink-muted">
-              {exerciseName || 'This exercise'} hasn't been performed yet. Start a workout to build your history!
-            </p>
-          </div>
-        </CardBody>
-      </Card>
+      <div className="rounded-[20px] bg-surface-subtle px-5 py-6">
+        <p className="text-body font-semibold text-ink">No history yet</p>
+        <p className="mt-1 text-body-sm text-ink-muted">
+          {exerciseName || 'This exercise'} hasn’t been logged yet. Finish a workout with it to start its history.
+        </p>
+      </div>
     );
   }
 
+  const visibleHistory = filteredHistory.slice(0, isExpanded ? filteredHistory.length : limit);
+
   return (
-    <Card elevation={1}>
-      {/* Header with Stats */}
-      <div className="p-6 border-b border-border">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-body font-semibold text-ink">
-            {exerciseName || 'Exercise History'}
-          </h3>
-          {stats && (
-            <div className="flex items-center gap-4 text-body-sm text-ink-muted">
-              <div className="flex items-center gap-1">
-                <Calendar className="h-4 w-4" />
-                <span>{stats.totalSessions} sessions</span>
-              </div>
-              <div className="flex items-center gap-1">
-                <Weight className="h-4 w-4" />
-                <span>Max: {formatWeight(stats.maxWeight)}</span>
-              </div>
-              <div className="flex items-center gap-1">
-                <Repeat className="h-4 w-4" />
-                <span>{stats.totalSets} total sets</span>
-              </div>
+    <section aria-label={exerciseName || 'Exercise history'}>
+      <h3 className="font-wide text-title font-bold text-ink">{exerciseName || 'Exercise history'}</h3>
+      {stats && (
+        <p className="mt-0.5 text-body-sm text-ink-muted">
+          {stats.totalSessions} sessions · {stats.totalSets} sets · last {formatDate(stats.lastPerformed)}
+        </p>
+      )}
+
+      {stats && (
+        <dl className="mt-4 grid grid-cols-3 gap-3">
+          {[
+            { label: 'Heaviest', value: stats.maxWeight, unit: 'lbs' },
+            { label: 'Most reps', value: stats.maxReps },
+            { label: 'Volume', value: stats.totalVolume.toLocaleString() },
+          ].map((s) => (
+            <div key={s.label} className="flex min-w-0 flex-col-reverse">
+              <dt className="mt-1.5 text-caption text-ink-muted">{s.label}</dt>
+              <dd className="truncate font-display font-tabular text-title leading-none text-ink">
+                {s.value}
+                {s.unit && (
+                  <span className="ml-1 font-sans text-body-sm font-semibold tracking-normal text-ink-muted [font-stretch:100%]">
+                    {s.unit}
+                  </span>
+                )}
+              </dd>
             </div>
-          )}
+          ))}
+        </dl>
+      )}
+
+      {configurations.length > 1 && (
+        <div className="mt-4">
+          <Select value={selectedConfiguration} onValueChange={(value) => setSelectedConfiguration(value)}>
+            <SelectTrigger aria-label="Filter by configuration" className="rounded-full sm:w-56">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All configurations</SelectItem>
+              {configurations.map(config => (
+                <SelectItem key={config} value={config}>{config}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
+      )}
 
-        {/* Configuration Filter */}
-        {configurations.length > 1 && (
-          <div className="flex items-center gap-2 mb-4">
-            <span className="text-body-sm text-ink-muted shrink-0">Filter by:</span>
-            <Select
-              value={selectedConfiguration}
-              onValueChange={(value) => setSelectedConfiguration(value)}
-            >
-              <SelectTrigger className="w-56">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Configurations</SelectItem>
-                {configurations.map(config => (
-                  <SelectItem key={config} value={config}>{config}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        )}
+      <ul className="mt-4 overflow-hidden rounded-[20px] bg-surface-subtle">
+        {visibleHistory.map((history, i) => {
+          const weights = history.sets.map(s => s.weight);
+          const minWeight = Math.min(...weights);
+          const maxWeight = Math.max(...weights);
+          const weightRange = minWeight === maxWeight
+            ? formatWeight(minWeight, history.sets[0]?.unit)
+            : `${formatWeight(minWeight, history.sets[0]?.unit)} to ${formatWeight(maxWeight, history.sets[0]?.unit)}`;
+          const prs = [
+            history.personalRecords?.maxWeight && 'weight',
+            history.personalRecords?.maxReps && 'reps',
+            history.personalRecords?.maxVolume && 'volume',
+          ].filter(Boolean);
 
-        {/* Stats Overview */}
-        {stats && (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 p-4 bg-surface-subtle rounded-md">
-            <div className="text-center">
-              <div className="text-display font-bold text-ink">
-                {formatWeight(stats.maxWeight)}
-              </div>
-              <div className="text-caption text-ink-muted">Max Weight</div>
-            </div>
-            <div className="text-center">
-              <div className="text-display font-bold text-ink">
-                {stats.maxReps}
-              </div>
-              <div className="text-caption text-ink-muted">Max Reps</div>
-            </div>
-            <div className="text-center">
-              <div className="text-display font-bold text-ink">
-                {stats.totalVolume.toLocaleString()}
-              </div>
-              <div className="text-caption text-ink-muted">Total Volume</div>
-            </div>
-            <div className="text-center">
-              <div className="text-display font-bold text-ink">
-                {formatDate(stats.lastPerformed)}
-              </div>
-              <div className="text-caption text-ink-muted">Last Performed</div>
-            </div>
-          </div>
-        )}
-      </div>
+          return (
+            <li key={history.id} className={cn('flex items-center gap-4 px-4 py-3', i > 0 && 'border-t border-hairline')}>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-body-sm font-semibold text-ink">
+                  {formatDate(history.workoutDate)} · {history.configuration}
+                </span>
+                <span className="block truncate text-caption text-ink-muted">
+                  {history.workoutName || 'Quick workout'} · {weightRange}
+                </span>
+                {prs.length > 0 && (
+                  <span className="mt-0.5 flex items-center gap-1 text-caption font-semibold text-success">
+                    <Trophy className="h-3.5 w-3.5" aria-hidden="true" />
+                    PR: {prs.join(', ')}
+                  </span>
+                )}
+              </span>
+              <span className="shrink-0 text-right">
+                <span className="block font-num font-tabular text-body font-semibold text-ink">
+                  {history.totalVolume.toLocaleString()}
+                </span>
+                <span className="block text-caption text-ink-muted">volume</span>
+              </span>
+            </li>
+          );
+        })}
+      </ul>
 
-      {/* History Table */}
-      <div className="overflow-x-auto">
-        <table className="w-full">
-          <thead className="bg-surface-subtle">
-            <tr>
-              <th className="px-6 py-3 text-left text-caption font-medium text-ink-subtle uppercase tracking-wider">
-                Date
-              </th>
-              <th className="px-6 py-3 text-left text-caption font-medium text-ink-subtle uppercase tracking-wider">
-                Workout
-              </th>
-              <th className="px-6 py-3 text-left text-caption font-medium text-ink-subtle uppercase tracking-wider">
-                Sets × Reps
-              </th>
-              <th className="px-6 py-3 text-left text-caption font-medium text-ink-subtle uppercase tracking-wider">
-                Weight Range
-              </th>
-              <th className="px-6 py-3 text-left text-caption font-medium text-ink-subtle uppercase tracking-wider">
-                Volume
-              </th>
-              <th className="px-6 py-3 text-left text-caption font-medium text-ink-subtle uppercase tracking-wider">
-                PRs
-              </th>
-            </tr>
-          </thead>
-          <tbody className="bg-surface-raised divide-y divide-border">
-            {filteredHistory.slice(0, isExpanded ? filteredHistory.length : limit).map((history) => {
-              const weights = history.sets.map(s => s.weight);
-              const minWeight = Math.min(...weights);
-              const maxWeight = Math.max(...weights);
-              const weightRange = minWeight === maxWeight
-                ? formatWeight(minWeight, history.sets[0]?.unit)
-                : `${formatWeight(minWeight, history.sets[0]?.unit)} - ${formatWeight(maxWeight, history.sets[0]?.unit)}`;
-
-              return (
-                <tr key={history.id} className="hover:bg-surface-subtle transition-colors duration-snap">
-                  <td className="px-6 py-4 whitespace-nowrap text-body-sm text-ink">
-                    {formatDate(history.workoutDate)}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-body-sm text-ink-muted">
-                    {history.workoutName || 'Quick Workout'}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-body-sm font-medium text-ink">
-                    {history.configuration}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-body-sm text-ink">
-                    {weightRange}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-body-sm text-ink">
-                    {history.totalVolume.toLocaleString()}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-body-sm">
-                    <div className="flex gap-1">
-                      {history.personalRecords?.maxWeight && (
-                        <Trophy className="h-4 w-4 text-warning" aria-label="Weight PR" />
-                      )}
-                      {history.personalRecords?.maxReps && (
-                        <Trophy className="h-4 w-4 text-accent" aria-label="Reps PR" />
-                      )}
-                      {history.personalRecords?.maxVolume && (
-                        <Trophy className="h-4 w-4 text-success" aria-label="Volume PR" />
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-
-      {/* Expand/Collapse Button */}
       {filteredHistory.length > limit && (
-        <div className="p-4 border-t border-border">
-          <Button
-            variant="ghost"
-            onClick={() => setIsExpanded(!isExpanded)}
-            className="w-full text-ink-muted"
-          >
-            {isExpanded ? (
-              <>
-                <ChevronUp className="h-4 w-4" />
-                Show Less
-              </>
-            ) : (
-              <>
-                <ChevronDown className="h-4 w-4" />
-                Show More ({filteredHistory.length - limit} more sessions)
-              </>
-            )}
-          </Button>
-        </div>
+        <Button variant="ghost" onClick={() => setIsExpanded(!isExpanded)} className="mt-2 w-full">
+          {isExpanded ? 'Show less' : `Show ${filteredHistory.length - limit} more`}
+        </Button>
       )}
 
       {isLoadingHistory && (
-        <div className="p-4 text-center text-body-sm text-ink-muted">
-          Loading more history...
-        </div>
+        <p className="mt-2 text-center text-body-sm text-ink-muted" aria-live="polite">
+          Loading more history…
+        </p>
       )}
-    </Card>
+    </section>
   );
 };

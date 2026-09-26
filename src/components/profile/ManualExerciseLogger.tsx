@@ -1,21 +1,13 @@
 import React, { useState, useMemo } from 'react';
 import { Exercise } from '../../types/exercise';
 import { ExerciseHistoryService } from '../../services/exerciseHistoryService';
-import { Plus, Minus, Save, Search } from 'lucide-react';
-import { Sheet, SheetContent, SheetTitle } from '../ui/sheet';
+import { Search } from 'lucide-react';
+import { Sheet, SheetContent, SheetDescription, SheetTitle } from '../ui/sheet';
 import { Button } from '../ui/button';
-import { IconButton } from '../ui/icon-button';
 import { Input } from '../ui/input';
 import { Textarea } from '../ui/textarea';
 import { Label } from '../ui/label';
-import { Stack } from '../ui/stack';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '../ui/select';
+import { SetListEditor, type EditableSetRow } from './SetListEditor';
 
 interface ManualExerciseLoggerProps {
   isOpen: boolean;
@@ -27,12 +19,7 @@ interface ManualExerciseLoggerProps {
   exerciseError?: string | null;
 }
 
-interface ManualSet {
-  id: string;
-  reps: number;
-  weight: number;
-  unit: 'lbs' | 'kg';
-}
+type ManualSet = EditableSetRow;
 
 export const ManualExerciseLogger: React.FC<ManualExerciseLoggerProps> = ({
   isOpen,
@@ -106,7 +93,7 @@ export const ManualExerciseLogger: React.FC<ManualExerciseLoggerProps> = ({
     }
   };
 
-  const updateSet = (setId: string, field: keyof ManualSet, value: any) => {
+  const updateSet = <K extends keyof ManualSet>(setId: string, field: K, value: ManualSet[K]) => {
     setSets(sets.map(set =>
       set.id === setId ? { ...set, [field]: value } : set
     ));
@@ -188,69 +175,66 @@ export const ManualExerciseLogger: React.FC<ManualExerciseLoggerProps> = ({
 
   return (
     <Sheet open={isOpen} onOpenChange={handleOpenChange}>
-      <SheetContent className="max-w-2xl mx-auto">
-        {/* Header */}
-        <SheetTitle className="text-title mb-4">Log Manual Exercise</SheetTitle>
+      <SheetContent className="mx-auto max-w-lg">
+        <SheetTitle className="text-title">Log an exercise</SheetTitle>
+        <SheetDescription>Add a set you did outside a tracked session.</SheetDescription>
 
-        {/* Content */}
-        <form onSubmit={handleSubmit} className="space-y-6">
-          {/* Exercise Selection */}
-          <Stack gap={2}>
-            <Label htmlFor="manual-exercise-search" required>
+        <form onSubmit={handleSubmit} className="mt-5 flex flex-col gap-6">
+          {/* Exercise picker */}
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="manual-exercise-search" required className="text-ink-muted">
               Exercise
             </Label>
             <div className="relative">
-              <div className="relative">
-                <Search className="h-4 w-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-ink-subtle" />
-                <Input
-                  id="manual-exercise-search"
-                  type="text"
-                  placeholder="Search for an exercise..."
-                  value={exerciseSearchTerm}
-                  onChange={(e) => {
-                    setExerciseSearchTerm(e.target.value);
-                    setShowExerciseDropdown(true);
-                    if (!e.target.value) {
-                      setSelectedExercise(null);
-                    }
-                  }}
-                  onFocus={() => setShowExerciseDropdown(true)}
-                  className="pl-10"
-                  required
-                />
-              </div>
+              <Search
+                className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-subtle"
+                aria-hidden="true"
+              />
+              <Input
+                id="manual-exercise-search"
+                type="text"
+                placeholder="Search exercises"
+                value={exerciseSearchTerm}
+                onChange={(e) => {
+                  setExerciseSearchTerm(e.target.value);
+                  setShowExerciseDropdown(true);
+                  if (!e.target.value) {
+                    setSelectedExercise(null);
+                  }
+                }}
+                onFocus={() => setShowExerciseDropdown(true)}
+                className="pl-11 font-sans"
+                autoComplete="off"
+                required
+              />
 
-              {/* Exercise Dropdown */}
               {showExerciseDropdown && (
-                <div className="absolute z-10 w-full mt-1 bg-surface-raised border border-border rounded-md shadow-e3 max-h-60 overflow-y-auto">
+                <div className="absolute z-10 mt-2 max-h-60 w-full overflow-y-auto rounded-2xl bg-surface-raised py-1 shadow-e3">
                   {filteredExercises && filteredExercises.length > 0 ? (
                     filteredExercises.map((exercise) => (
                       <button
                         key={exercise?.id || exercise?.name || Math.random()}
                         type="button"
                         onClick={() => handleExerciseSelect(exercise)}
-                        className="w-full text-left px-4 py-3 hover:bg-surface-subtle transition-colors duration-snap"
+                        className="flex min-h-touch-min w-full flex-col justify-center px-4 py-2 text-left transition-colors duration-snap hover:bg-surface-subtle/60 focus-visible:bg-surface-subtle/60 focus-visible:outline-none"
                       >
-                        <div className="text-ink font-medium">{exercise?.name || 'Unknown Exercise'}</div>
-                        <div className="text-body-sm text-ink-muted">
-                          {exercise?.muscleGroups ? exercise.muscleGroups.join(', ') : 'Unknown muscles'} • {exercise?.equipment || 'Unknown equipment'}
-                        </div>
+                        <span className="text-body font-semibold text-ink">{exercise?.name || 'Unknown exercise'}</span>
+                        <span className="text-body-sm text-ink-muted">
+                          {exercise?.muscleGroups ? exercise.muscleGroups.join(', ') : 'Unknown muscles'} · {exercise?.equipment || 'Unknown equipment'}
+                        </span>
                       </button>
                     ))
                   ) : (
-                    <div className="px-4 py-3 text-center text-ink-muted">
+                    <div className="px-4 py-3 text-body-sm text-ink-muted">
                       {exerciseError ? (
                         <div className="text-danger">
-                          <div>Error loading exercises</div>
-                          <div className="text-caption mt-1">{exerciseError}</div>
+                          <div>Couldn’t load exercises</div>
+                          <div className="mt-1 text-caption">{exerciseError}</div>
                         </div>
                       ) : isLoadingExercises || !exercises || exercises.length === 0 ? (
-                        <div className="flex items-center justify-center gap-2">
-                          <div className="w-4 h-4 border-2 border-ink-subtle border-t-transparent rounded-full animate-spin"></div>
-                          Loading exercises...
-                        </div>
+                        'Loading exercises…'
                       ) : exerciseSearchTerm ? (
-                        `No exercises found matching "${exerciseSearchTerm}"`
+                        `No exercises match "${exerciseSearchTerm}"`
                       ) : (
                         'No exercises available'
                       )}
@@ -259,13 +243,13 @@ export const ManualExerciseLogger: React.FC<ManualExerciseLoggerProps> = ({
                 </div>
               )}
             </div>
-          </Stack>
+          </div>
 
-          {/* Workout Details */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <Stack gap={2}>
-              <Label htmlFor="manual-workout-date" required>
-                Workout Date
+          {/* When + where */}
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="flex min-w-0 flex-col gap-1.5">
+              <Label htmlFor="manual-workout-date" required className="text-ink-muted">
+                Date
               </Label>
               <Input
                 id="manual-workout-date"
@@ -275,134 +259,46 @@ export const ManualExerciseLogger: React.FC<ManualExerciseLoggerProps> = ({
                 max={new Date().toISOString().split('T')[0]}
                 required
               />
-            </Stack>
-
-            <Stack gap={2}>
-              <Label htmlFor="manual-workout-name">Workout Name</Label>
+            </div>
+            <div className="flex min-w-0 flex-col gap-1.5">
+              <Label htmlFor="manual-workout-name" className="text-ink-muted">
+                Workout name
+              </Label>
               <Input
                 id="manual-workout-name"
                 type="text"
                 value={workoutName}
                 onChange={(e) => setWorkoutName(e.target.value)}
-                placeholder="e.g., Push Day, Home Workout"
+                placeholder="e.g. Push day"
+                className="font-sans"
               />
-            </Stack>
-          </div>
-
-          {/* Sets */}
-          <div>
-            <Stack direction="row" align="center" justify="between" className="mb-3">
-              <Label>Sets *</Label>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={addSet}
-                className="text-accent"
-              >
-                <Plus className="w-4 h-4" />
-                Add Set
-              </Button>
-            </Stack>
-
-            <div className="space-y-3">
-              {sets.map((set, index) => (
-                <div key={set.id} className="flex items-center gap-3 p-3 bg-surface-subtle rounded-md">
-                  <span className="text-ink-muted font-medium min-w-12 text-body-sm">
-                    Set {index + 1}:
-                  </span>
-
-                  <Input
-                    type="number"
-                    placeholder="Reps"
-                    value={set.reps || ''}
-                    onChange={(e) => updateSet(set.id, 'reps', parseInt(e.target.value) || 0)}
-                    min="1"
-                    max="999"
-                    size="sm"
-                    className="w-20"
-                    required
-                  />
-
-                  <span className="text-ink-muted text-body-sm">reps @</span>
-
-                  <Input
-                    type="number"
-                    placeholder="Weight"
-                    value={set.weight || ''}
-                    onChange={(e) => updateSet(set.id, 'weight', parseFloat(e.target.value) || 0)}
-                    min="0"
-                    step="0.5"
-                    size="sm"
-                    className="w-20"
-                    required
-                  />
-
-                  <Select
-                    value={set.unit}
-                    onValueChange={(value) => updateSet(set.id, 'unit', value as 'lbs' | 'kg')}
-                  >
-                    <SelectTrigger className="w-24">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="lbs">lbs</SelectItem>
-                      <SelectItem value="kg">kg</SelectItem>
-                    </SelectContent>
-                  </Select>
-
-                  {sets.length > 1 && (
-                    <IconButton
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      aria-label={`Remove set ${index + 1}`}
-                      onClick={() => removeSet(set.id)}
-                      className="text-danger ml-auto"
-                    >
-                      <Minus className="w-4 h-4" />
-                    </IconButton>
-                  )}
-                </div>
-              ))}
             </div>
           </div>
 
-          {/* Notes */}
-          <Stack gap={2}>
-            <Label htmlFor="manual-notes">Notes (Optional)</Label>
+          <SetListEditor sets={sets} onAdd={addSet} onRemove={removeSet} onUpdate={updateSet} />
+
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="manual-notes" className="text-ink-muted">
+              Notes (optional)
+            </Label>
             <Textarea
               id="manual-notes"
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
-              placeholder="Any additional notes about this exercise..."
+              placeholder="How did it feel?"
               rows={3}
               className="resize-none"
             />
-          </Stack>
+          </div>
 
-          {/* Submit Button */}
-          <Stack direction="row" justify="end" gap={3} className="pt-4">
-            <Button
-              type="button"
-              variant="secondary"
-              onClick={() => handleOpenChange(false)}
-              disabled={isLoading}
-            >
+          <div className="flex flex-col gap-2 pt-1">
+            <Button type="submit" size="xl" disabled={isLoading || !selectedExercise}>
+              {isLoading ? 'Saving…' : 'Save exercise'}
+            </Button>
+            <Button type="button" variant="ghost" onClick={() => handleOpenChange(false)} disabled={isLoading}>
               Cancel
             </Button>
-            <Button
-              type="submit"
-              disabled={isLoading || !selectedExercise}
-            >
-              {isLoading ? (
-                <div className="w-4 h-4 border-2 border-accent-fg border-t-transparent rounded-full animate-spin" />
-              ) : (
-                <Save className="w-4 h-4" />
-              )}
-              {isLoading ? 'Saving...' : 'Save Exercise'}
-            </Button>
-          </Stack>
+          </div>
         </form>
       </SheetContent>
     </Sheet>

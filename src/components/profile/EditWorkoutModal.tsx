@@ -1,14 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { WorkoutSummary } from '../../types/exerciseHistory';
 import { ExerciseHistoryService } from '../../services/exerciseHistoryService';
-import { Save, Calendar, Clock, Edit } from 'lucide-react';
-import { Sheet, SheetContent, SheetTitle } from '../ui/sheet';
+import { Sheet, SheetContent, SheetDescription, SheetTitle } from '../ui/sheet';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Textarea } from '../ui/textarea';
 import { Label } from '../ui/label';
-import { Stack } from '../ui/stack';
-import { Card, CardBody } from '../ui/card';
+import { formatDuration } from './historyFormat';
 
 interface EditWorkoutModalProps {
   isOpen: boolean;
@@ -134,137 +132,86 @@ export const EditWorkoutModal: React.FC<EditWorkoutModalProps> = ({
     }
   };
 
-  const formatDuration = (minutes: number): string => {
-    const hours = Math.floor(minutes / 60);
-    const mins = minutes % 60;
-    if (hours > 0) {
-      return `${hours}h ${mins}m`;
-    }
-    return `${mins}m`;
-  };
-
   return (
     <Sheet open={isOpen} onOpenChange={handleOpenChange}>
-      <SheetContent className="max-w-lg mx-auto">
-        {/* Header */}
-        <Stack direction="row" align="center" gap={2} className="mb-4">
-          <Edit className="w-5 h-5 text-accent" />
-          <SheetTitle className="text-title">Edit Workout</SheetTitle>
-        </Stack>
+      <SheetContent className="mx-auto max-w-lg">
+        <SheetTitle className="text-title">Edit workout</SheetTitle>
+        <SheetDescription>
+          {workout.totalExercises} exercises · {workout.totalSets} sets · {workout.totalVolume.toLocaleString()} volume
+        </SheetDescription>
 
-        {/* Content */}
-        <form onSubmit={handleSubmit} className="space-y-4">
-          {/* Workout Name */}
-          <Stack gap={2}>
-            <Label htmlFor="edit-workout-name" required>
-              Workout Name
+        <form onSubmit={handleSubmit} className="mt-5 flex flex-col gap-5">
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="edit-workout-name" required className="text-ink-muted">
+              Name
             </Label>
             <Input
               id="edit-workout-name"
               type="text"
               value={workoutName}
               onChange={(e) => setWorkoutName(e.target.value)}
-              placeholder="Enter workout name"
+              placeholder="e.g. Push day"
+              className="font-sans"
               required
             />
-          </Stack>
+          </div>
 
-          {/* Start Time */}
-          <Stack gap={2}>
-            <Label htmlFor="edit-start-time">
-              <Calendar className="w-4 h-4" />
-              Start Time
-            </Label>
-            <Input
-              id="edit-start-time"
-              type="datetime-local"
-              value={startTime}
-              onChange={(e) => setStartTime(e.target.value)}
-            />
-          </Stack>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="flex min-w-0 flex-col gap-1.5">
+              <Label htmlFor="edit-start-time" className="text-ink-muted">
+                Started
+              </Label>
+              <Input
+                id="edit-start-time"
+                type="datetime-local"
+                value={startTime}
+                onChange={(e) => setStartTime(e.target.value)}
+              />
+            </div>
+            <div className="flex min-w-0 flex-col gap-1.5">
+              <Label htmlFor="edit-end-time" className="text-ink-muted">
+                Finished
+              </Label>
+              <Input
+                id="edit-end-time"
+                type="datetime-local"
+                value={endTime}
+                onChange={(e) => setEndTime(e.target.value)}
+              />
+            </div>
+          </div>
 
-          {/* End Time */}
-          <Stack gap={2}>
-            <Label htmlFor="edit-end-time">
-              <Calendar className="w-4 h-4" />
-              End Time
-            </Label>
-            <Input
-              id="edit-end-time"
-              type="datetime-local"
-              value={endTime}
-              onChange={(e) => setEndTime(e.target.value)}
-            />
-          </Stack>
-
-          {/* Duration Display */}
           {startTime && endTime && (
-            <Card elevation={0} className="bg-surface-subtle">
-              <CardBody className="p-3">
-                <Stack direction="row" align="center" gap={2} className="text-body-sm text-ink-muted">
-                  <Clock className="w-4 h-4" />
-                  <span>Duration: {formatDuration(calculateDuration())}</span>
-                </Stack>
-              </CardBody>
-            </Card>
+            <p className="-mt-2 text-body-sm text-ink-muted" aria-live="polite">
+              Duration{' '}
+              <span className="font-num font-tabular font-semibold text-ink">
+                {formatDuration(calculateDuration())}
+              </span>
+            </p>
           )}
 
-          {/* Current Stats Display */}
-          <Card elevation={0} className="bg-surface-subtle">
-            <CardBody className="p-3">
-              <h4 className="text-body-sm font-medium text-ink-muted mb-2">Workout Stats</h4>
-              <div className="grid grid-cols-3 gap-3 text-center text-body-sm">
-                <div>
-                  <div className="font-bold text-ink">{workout.totalExercises}</div>
-                  <div className="text-ink-muted">Exercises</div>
-                </div>
-                <div>
-                  <div className="font-bold text-ink">{workout.totalSets}</div>
-                  <div className="text-ink-muted">Sets</div>
-                </div>
-                <div>
-                  <div className="font-bold text-ink">{workout.totalVolume.toLocaleString()}</div>
-                  <div className="text-ink-muted">Volume</div>
-                </div>
-              </div>
-            </CardBody>
-          </Card>
-
-          {/* Notes */}
-          <Stack gap={2}>
-            <Label htmlFor="edit-notes">Notes (Optional)</Label>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="edit-notes" className="text-ink-muted">
+              Notes (optional)
+            </Label>
             <Textarea
               id="edit-notes"
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
-              placeholder="Add notes about this workout..."
+              placeholder="Add notes about this workout"
               rows={3}
               className="resize-none"
             />
-          </Stack>
+          </div>
 
-          {/* Submit Button */}
-          <Stack direction="row" justify="end" gap={3} className="pt-4">
-            <Button
-              type="button"
-              variant="secondary"
-              onClick={() => handleOpenChange(false)}
-              disabled={isLoading}
-            >
+          <div className="flex flex-col gap-2 pt-1">
+            <Button type="submit" size="xl" disabled={isLoading || !workoutName.trim()}>
+              {isLoading ? 'Saving…' : 'Save changes'}
+            </Button>
+            <Button type="button" variant="ghost" onClick={() => handleOpenChange(false)} disabled={isLoading}>
               Cancel
             </Button>
-            <Button
-              type="submit"
-              disabled={isLoading || !workoutName.trim()}
-            >
-              {isLoading ? (
-                <div className="w-4 h-4 border-2 border-accent-fg border-t-transparent rounded-full animate-spin" />
-              ) : (
-                <Save className="w-4 h-4" />
-              )}
-              {isLoading ? 'Saving...' : 'Save Changes'}
-            </Button>
-          </Stack>
+          </div>
         </form>
       </SheetContent>
     </Sheet>

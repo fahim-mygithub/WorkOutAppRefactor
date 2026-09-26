@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAppSelector, useAppDispatch } from '../store/hooks';
 import { useAuth } from '../contexts/AuthContext';
@@ -12,18 +12,16 @@ import { ManualExerciseLogger } from '../components/profile/ManualExerciseLogger
 import { WorkoutHistoryManager } from '../components/profile/WorkoutHistoryManager';
 import { CompletedWorkoutCard } from '../components/profile/CompletedWorkoutCard';
 import { CustomExerciseList } from '../components/profile/CustomExerciseList';
+import { formatDuration, formatShortDate } from '../components/profile/historyFormat';
 import { SavedWorkout } from '../services/workoutStorageService';
 import { WorkoutSummary } from '../types/exerciseHistory';
-import { convertSavedWorkoutToExercises, sanitizeWorkoutExercisesForRedux, convertWorkoutHistoryToExercises } from '../utils/workoutConversion';
+import { convertSavedWorkoutToExercises, sanitizeWorkoutExercisesForRedux } from '../utils/workoutConversion';
 import { useExercises } from '../hooks/useExercises';
-import { History, Trophy, TrendingUp, Play, Dumbbell } from 'lucide-react';
-import { Card, CardBody } from '../components/ui/card';
 import { Button } from '../components/ui/button';
-import { IconButton } from '../components/ui/icon-button';
 import { Skeleton } from '../components/ui/skeleton';
 import { Switch } from '../components/ui/switch';
 import { Label } from '../components/ui/label';
-import { Stack } from '../components/ui/stack';
+import { Sheet, SheetContent, SheetDescription, SheetTitle } from '../components/ui/sheet';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../components/ui/tabs';
 import {
   Select,
@@ -32,24 +30,116 @@ import {
   SelectTrigger,
   SelectValue,
 } from '../components/ui/select';
+import { cn } from '../lib/utils';
 
-type ProfileTab = 'overview' | 'workouts' | 'history' | 'exercises' | 'settings';
+type ProfileTab = 'history' | 'workouts' | 'exercises' | 'settings';
 
+// --- small local pieces -------------------------------------------------------
+
+interface SegmentedProps<T extends string> {
+  label: string;
+  value: T;
+  options: { value: T; label: string }[];
+  onChange: (v: T) => void;
+}
+
+/** Single-choice pill group (radiogroup semantics) — same idiom as the Build editors. */
+function Segmented<T extends string>({ label, value, options, onChange }: SegmentedProps<T>) {
+  return (
+    <div role="radiogroup" aria-label={label} className="flex flex-wrap gap-1.5">
+      {options.map((o) => {
+        const checked = o.value === value;
+        return (
+          <button
+            key={o.value}
+            type="button"
+            role="radio"
+            aria-checked={checked}
+            onClick={() => onChange(o.value)}
+            className={cn(
+              'min-h-touch-min rounded-full px-4 text-body-sm font-semibold transition-colors duration-snap',
+              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface-subtle',
+              checked ? 'bg-ink text-ink-inverse' : 'bg-surface-raised text-ink-muted hover:text-ink',
+            )}
+          >
+            {o.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/** A titled group of settings rows on one subtle card, hairlines between rows. */
+function SettingsGroup({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <section aria-label={title}>
+      <h3 className="mb-2 px-1 text-body-sm font-semibold text-ink-muted">{title}</h3>
+      <ul className="overflow-hidden rounded-[20px] bg-surface-subtle [&>li+li]:border-t [&>li+li]:border-hairline">
+        {children}
+      </ul>
+    </section>
+  );
+}
+
+function SettingsRow({ children, className }: { children: ReactNode; className?: string }) {
+  return (
+    <li className={cn('flex min-h-[60px] items-center justify-between gap-4 px-4 py-3', className)}>
+      {children}
+    </li>
+  );
+}
+
+function SectionHeader({ title, meta, action }: { title: string; meta?: string; action?: ReactNode }) {
+  return (
+    <div className="mb-3 flex items-center justify-between gap-3">
+      <div className="min-w-0">
+        <h2 className="font-wide text-title font-bold text-ink">{title}</h2>
+        {meta && <p className="text-body-sm text-ink-muted">{meta}</p>}
+      </div>
+      {action}
+    </div>
+  );
+}
+
+const SHORTCUTS: { label: string; key: string }[] = [
+  { label: 'Complete set', key: 'Space' },
+  { label: 'Next set', key: 'N' },
+  { label: 'Previous set', key: 'P' },
+  { label: 'Rest timer', key: 'R' },
+  { label: 'Uncomplete', key: 'U' },
+];
+
+const PROGRESSION_HINT: Record<'beginner' | 'intermediate' | 'advanced', string> = {
+  beginner: 'Slower progression with conservative weight increases.',
+  intermediate: 'Balanced progression with moderate weight increases.',
+  advanced: 'Faster progression with aggressive weight increases.',
+};
+
+/**
+ * Profile (Tempo): who you are and your lifetime numbers up top, then four
+ * segments: History (sessions + per-exercise history), Saved workouts, Custom
+ * exercises, and Settings as grouped rows. Detail and actions for any one item
+ * live in a sheet one tap away.
+ */
 export default function ProfilePage() {
   const dispatch = useAppDispatch();
   const navigate = useNavigate();
   const { user } = useAuth(); // Get Firebase user from auth context
   const { profile, preferences, stats } = useAppSelector((state) => state.user); // Get profile data from Redux
-  const { workoutHistory, isLoadingHistory } = useAppSelector((state) => state.exerciseHistory);
   const { exercises: exerciseDatabase, isLoading: isLoadingExercises, error: exerciseError } = useExercises(); // Get exercise database
   const [savedWorkouts, setSavedWorkouts] = useState<SavedWorkout[]>([]);
   const [isLoadingSavedWorkouts, setIsLoadingSavedWorkouts] = useState(true);
   const [completedWorkouts, setCompletedWorkouts] = useState<WorkoutSummary[]>([]);
   const [isLoadingCompletedWorkouts, setIsLoadingCompletedWorkouts] = useState(true);
-  const [activeTab, setActiveTab] = useState<ProfileTab>('overview');
+  const [activeTab, setActiveTab] = useState<ProfileTab>('history');
   const [isManualLoggerOpen, setIsManualLoggerOpen] = useState(false);
   const [isHistoryManagerOpen, setIsHistoryManagerOpen] = useState(false);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
+  // Saved workout shown in the detail sheet; kept after closing so the exit
+  // animation doesn't flash empty.
+  const [openSaved, setOpenSaved] = useState<SavedWorkout | null>(null);
+  const [isSavedSheetOpen, setIsSavedSheetOpen] = useState(false);
 
   const handleWeightUnitChange = (unit: 'lbs' | 'kg') => {
     dispatch(setWeightUnit(unit));
@@ -123,61 +213,6 @@ export default function ProfilePage() {
     }
   };
 
-  // Handle starting a workout from workout history
-  const handleStartWorkoutFromHistory = async (workoutSummary: WorkoutSummary) => {
-    if (!user?.uid) {
-      alert('You must be logged in to start a workout.');
-      return;
-    }
-
-    if (!exerciseDatabase.length) {
-      alert('Exercise database is still loading. Please wait a moment and try again.');
-      return;
-    }
-
-    try {
-      // Get the exercise history for this workout
-      // Use the original workoutId if available, otherwise fall back to the document ID
-      const workoutIdToQuery = workoutSummary.workoutId || workoutSummary.id;
-      const exerciseHistories = await ExerciseHistoryService.getExerciseHistoryByWorkoutId(
-        user.uid,
-        workoutIdToQuery
-      );
-
-      if (!exerciseHistories.length) {
-        alert('Unable to load workout details. The workout may not have detailed exercise information.');
-        return;
-      }
-
-      // Convert to workout exercises
-      const { exercises, workoutName } = convertWorkoutHistoryToExercises(
-        exerciseHistories,
-        exerciseDatabase,
-        workoutSummary
-      );
-
-      if (exercises.length === 0) {
-        alert('No valid exercises found in this workout.');
-        return;
-      }
-
-      // Sanitize exercises for Redux
-      const sanitizedExercises = sanitizeWorkoutExercisesForRedux(exercises);
-
-      // Start the workout
-      dispatch(startWorkout({
-        name: workoutName,
-        exercises: sanitizedExercises,
-      }));
-
-      // Navigate to workout page
-      navigate('/workout');
-    } catch (error) {
-      console.error('Error starting workout from history:', error);
-      alert('Failed to start workout. Please try again.');
-    }
-  };
-
   // Load data on component mount
   useEffect(() => {
     if (user?.uid) {
@@ -213,527 +248,393 @@ export default function ProfilePage() {
     }
   }, [dispatch, user?.uid]);
 
-  const formatDate = (date: Date): string => {
-    return new Intl.DateTimeFormat('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric'
-    }).format(new Date(date));
-  };
-
   // Guard against a null auth user (e.g. sign-out while the profile is mounted).
   // Everything below dereferences `user.uid`, so narrow it here.
   if (!user) {
     return null;
   }
 
+  const reloadCompletedWorkouts = async () => {
+    try {
+      const updatedWorkouts = await ExerciseHistoryService.getWorkoutHistory(user.uid, 50);
+      setCompletedWorkouts(updatedWorkouts);
+    } catch (error) {
+      console.error('Error reloading completed workouts:', error);
+    }
+  };
+
+  const displayName = profile?.displayName || 'Profile';
+  const initial = (profile?.displayName?.[0] ?? profile?.email?.[0] ?? '?').toUpperCase();
+
+  const lifetime: { label: string; value: ReactNode }[] = [
+    { label: 'Workouts', value: stats.totalWorkouts.toLocaleString() },
+    {
+      label: 'Current streak',
+      value: (
+        <>
+          {stats.currentStreak}
+          <span className="ml-1.5 font-sans text-body font-semibold tracking-normal text-ink-muted [font-stretch:100%]">
+            day{stats.currentStreak === 1 ? '' : 's'}
+          </span>
+        </>
+      ),
+    },
+    { label: 'Sets', value: stats.totalSets.toLocaleString() },
+    { label: 'Time trained', value: formatDuration(Math.round(stats.totalWorkoutTime / 60)) },
+  ];
+
+  const exerciseCount = (w: SavedWorkout) =>
+    w.parsedWorkout.exercises.length + w.parsedWorkout.supersets.flat().length;
+
   return (
-    <div className="min-h-full bg-surface text-ink p-4">
-      <div className="max-w-6xl mx-auto">
-        <h1 className="text-display font-bold mb-8">Profile & Dashboard</h1>
+    <div className="mx-auto flex max-w-xl flex-col gap-6 px-4 pb-10 pt-5">
+      {/* Identity */}
+      <header className="flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <p className="truncate text-body-sm text-ink-muted">{profile?.email || 'No email'}</p>
+          <h1 className="truncate font-display text-display text-ink">{displayName}</h1>
+        </div>
+        <span
+          aria-hidden="true"
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-surface-raised font-display text-body text-ink"
+        >
+          {initial}
+        </span>
+      </header>
 
-        <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as ProfileTab)}>
-          {/* Tab Navigation */}
-          <div className="overflow-x-auto mb-6">
-            <TabsList>
-              <TabsTrigger value="overview">
-                <TrendingUp className="h-4 w-4" />
-                Overview
-              </TabsTrigger>
-              <TabsTrigger value="workouts">
-                <Play className="h-4 w-4" />
-                Saved Workouts
-              </TabsTrigger>
-              <TabsTrigger value="history">
-                <History className="h-4 w-4" />
-                Workout History
-              </TabsTrigger>
-              <TabsTrigger value="exercises">
-                <Dumbbell className="h-4 w-4" />
-                Custom Exercises
-              </TabsTrigger>
-              <TabsTrigger value="settings">
-                <Trophy className="h-4 w-4" />
-                Settings
-              </TabsTrigger>
-            </TabsList>
-          </div>
-
-          {/* Overview */}
-          <TabsContent value="overview">
-            <div className="grid gap-6 md:grid-cols-2">
-              {/* User Info Section */}
-              <Card elevation={1}>
-                <CardBody className="p-6">
-                  <h2 className="text-body font-semibold mb-4">User Information</h2>
-                  <div className="space-y-3">
-                    <div className="flex items-center gap-3">
-                      <div className="w-12 h-12 bg-accent rounded-full flex items-center justify-center">
-                        <svg className="w-6 h-6 text-accent-fg" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                        </svg>
-                      </div>
-                      <div>
-                        <p className="font-medium">{profile?.displayName || 'User'}</p>
-                        <p className="text-ink-muted text-body-sm">{profile?.email || 'No email'}</p>
-                      </div>
-                    </div>
-                  </div>
-                </CardBody>
-              </Card>
-
-              {/* Quick Stats */}
-              <Card elevation={1}>
-                <CardBody className="p-6">
-                  <h2 className="text-body font-semibold mb-4">Quick Stats</h2>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="text-center">
-                      <div className="text-display font-bold text-accent">{stats.totalWorkouts}</div>
-                      <div className="text-ink-muted text-body-sm">Total Workouts</div>
-                    </div>
-                    <div className="text-center">
-                      <div className="text-display font-bold text-success">{stats.currentStreak}</div>
-                      <div className="text-ink-muted text-body-sm">Current Streak</div>
-                    </div>
-                    <div className="text-center">
-                      <div className="text-display font-bold text-muscle-core">{stats.totalSets}</div>
-                      <div className="text-ink-muted text-body-sm">Total Sets</div>
-                    </div>
-                    <div className="text-center">
-                      <div className="text-display font-bold text-muscle-legs">{Math.round(stats.totalWorkoutTime / 60)}m</div>
-                      <div className="text-ink-muted text-body-sm">Total Time</div>
-                    </div>
-                  </div>
-                </CardBody>
-              </Card>
-
-              {/* Recent Workouts */}
-              <Card elevation={1} className="md:col-span-2">
-                <CardBody className="p-6">
-                  <h2 className="text-body font-semibold mb-4">Recent Workout Sessions</h2>
-                  {isLoadingHistory ? (
-                    <div className="space-y-3" aria-busy="true">
-                      {Array.from({ length: 3 }).map((_, i) => (
-                        <Skeleton key={i} className="h-16" />
-                      ))}
-                    </div>
-                  ) : workoutHistory.length > 0 ? (
-                    <div className="space-y-3">
-                      {workoutHistory.slice(0, 5).map((workout) => (
-                        <div key={workout.id} className="bg-surface-subtle rounded-md p-4 hover:bg-surface-raised transition-colors duration-snap">
-                          <div className="flex items-center justify-between">
-                            <div className="flex-1">
-                              <h3 className="font-medium text-ink">{workout.name}</h3>
-                              <p className="text-body-sm text-ink-muted">
-                                {workout.totalExercises} exercises • {workout.totalSets} sets • {workout.duration}min
-                              </p>
-                            </div>
-                            <div className="flex items-center gap-3">
-                              <div className="text-right">
-                                <p className="text-body-sm text-ink-muted">{formatDate(workout.endTime)}</p>
-                                <p className="text-caption text-success">{workout.totalVolume.toLocaleString()} total volume</p>
-                              </div>
-                              <IconButton
-                                size="sm"
-                                aria-label="Start this workout again"
-                                onClick={() => handleStartWorkoutFromHistory(workout)}
-                              >
-                                <Play className="h-4 w-4" />
-                              </IconButton>
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="text-ink-muted">No workout sessions yet. Complete a workout to see your history!</p>
-                  )}
-                </CardBody>
-              </Card>
+      {/* Lifetime numbers */}
+      <section aria-label="Lifetime stats" className="rounded-[20px] bg-surface-subtle p-5">
+        <dl className="grid grid-cols-2 gap-x-4 gap-y-5">
+          {lifetime.map((s) => (
+            <div key={s.label} className="flex min-w-0 flex-col-reverse">
+              <dt className="mt-1.5 text-caption text-ink-muted">{s.label}</dt>
+              <dd className="truncate font-display font-tabular text-display leading-none text-ink">{s.value}</dd>
             </div>
-          </TabsContent>
+          ))}
+        </dl>
+      </section>
 
-          {/* Saved Workouts */}
-          <TabsContent value="workouts">
-            <div className="space-y-6">
-              <Card elevation={1}>
-                <CardBody className="p-6">
-                  <div className="flex items-center justify-between mb-4">
-                    <h2 className="text-body font-semibold">Saved Workout Templates</h2>
-                    <span className="text-body-sm text-ink-muted">{savedWorkouts.length} saved workouts</span>
-                  </div>
+      <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as ProfileTab)}>
+        <TabsList className="flex w-full">
+          <TabsTrigger value="history" className="flex-1 px-2">History</TabsTrigger>
+          <TabsTrigger value="workouts" className="flex-1 px-2">Saved</TabsTrigger>
+          <TabsTrigger value="exercises" className="flex-1 px-2">Exercises</TabsTrigger>
+          <TabsTrigger value="settings" className="flex-1 px-2">Settings</TabsTrigger>
+        </TabsList>
 
-                  {isLoadingSavedWorkouts ? (
-                    <div className="space-y-3" aria-busy="true">
-                      {Array.from({ length: 5 }).map((_, i) => (
-                        <Skeleton key={i} className="h-20" />
-                      ))}
-                    </div>
-                  ) : savedWorkouts.length > 0 ? (
-                    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                      {savedWorkouts.map((workout) => (
-                        <div key={workout.id} className="bg-surface-subtle rounded-md p-4">
-                          <div className="flex items-start justify-between mb-2">
-                            <h3 className="font-medium text-ink">{workout.name}</h3>
-                            <span className={`px-2 py-1 rounded text-caption text-ink-inverse ${
-                              workout.difficulty === 'Beginner' ? 'bg-success' :
-                              workout.difficulty === 'Intermediate' ? 'bg-warning' :
-                              'bg-danger'
-                            }`}>
-                              {workout.difficulty}
-                            </span>
-                          </div>
+        {/* History */}
+        <TabsContent value="history" className="mt-6 flex flex-col gap-8">
+          <section aria-label="Sessions">
+            <SectionHeader
+              title="Sessions"
+              meta={
+                isLoadingCompletedWorkouts
+                  ? undefined
+                  : `${completedWorkouts.length} completed`
+              }
+              action={
+                completedWorkouts.length > 0 && (
+                  <Button variant="secondary" size="sm" onClick={() => setIsHistoryManagerOpen(true)}>
+                    Manage
+                  </Button>
+                )
+              }
+            />
 
-                          {workout.description && (
-                            <p className="text-body-sm text-ink-muted mb-3">{workout.description}</p>
-                          )}
-
-                          <div className="text-caption text-ink-muted space-y-1">
-                            <p>Exercises: {workout.parsedWorkout.exercises.length + workout.parsedWorkout.supersets.flat().length}</p>
-                            <p>Duration: ~{workout.estimatedDuration}min</p>
-                            <p>Performed: {workout.performanceCount} times</p>
-                            {workout.lastPerformedAt && (
-                              <p>Last: {formatDate(workout.lastPerformedAt)}</p>
-                            )}
-                          </div>
-
-                          {workout.tags.length > 0 && (
-                            <div className="flex flex-wrap gap-1 mt-3">
-                              {workout.tags.map((tag) => (
-                                <span key={tag} className="px-2 py-1 bg-surface-raised rounded text-caption text-ink-muted">
-                                  {tag}
-                                </span>
-                              ))}
-                            </div>
-                          )}
-
-                          {/* Start Workout Button */}
-                          <Button
-                            onClick={() => handleStartWorkout(workout)}
-                            className="w-full mt-4"
-                          >
-                            <Play className="h-4 w-4" />
-                            Start Workout
-                          </Button>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="text-center py-12">
-                      <Play className="h-12 w-12 text-ink-subtle mx-auto mb-4" />
-                      <h3 className="text-body font-medium text-ink mb-2">No Saved Workouts</h3>
-                      <p className="text-ink-muted">Build and save your first workout to see it here!</p>
-                    </div>
-                  )}
-                </CardBody>
-              </Card>
-            </div>
-          </TabsContent>
-
-          {/* Workout History */}
-          <TabsContent value="history">
-            <div className="space-y-6">
-              {/* Completed Workouts Section */}
-              <div>
-                <div className="flex items-center justify-between mb-4">
-                  <h2 className="text-body font-semibold">Completed Workouts</h2>
-                  <div className="flex items-center gap-4">
-                    <span className="text-body-sm text-ink-muted">
-                      {completedWorkouts.length} workout{completedWorkouts.length !== 1 ? 's' : ''} completed
-                    </span>
-                    {completedWorkouts.length > 0 && (
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        onClick={() => setIsHistoryManagerOpen(true)}
-                      >
-                        <History className="h-4 w-4" />
-                        Manage History
-                      </Button>
-                    )}
-                  </div>
-                </div>
-
-                {isLoadingCompletedWorkouts ? (
-                  <div className="space-y-4" aria-busy="true">
-                    {Array.from({ length: 5 }).map((_, i) => (
-                      <Skeleton key={i} className="h-32" />
-                    ))}
-                  </div>
-                ) : completedWorkouts.length > 0 ? (
-                  <div className="space-y-4">
-                    {completedWorkouts.map((workout) => (
-                      <CompletedWorkoutCard
-                        key={workout.id}
-                        workout={workout}
-                        userId={user.uid}
-                        onWorkoutUpdated={() => {
-                          // Reload completed workouts
-                          const loadCompletedWorkouts = async () => {
-                            try {
-                              const updatedWorkouts = await ExerciseHistoryService.getWorkoutHistory(user.uid, 50);
-                              setCompletedWorkouts(updatedWorkouts);
-                            } catch (error) {
-                              console.error('Error reloading completed workouts:', error);
-                            }
-                          };
-                          loadCompletedWorkouts();
-                        }}
-                        onWorkoutDeleted={() => {
-                          // Reload completed workouts
-                          const loadCompletedWorkouts = async () => {
-                            try {
-                              const updatedWorkouts = await ExerciseHistoryService.getWorkoutHistory(user.uid, 50);
-                              setCompletedWorkouts(updatedWorkouts);
-                            } catch (error) {
-                              console.error('Error reloading completed workouts:', error);
-                            }
-                          };
-                          loadCompletedWorkouts();
-                        }}
-                      />
-                    ))}
-                  </div>
-                ) : (
-                  <Card elevation={1}>
-                    <CardBody className="p-12 text-center">
-                      <History className="h-16 w-16 text-ink-subtle mx-auto mb-4" />
-                      <h3 className="text-title font-medium text-ink mb-2">No Completed Workouts</h3>
-                      <p className="text-ink-muted mb-4">Complete your first workout to see your history here!</p>
-                      <Button onClick={() => navigate('/build')}>
-                        Start a Workout
-                      </Button>
-                    </CardBody>
-                  </Card>
-                )}
+            {isLoadingCompletedWorkouts ? (
+              <div className="flex flex-col gap-2" aria-busy="true">
+                {Array.from({ length: 4 }).map((_, i) => (
+                  <Skeleton key={i} className="h-16 rounded-2xl" />
+                ))}
               </div>
+            ) : completedWorkouts.length > 0 ? (
+              <ul className="overflow-hidden rounded-[20px] bg-surface-subtle [&>li+li]:border-t [&>li+li]:border-hairline">
+                {completedWorkouts.map((workout) => (
+                  <CompletedWorkoutCard
+                    key={workout.id}
+                    workout={workout}
+                    userId={user.uid}
+                    onWorkoutUpdated={reloadCompletedWorkouts}
+                    onWorkoutDeleted={reloadCompletedWorkouts}
+                  />
+                ))}
+              </ul>
+            ) : (
+              <div className="rounded-[20px] bg-surface-subtle px-5 py-6">
+                <p className="text-body font-semibold text-ink">No sessions yet</p>
+                <p className="mt-1 text-body-sm text-ink-muted">
+                  Finish your first workout and it shows up here.
+                </p>
+                <Button className="mt-4" onClick={() => navigate('/build')}>
+                  Start a workout
+                </Button>
+              </div>
+            )}
+          </section>
 
-              {/* Exercise History Section */}
-              {user?.uid && (
-                <AllExercisesHistory
-                  userId={user.uid}
-                  limit={100}
-                  onManualAddClick={handleOpenManualLogger}
-                  exercises={exerciseDatabase}
-                  isLoadingExercises={isLoadingExercises}
-                  refreshTrigger={refreshTrigger}
-                />
+          {user?.uid && (
+            <AllExercisesHistory
+              userId={user.uid}
+              limit={100}
+              onManualAddClick={handleOpenManualLogger}
+              exercises={exerciseDatabase}
+              isLoadingExercises={isLoadingExercises}
+              refreshTrigger={refreshTrigger}
+            />
+          )}
+        </TabsContent>
+
+        {/* Saved Workouts */}
+        <TabsContent value="workouts" className="mt-6">
+          <section aria-label="Saved workouts">
+            <SectionHeader
+              title="Saved workouts"
+              meta={isLoadingSavedWorkouts ? undefined : `${savedWorkouts.length} saved`}
+            />
+
+            {isLoadingSavedWorkouts ? (
+              <div className="flex flex-col gap-2" aria-busy="true">
+                {Array.from({ length: 4 }).map((_, i) => (
+                  <Skeleton key={i} className="h-16 rounded-2xl" />
+                ))}
+              </div>
+            ) : savedWorkouts.length > 0 ? (
+              <ul className="overflow-hidden rounded-[20px] bg-surface-subtle [&>li+li]:border-t [&>li+li]:border-hairline">
+                {savedWorkouts.map((workout) => (
+                  <li key={workout.id}>
+                    <button
+                      type="button"
+                      aria-haspopup="dialog"
+                      onClick={() => {
+                        setOpenSaved(workout);
+                        setIsSavedSheetOpen(true);
+                      }}
+                      className="flex min-h-[64px] w-full items-center gap-4 px-4 py-3 text-left transition-colors duration-snap hover:bg-surface-raised/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent"
+                    >
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-body font-semibold text-ink">{workout.name}</span>
+                        <span className="mt-0.5 block truncate text-body-sm text-ink-muted">
+                          {exerciseCount(workout)} exercises
+                          {workout.estimatedDuration ? ` · ~${workout.estimatedDuration} min` : ''} · {workout.difficulty}
+                        </span>
+                      </span>
+                      <span className="shrink-0 text-right">
+                        <span className="block font-num font-tabular font-wide text-title font-bold text-ink">
+                          {workout.performanceCount}
+                        </span>
+                        <span className="block text-caption text-ink-muted">
+                          {workout.performanceCount === 1 ? 'run' : 'runs'}
+                        </span>
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <div className="rounded-[20px] bg-surface-subtle px-5 py-6">
+                <p className="text-body font-semibold text-ink">No saved workouts</p>
+                <p className="mt-1 text-body-sm text-ink-muted">
+                  Build and save a workout to reuse it here.
+                </p>
+              </div>
+            )}
+          </section>
+        </TabsContent>
+
+        {/* Custom Exercises */}
+        <TabsContent value="exercises" className="mt-6">
+          <CustomExerciseList />
+        </TabsContent>
+
+        {/* Settings */}
+        <TabsContent value="settings" className="mt-6 flex flex-col gap-6">
+          <SettingsGroup title="Workout">
+            <SettingsRow>
+              <span className="text-body font-medium text-ink">Weight unit</span>
+              <Segmented<'lbs' | 'kg'>
+                label="Weight unit"
+                value={preferences.weightUnit}
+                onChange={handleWeightUnitChange}
+                options={[
+                  { value: 'lbs', label: 'lbs' },
+                  { value: 'kg', label: 'kg' },
+                ]}
+              />
+            </SettingsRow>
+
+            <SettingsRow>
+              <Label htmlFor="settings-rest-time" className="text-body font-medium">
+                Default rest
+              </Label>
+              <Select
+                value={String(preferences.defaultRestTime)}
+                onValueChange={(value) => handleRestTimeChange(Number(value))}
+              >
+                <SelectTrigger id="settings-rest-time" className="w-36 shrink-0 rounded-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="30">30 seconds</SelectItem>
+                  <SelectItem value="60">1 minute</SelectItem>
+                  <SelectItem value="90">1.5 minutes</SelectItem>
+                  <SelectItem value="120">2 minutes</SelectItem>
+                  <SelectItem value="180">3 minutes</SelectItem>
+                  <SelectItem value="240">4 minutes</SelectItem>
+                  <SelectItem value="300">5 minutes</SelectItem>
+                </SelectContent>
+              </Select>
+            </SettingsRow>
+
+            <SettingsRow>
+              <Label htmlFor="settings-auto-timer" className="text-body font-medium">
+                Auto-start rest timer
+              </Label>
+              <Switch
+                id="settings-auto-timer"
+                checked={preferences.autoStartTimer}
+                onCheckedChange={() => dispatch(toggleAutoStartTimer())}
+                aria-label="Auto-start rest timer"
+              />
+            </SettingsRow>
+
+            <SettingsRow className="flex-col items-stretch gap-3">
+              <div>
+                <p className="text-body font-medium text-ink">Progression</p>
+                <p className="text-body-sm text-ink-muted">
+                  {PROGRESSION_HINT[preferences.defaultProgressionRate] ??
+                    'How quickly suggested weights climb.'}
+                </p>
+              </div>
+              <Segmented<'beginner' | 'intermediate' | 'advanced'>
+                label="Default progression rate"
+                value={preferences.defaultProgressionRate}
+                onChange={handleProgressionRateChange}
+                options={[
+                  { value: 'beginner', label: 'Beginner' },
+                  { value: 'intermediate', label: 'Intermediate' },
+                  { value: 'advanced', label: 'Advanced' },
+                ]}
+              />
+            </SettingsRow>
+          </SettingsGroup>
+
+          <SettingsGroup title="Keyboard">
+            <SettingsRow>
+              <div className="min-w-0">
+                <Label htmlFor="settings-kbd-enabled" className="text-body font-medium">
+                  Keyboard shortcuts
+                </Label>
+                <p className="text-body-sm text-ink-muted">Use shortcuts during workouts.</p>
+              </div>
+              <Switch
+                id="settings-kbd-enabled"
+                checked={preferences.keyboardShortcuts.enabled}
+                onCheckedChange={() => dispatch(toggleKeyboardShortcuts())}
+                aria-label="Enable keyboard shortcuts"
+              />
+            </SettingsRow>
+
+            <SettingsRow>
+              <div className="min-w-0">
+                <Label
+                  htmlFor="settings-kbd-display"
+                  disabled={!preferences.keyboardShortcuts.enabled}
+                  className="text-body font-medium"
+                >
+                  Show shortcuts panel
+                </Label>
+                <p className="text-body-sm text-ink-muted">Open the shortcut list by default in a workout.</p>
+              </div>
+              <Switch
+                id="settings-kbd-display"
+                checked={preferences.keyboardShortcuts.showInWorkout && preferences.keyboardShortcuts.enabled}
+                onCheckedChange={() => dispatch(toggleKeyboardShortcutsDisplay())}
+                disabled={!preferences.keyboardShortcuts.enabled}
+                aria-label="Show shortcuts panel in workout"
+              />
+            </SettingsRow>
+
+            {preferences.keyboardShortcuts.enabled && (
+              <SettingsRow className="block">
+                <p className="mb-2 text-body-sm font-semibold text-ink-muted">Shortcuts</p>
+                <dl className="grid grid-cols-1 gap-x-6 gap-y-2 sm:grid-cols-2">
+                  {SHORTCUTS.map((s) => (
+                    <div key={s.key} className="flex items-center justify-between gap-3 text-body-sm">
+                      <dt className="text-ink-muted">{s.label}</dt>
+                      <dd>
+                        <kbd className="rounded-full bg-surface-raised px-2.5 py-0.5 font-sans text-caption text-ink">
+                          {s.key}
+                        </kbd>
+                      </dd>
+                    </div>
+                  ))}
+                </dl>
+              </SettingsRow>
+            )}
+          </SettingsGroup>
+
+          <SettingsGroup title="App">
+            <SettingsRow>
+              <span className="text-body font-medium text-ink">Unit system</span>
+              <Segmented<'imperial' | 'metric'>
+                label="Unit system"
+                value={preferences.unitSystem}
+                onChange={handleUnitSystemChange}
+                options={[
+                  { value: 'imperial', label: 'Imperial' },
+                  { value: 'metric', label: 'Metric' },
+                ]}
+              />
+            </SettingsRow>
+          </SettingsGroup>
+        </TabsContent>
+      </Tabs>
+
+      {/* Saved workout detail */}
+      <Sheet open={isSavedSheetOpen} onOpenChange={setIsSavedSheetOpen}>
+        <SheetContent className="mx-auto max-w-lg">
+          {openSaved && (
+            <>
+              <SheetTitle className="text-title">{openSaved.name}</SheetTitle>
+              <SheetDescription>
+                {openSaved.description || `${openSaved.difficulty} workout`}
+              </SheetDescription>
+
+              <dl className="mt-5 grid grid-cols-3 gap-3">
+                {[
+                  { label: 'Exercises', value: exerciseCount(openSaved) },
+                  { label: 'Minutes', value: openSaved.estimatedDuration ? `~${openSaved.estimatedDuration}` : '—' },
+                  { label: 'Times done', value: openSaved.performanceCount },
+                ].map((s) => (
+                  <div key={s.label} className="flex min-w-0 flex-col-reverse">
+                    <dt className="mt-1.5 text-caption text-ink-muted">{s.label}</dt>
+                    <dd className="truncate font-display font-tabular text-display leading-none text-ink">{s.value}</dd>
+                  </div>
+                ))}
+              </dl>
+
+              <p className="mt-4 text-body-sm text-ink-muted">
+                {openSaved.difficulty}
+                {openSaved.lastPerformedAt && ` · last done ${formatShortDate(openSaved.lastPerformedAt)}`}
+              </p>
+
+              {openSaved.tags.length > 0 && (
+                <ul className="mt-3 flex flex-wrap gap-1.5" aria-label="Tags">
+                  {openSaved.tags.map((tag) => (
+                    <li key={tag} className="rounded-full bg-surface-raised px-3 py-1 text-caption text-ink-muted">
+                      {tag}
+                    </li>
+                  ))}
+                </ul>
               )}
-            </div>
-          </TabsContent>
 
-          {/* Custom Exercises */}
-          <TabsContent value="exercises">
-            <div className="space-y-6">
-              <CustomExerciseList />
-            </div>
-          </TabsContent>
-
-          {/* Settings */}
-          <TabsContent value="settings">
-            <div className="grid gap-6 md:grid-cols-2">
-              {/* Workout Preferences */}
-              <Card elevation={1}>
-                <CardBody className="p-6">
-                  <h2 className="text-body font-semibold mb-4">Workout Preferences</h2>
-                  <div className="space-y-4">
-                    {/* Weight Unit */}
-                    <Stack gap={2}>
-                      <Label>Weight Unit</Label>
-                      <div className="flex gap-2">
-                        <Button
-                          variant={preferences.weightUnit === 'lbs' ? 'primary' : 'secondary'}
-                          size="sm"
-                          onClick={() => handleWeightUnitChange('lbs')}
-                        >
-                          lbs
-                        </Button>
-                        <Button
-                          variant={preferences.weightUnit === 'kg' ? 'primary' : 'secondary'}
-                          size="sm"
-                          onClick={() => handleWeightUnitChange('kg')}
-                        >
-                          kg
-                        </Button>
-                      </div>
-                    </Stack>
-
-                    {/* Default Rest Time */}
-                    <Stack gap={2}>
-                      <Label htmlFor="settings-rest-time">Default Rest Time</Label>
-                      <Select
-                        value={String(preferences.defaultRestTime)}
-                        onValueChange={(value) => handleRestTimeChange(Number(value))}
-                      >
-                        <SelectTrigger id="settings-rest-time">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="30">30 seconds</SelectItem>
-                          <SelectItem value="60">1 minute</SelectItem>
-                          <SelectItem value="90">1.5 minutes</SelectItem>
-                          <SelectItem value="120">2 minutes</SelectItem>
-                          <SelectItem value="180">3 minutes</SelectItem>
-                          <SelectItem value="240">4 minutes</SelectItem>
-                          <SelectItem value="300">5 minutes</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </Stack>
-
-                    {/* Auto Start Timer */}
-                    <div className="flex items-center justify-between">
-                      <Label htmlFor="settings-auto-timer">Auto-start rest timer</Label>
-                      <Switch
-                        id="settings-auto-timer"
-                        checked={preferences.autoStartTimer}
-                        onCheckedChange={() => dispatch(toggleAutoStartTimer())}
-                        aria-label="Auto-start rest timer"
-                      />
-                    </div>
-
-                    {/* Default Progression Rate */}
-                    <Stack gap={2}>
-                      <Label>Default Progression Rate</Label>
-                      <p className="text-caption text-ink-subtle">
-                        Your preferred workout intensity and progression speed
-                      </p>
-                      <div className="flex gap-2">
-                        <Button
-                          variant={preferences.defaultProgressionRate === 'beginner' ? 'primary' : 'secondary'}
-                          size="sm"
-                          onClick={() => handleProgressionRateChange('beginner')}
-                        >
-                          Beginner
-                        </Button>
-                        <Button
-                          variant={preferences.defaultProgressionRate === 'intermediate' ? 'primary' : 'secondary'}
-                          size="sm"
-                          onClick={() => handleProgressionRateChange('intermediate')}
-                        >
-                          Intermediate
-                        </Button>
-                        <Button
-                          variant={preferences.defaultProgressionRate === 'advanced' ? 'primary' : 'secondary'}
-                          size="sm"
-                          onClick={() => handleProgressionRateChange('advanced')}
-                        >
-                          Advanced
-                        </Button>
-                      </div>
-                      <div className="text-caption text-ink-subtle">
-                        {preferences.defaultProgressionRate === 'beginner' && 'Slower progression with more conservative weight increases'}
-                        {preferences.defaultProgressionRate === 'intermediate' && 'Balanced progression with moderate weight increases'}
-                        {preferences.defaultProgressionRate === 'advanced' && 'Faster progression with more aggressive weight increases'}
-                      </div>
-                    </Stack>
-                  </div>
-                </CardBody>
-              </Card>
-
-              {/* Keyboard Shortcuts Settings */}
-              <Card elevation={1}>
-                <CardBody className="p-6">
-                  <h2 className="text-body font-semibold mb-4">Keyboard Shortcuts</h2>
-                  <div className="space-y-4">
-                    {/* Enable Keyboard Shortcuts */}
-                    <div className="flex items-center justify-between">
-                      <div className="flex-1">
-                        <Label htmlFor="settings-kbd-enabled">Enable keyboard shortcuts</Label>
-                        <p className="text-caption text-ink-subtle mt-1">
-                          Allow keyboard shortcuts during workouts
-                        </p>
-                      </div>
-                      <Switch
-                        id="settings-kbd-enabled"
-                        checked={preferences.keyboardShortcuts.enabled}
-                        onCheckedChange={() => dispatch(toggleKeyboardShortcuts())}
-                        aria-label="Enable keyboard shortcuts"
-                      />
-                    </div>
-
-                    {/* Show Shortcuts Panel */}
-                    <div className="flex items-center justify-between">
-                      <div className="flex-1">
-                        <Label htmlFor="settings-kbd-display" disabled={!preferences.keyboardShortcuts.enabled}>
-                          Show shortcuts panel in workout
-                        </Label>
-                        <p className="text-caption text-ink-subtle mt-1">
-                          Display the keyboard shortcuts panel by default during workouts
-                        </p>
-                      </div>
-                      <Switch
-                        id="settings-kbd-display"
-                        checked={preferences.keyboardShortcuts.showInWorkout && preferences.keyboardShortcuts.enabled}
-                        onCheckedChange={() => dispatch(toggleKeyboardShortcutsDisplay())}
-                        disabled={!preferences.keyboardShortcuts.enabled}
-                        aria-label="Show shortcuts panel in workout"
-                      />
-                    </div>
-
-                    {/* Keyboard Shortcuts Reference */}
-                    {preferences.keyboardShortcuts.enabled && (
-                      <div className="mt-4 p-4 bg-surface-subtle rounded-md">
-                        <h3 className="text-body-sm font-medium text-ink mb-3">Available Shortcuts</h3>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-body-sm">
-                          <div className="flex justify-between">
-                            <span className="text-ink-muted">Complete Set:</span>
-                            <kbd className="bg-surface-raised px-2 py-1 rounded text-ink text-caption">Space</kbd>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-ink-muted">Next Set:</span>
-                            <kbd className="bg-surface-raised px-2 py-1 rounded text-ink text-caption">N</kbd>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-ink-muted">Previous Set:</span>
-                            <kbd className="bg-surface-raised px-2 py-1 rounded text-ink text-caption">P</kbd>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-ink-muted">Rest Timer:</span>
-                            <kbd className="bg-surface-raised px-2 py-1 rounded text-ink text-caption">R</kbd>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-ink-muted">Uncomplete:</span>
-                            <kbd className="bg-surface-raised px-2 py-1 rounded text-ink text-caption">U</kbd>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </CardBody>
-              </Card>
-
-              {/* App Settings */}
-              <Card elevation={1} className="md:col-span-2">
-                <CardBody className="p-6">
-                  <h2 className="text-body font-semibold mb-4">App Settings</h2>
-                  <div className="grid md:grid-cols-2 gap-6">
-                    {/* Unit System */}
-                    <Stack gap={2}>
-                      <Label>Unit System</Label>
-                      <div className="flex gap-2">
-                        <Button
-                          variant={preferences.unitSystem === 'imperial' ? 'primary' : 'secondary'}
-                          size="sm"
-                          onClick={() => handleUnitSystemChange('imperial')}
-                        >
-                          Imperial
-                        </Button>
-                        <Button
-                          variant={preferences.unitSystem === 'metric' ? 'primary' : 'secondary'}
-                          size="sm"
-                          onClick={() => handleUnitSystemChange('metric')}
-                        >
-                          Metric
-                        </Button>
-                      </div>
-                    </Stack>
-                  </div>
-                </CardBody>
-              </Card>
-            </div>
-          </TabsContent>
-        </Tabs>
-      </div>
+              <Button size="xl" className="mt-6" onClick={() => handleStartWorkout(openSaved)}>
+                Start workout
+              </Button>
+            </>
+          )}
+        </SheetContent>
+      </Sheet>
 
       {/* Manual Exercise Logger Modal */}
       {user?.uid && (
