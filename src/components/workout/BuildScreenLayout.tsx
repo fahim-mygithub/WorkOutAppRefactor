@@ -7,6 +7,8 @@ interface BuildScreenLayoutProps {
   /** @deprecated retained for API compatibility; no longer drives a 2-pane grid. */
   showConfiguration?: boolean;
   actionButtons?: ReactNode;
+  /** Optional context shown under the page heading (e.g. the shared-workout card). */
+  intro?: ReactNode;
   className?: string;
 }
 
@@ -18,6 +20,7 @@ interface BuildScreenLayoutProps {
 export const BuildScreenLayout: React.FC<BuildScreenLayoutProps> = ({
   textInputSection,
   actionButtons,
+  intro,
   className = '',
 }) => {
   return (
@@ -27,6 +30,8 @@ export const BuildScreenLayout: React.FC<BuildScreenLayoutProps> = ({
           <p className="text-body-sm text-ink-muted">Custom build</p>
           <h1 className="mt-1 font-display text-display text-ink">Write a workout</h1>
         </header>
+
+        {intro && <div className="mb-4">{intro}</div>}
 
         <div className="space-y-4">{textInputSection}</div>
 

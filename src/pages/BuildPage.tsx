@@ -6,7 +6,7 @@ import { startWorkout } from '../store/slices/workoutSlice';
 import { WorkoutStorageService } from '../services/workoutStorageService';
 
 // Debug: Verify WorkoutStorageService is properly imported
-console.log('🔍 WorkoutStorageService import check:', {
+console.log('WorkoutStorageService import check:', {
   service: WorkoutStorageService,
   saveWorkout: WorkoutStorageService?.saveWorkout,
   typeof: typeof WorkoutStorageService
@@ -67,7 +67,7 @@ const SharedWorkoutBuildView: React.FC<SharedWorkoutBuildViewProps> = ({
   textInputSection,
   parseErrorsSection
 }) => {
-  console.log('🔗 SharedWorkoutBuildView rendering:', {
+  console.log('SharedWorkoutBuildView rendering:', {
     shareId: sharedWorkout.shareId,
     workoutName: sharedWorkout.workoutData.name,
     hasWorkoutText: !!sharedWorkout.workoutData.workoutText,
@@ -77,7 +77,7 @@ const SharedWorkoutBuildView: React.FC<SharedWorkoutBuildViewProps> = ({
 
   // Populate workout data from shared workout when loaded
   useEffect(() => {
-    console.log('📥 BuildPage: SharedWorkout data population effect triggered:', {
+    console.log('BuildPage: SharedWorkout data population effect triggered:', {
       workoutName: sharedWorkout.workoutData.name,
       hasWorkoutText: !!sharedWorkout.workoutData.workoutText,
       workoutTextLength: sharedWorkout.workoutData.workoutText?.length || 0,
@@ -88,53 +88,52 @@ const SharedWorkoutBuildView: React.FC<SharedWorkoutBuildViewProps> = ({
 
     // Set the workout name if not already set
     if (!workoutName && sharedWorkout.workoutData.name) {
-      console.log('📝 BuildPage: Setting workout name from shared data:', sharedWorkout.workoutData.name);
+      console.log('BuildPage: Setting workout name from shared data:', sharedWorkout.workoutData.name);
       setWorkoutName(sharedWorkout.workoutData.name);
     }
 
     // Set the workout text if available and not already set
     if (!workoutText.trim() && sharedWorkout.workoutData.workoutText) {
-      console.log('📝 BuildPage: Setting workout text from shared data, length:', sharedWorkout.workoutData.workoutText.length);
+      console.log('BuildPage: Setting workout text from shared data, length:', sharedWorkout.workoutData.workoutText.length);
       setWorkoutText(sharedWorkout.workoutData.workoutText);
 
       // Also trigger a parse if we have the text and exercises are loaded
       if (exerciseDatabase.length > 0) {
-        console.log('🔄 BuildPage: Auto-parsing shared workout text after 500ms delay');
+        console.log('BuildPage: Auto-parsing shared workout text after 500ms delay');
         setTimeout(() => {
           debouncedAutoParse(sharedWorkout.workoutData.workoutText);
         }, 500);
       } else {
-        console.log('⚠️ BuildPage: Exercise database not loaded yet, skipping auto-parse');
+        console.log('BuildPage: Exercise database not loaded yet, skipping auto-parse');
       }
     }
   }, [sharedWorkout, workoutName, workoutText, exerciseDatabase.length, setWorkoutName, setWorkoutText, debouncedAutoParse]);
 
-  return (
-    <div>
-      {/* Shared-workout context: a quiet subtle card, not an amber banner
-          (amber is reserved for the page's one forward action). */}
-      <div className="mx-auto w-full max-w-xl px-4 pt-6">
-        <div className="rounded-[20px] bg-surface-subtle p-4">
-          <p className="text-body-sm text-ink-muted">Shared by {sharedWorkout.creatorName}</p>
-          <h2 className="mt-1 break-words font-display text-title text-ink">
-            {sharedWorkout.workoutData.name}
-          </h2>
-          <p className="mt-2 text-body-sm text-accent-2">
-            <span className="font-tabular">{sharedWorkout.metadata.viewCount}</span> views
-            {' · '}
-            <span className="font-tabular">{sharedWorkout.metadata.useCount}</span> uses
-          </p>
-          <p className="mt-2 text-body-sm text-ink-muted">
-            Change anything you like, then start the workout.
-          </p>
-        </div>
-      </div>
-
-      <BuildScreenLayout
-        textInputSection={textInputSection}
-        actionButtons={parseErrorsSection}
-      />
+  // Shared-workout context: a quiet subtle card under the page heading, not an
+  // amber banner (amber is reserved for the page's one forward action).
+  const sharedIntro = (
+    <div className="rounded-[20px] bg-surface-subtle p-4">
+      <p className="text-body-sm text-ink-muted">Shared by {sharedWorkout.creatorName}</p>
+      <h2 className="mt-1 break-words font-display text-title text-ink">
+        {sharedWorkout.workoutData.name}
+      </h2>
+      <p className="mt-2 text-body-sm text-accent-2">
+        <span className="font-tabular">{sharedWorkout.metadata.viewCount}</span> views
+        {' · '}
+        <span className="font-tabular">{sharedWorkout.metadata.useCount}</span> uses
+      </p>
+      <p className="mt-2 text-body-sm text-ink-muted">
+        Change anything you like, then start the workout.
+      </p>
     </div>
+  );
+
+  return (
+    <BuildScreenLayout
+      intro={sharedIntro}
+      textInputSection={textInputSection}
+      actionButtons={parseErrorsSection}
+    />
   );
 };
 
@@ -173,7 +172,7 @@ export default function BuildPage() {
   const { shareId } = useParams<{ shareId?: string }>() || {};
   const isViewingSharedWorkout = !!shareId;
 
-  console.log('🏗️ BuildPage rendering:', {
+  console.log('BuildPage rendering:', {
     shareId,
     isViewingSharedWorkout,
     hasUser: !!user,
@@ -182,7 +181,7 @@ export default function BuildPage() {
 
   // Log exercise database loading status
   React.useEffect(() => {
-    console.log('💾 Exercise database status:', {
+    console.log('Exercise database status:', {
       loaded: exerciseDatabase.length > 0,
       count: exerciseDatabase.length
     });
@@ -195,7 +194,7 @@ export default function BuildPage() {
   // Debounced auto-parse function
   const debouncedAutoParse = useCallback(async (text: string) => {
     if (!text.trim() || !autoParseEnabled || !exerciseDatabase.length || isCurrentlyParsing) {
-      console.log('⏸️ Auto-parse skipped:', { 
+      console.log('Auto-parse skipped:', { 
         hasText: !!text.trim(), 
         autoEnabled: autoParseEnabled, 
         hasDB: exerciseDatabase.length > 0,
@@ -218,12 +217,12 @@ export default function BuildPage() {
       
       // Always update parseResult for successful parsing
       if (result.success && result.workout) {
-        console.log('🔄 Auto-parse successful, updating state');
+        console.log('Auto-parse successful, updating state');
         setParseResult(result);
         // Always update editedWorkout from auto-parse to avoid stale state issues
         setEditedWorkout(prepareWorkoutForConfigurator(result.workout));
       } else {
-        console.log('🔄 Auto-parse failed, keeping existing state');
+        console.log('Auto-parse failed, keeping existing state');
       }
     } catch (error) {
       // Silently handle parse errors for auto-parsing
@@ -233,7 +232,7 @@ export default function BuildPage() {
 
   // Handle text changes with debounced auto-parsing
   const handleTextChange = useCallback((text: string) => {
-    console.log('📝 Text changed, length:', text.trim().length);
+    console.log('Text changed, length:', text.trim().length);
     setWorkoutText(text);
     
     // Clear timeout if it exists
@@ -244,20 +243,20 @@ export default function BuildPage() {
     // Reset parse state for significant changes
     const significantChange = Math.abs(text.trim().length - workoutText.trim().length) > 10;
     if (significantChange) {
-      console.log('🔄 Significant text change detected, resetting parse state');
+      console.log('Significant text change detected, resetting parse state');
       setParseResult(null);
       setEditedWorkout(null);
     }
     
     // Set up debounced auto-parse (2 second delay)
     if (autoParseEnabled && text.trim().length > 10 && !isCurrentlyParsing) {
-      console.log('⏱️ Setting up auto-parse timer (2s delay)');
+      console.log('Setting up auto-parse timer (2s delay)');
       debounceTimeoutRef.current = setTimeout(() => {
-        console.log('⏰ Auto-parse timer triggered');
+        console.log('Auto-parse timer triggered');
         debouncedAutoParse(text);
       }, 2000);
     } else if (isCurrentlyParsing) {
-      console.log('⏸️ Skipping auto-parse setup (currently parsing)');
+      console.log('Skipping auto-parse setup (currently parsing)');
     }
   }, [workoutText, autoParseEnabled, debouncedAutoParse, isCurrentlyParsing]);
 
@@ -316,7 +315,7 @@ export default function BuildPage() {
     const notFound: string[] = [];
     exercises.forEach(exercise => {
       const found = findExerciseInDatabase(exercise.name);
-      console.log(`🔍 Exercise "${exercise.name}": ${found ? `✅ Found as "${found.name}"` : '❌ Not found'}`);
+      console.log(`Exercise "${exercise.name}": ${found ? `Found as "${found.name}"` : 'Not found'}`);
       if (!found) {
         notFound.push(exercise.name);
       }
@@ -328,7 +327,7 @@ export default function BuildPage() {
   const handleParseWorkout = useCallback(async () => {
     if (!workoutText.trim() || isCurrentlyParsing) return;
     
-    console.log('🎯 Manual parse triggered');
+    console.log('Manual parse triggered');
     setIsCurrentlyParsing(true);
     
     try {
@@ -336,14 +335,14 @@ export default function BuildPage() {
       if (debounceTimeoutRef.current) {
         clearTimeout(debounceTimeoutRef.current);
         debounceTimeoutRef.current = null;
-        console.log('🚫 Cancelled pending auto-parse');
+        console.log('Cancelled pending auto-parse');
       }
       
       // Clear previous parse result to ensure fresh state
       setParseResult(null);
       setEditedWorkout(null);
       
-      console.log('🧹 Cleared previous parse state');
+      console.log('Cleared previous parse state');
       
       const result = parser.parse(workoutText);
     
@@ -355,7 +354,7 @@ export default function BuildPage() {
         ...result.workout.supersets.flat()
       ];
       
-      console.log('🔍 Validating exercises:', allExercises.map(ex => ex.name));
+      console.log('Validating exercises:', allExercises.map(ex => ex.name));
       
       // Instead of failing, just add warnings for exercises not found
       const suggestions = parser.validateExerciseNames(allExercises, exerciseDatabase);
@@ -364,23 +363,23 @@ export default function BuildPage() {
       // Log which exercises were not found for debugging
       const notFoundExercises = validateAllExercisesExist(allExercises);
       if (notFoundExercises.length > 0) {
-        console.log('⚠️ Some exercises not found in database:', notFoundExercises);
+        console.log('Some exercises not found in database:', notFoundExercises);
         console.log('This is OK - they will be created as custom exercises');
       }
     }
     
-    console.log('📋 Setting parse result:', { success: result.success, hasWorkout: !!result.workout, errors: result.errors.length });
+    console.log('Setting parse result:', { success: result.success, hasWorkout: !!result.workout, errors: result.errors.length });
     
     setParseResult(result);
     if (result.success && result.workout) {
       setEditedWorkout(prepareWorkoutForConfigurator(result.workout));
       setActiveTab('visual');
-      console.log('✅ Manual parse completed successfully');
+      console.log('Manual parse completed successfully');
     } else {
-      console.log('❌ Manual parse failed');
+      console.log('Manual parse failed');
     }
     } catch (error) {
-      console.error('💥 Error during manual parse:', error);
+      console.error('Error during manual parse:', error);
     } finally {
       setIsCurrentlyParsing(false);
     }
@@ -388,7 +387,7 @@ export default function BuildPage() {
 
   // Handle clear and restart
   const handleClearWorkout = () => {
-    console.log('🗑️ Clearing workout and resetting state');
+    console.log('Clearing workout and resetting state');
     
     // Cancel any pending auto-parse
     if (debounceTimeoutRef.current) {
@@ -402,7 +401,7 @@ export default function BuildPage() {
     setEditedWorkout(null);
     setWorkoutNameError('');
     
-    console.log('✅ Workout cleared successfully');
+    console.log('Workout cleared successfully');
   };
 
   // Handle share workout
@@ -567,7 +566,7 @@ export default function BuildPage() {
   });
 
   const handleStartWorkout = () => {
-    console.log('🏁 BuildPage: Starting workout from build page:', {
+    console.log('BuildPage: Starting workout from build page:', {
       isViewingSharedWorkout,
       shareId,
       workoutName,
@@ -611,32 +610,32 @@ export default function BuildPage() {
         startedFromShared: true,
         originalPath: window.location.pathname
       }));
-      console.log('💾 BuildPage: Stored shared workout context in sessionStorage');
+      console.log('BuildPage: Stored shared workout context in sessionStorage');
     }
 
     // Navigate to appropriate route based on shared status
     if (isViewingSharedWorkout && shareId) {
       const targetRoute = `/workout/shared/${shareId}`;
-      console.log('🔗 BuildPage: Starting shared workout, navigating to:', targetRoute);
+      console.log('BuildPage: Starting shared workout, navigating to:', targetRoute);
       navigate(targetRoute);
     } else {
-      console.log('🏋️ BuildPage: Starting regular workout, navigating to:', '/workout');
+      console.log('BuildPage: Starting regular workout, navigating to:', '/workout');
       navigate('/workout');
     }
   };
 
   const handleSaveWorkout = async () => {
-    console.log('🎯 handleSaveWorkout called, checking service availability...');
+    console.log('handleSaveWorkout called, checking service availability...');
 
     // Debug: Check service availability at runtime
     if (!WorkoutStorageService) {
-      console.error('❌ WorkoutStorageService is undefined!');
+      console.error('WorkoutStorageService is undefined!');
       setSaveError('WorkoutStorageService is not available. Please refresh the page.');
       return;
     }
 
     if (typeof WorkoutStorageService.saveWorkout !== 'function') {
-      console.error('❌ WorkoutStorageService.saveWorkout is not a function!', {
+      console.error('WorkoutStorageService.saveWorkout is not a function!', {
         service: WorkoutStorageService,
         saveWorkout: WorkoutStorageService.saveWorkout,
         typeof: typeof WorkoutStorageService.saveWorkout
@@ -645,7 +644,7 @@ export default function BuildPage() {
       return;
     }
 
-    console.log('✅ WorkoutStorageService is available, proceeding with save...');
+    console.log('WorkoutStorageService is available, proceeding with save...');
 
     if (!workoutName.trim()) {
       setWorkoutNameError('Name your workout first.');
@@ -685,7 +684,7 @@ export default function BuildPage() {
           updatedAt: new Date().toISOString()
         }));
 
-      console.log('📝 About to call WorkoutStorageService.saveWorkout with:', {
+      console.log('About to call WorkoutStorageService.saveWorkout with:', {
         userId: user.uid,
         workoutName: workoutName.trim(),
         serviceCheck: !!WorkoutStorageService,
@@ -703,7 +702,7 @@ export default function BuildPage() {
         difficulty: 'Intermediate'
       });
 
-      console.log('✅ Workout saved successfully:', workoutId);
+      console.log('Workout saved successfully:', workoutId);
 
       // Show success message and optionally navigate
       alert(`Saved "${workoutName}". You can find it in your profile.`);
@@ -711,7 +710,7 @@ export default function BuildPage() {
       // Optionally reset the form or navigate to profile
       // navigate('/profile');
     } catch (error: any) {
-      console.error('❌ Error saving workout:', error);
+      console.error('Error saving workout:', error);
       console.error('Error details:', {
         message: error?.message,
         stack: error?.stack,
@@ -761,7 +760,7 @@ export default function BuildPage() {
 
   // Handle workout update from configurator
   const handleWorkoutUpdate = useCallback((updatedWorkout: any) => {
-    console.log('🔧 Workout updated from configurator');
+    console.log('Workout updated from configurator');
     setEditedWorkout(updatedWorkout);
   }, []);
 
@@ -775,7 +774,7 @@ export default function BuildPage() {
 
   // Load example text
   const handleLoadExample = useCallback(() => {
-    console.log('📖 Loading example workout text');
+    console.log('Loading example workout text');
     const exampleText = `3x10 Squats @185lbs
 3x8 Bench Press @155lbs
 3x12 Barbell Bent Over Row @135lbs

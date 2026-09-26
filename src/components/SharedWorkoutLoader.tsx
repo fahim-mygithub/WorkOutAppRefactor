@@ -22,7 +22,7 @@ export const SharedWorkoutLoader: React.FC<SharedWorkoutLoaderProps> = ({
   const { currentSharedWorkout, isLoadingShared, shareError } = useAppSelector(state => state.sharedWorkout);
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
 
-  console.log('📥 SharedWorkoutLoader rendering:', {
+  console.log('SharedWorkoutLoader rendering:', {
     shareId,
     user: user?.uid || 'anonymous',
     hasLoadedOnce,
@@ -34,13 +34,13 @@ export const SharedWorkoutLoader: React.FC<SharedWorkoutLoaderProps> = ({
   // Load shared workout when component mounts or shareId changes
   useEffect(() => {
     if (shareId && !hasLoadedOnce) {
-      console.log('🚀 SharedWorkoutLoader: Loading shared workout:', shareId);
+      console.log('SharedWorkoutLoader: Loading shared workout:', shareId);
       setHasLoadedOnce(true);
       dispatch(loadSharedWorkout(shareId));
 
       // Set anonymous session flag if user is not authenticated
       if (!user) {
-        console.log('👤 SharedWorkoutLoader: Setting anonymous session');
+        console.log('SharedWorkoutLoader: Setting anonymous session');
         dispatch(setAnonymousSession(true));
       }
     }
@@ -63,17 +63,17 @@ export const SharedWorkoutLoader: React.FC<SharedWorkoutLoaderProps> = ({
   }, [shareError, isLoadingShared, hasLoadedOnce, onWorkoutNotFound]);
 
   if (!shareId) {
-    console.log('❌ SharedWorkoutLoader: No shareId found');
+    console.log('SharedWorkoutLoader: No shareId found');
     return <SharedWorkoutNotFoundError message="Invalid share link - no workout ID found" />;
   }
 
   if (isLoadingShared) {
-    console.log('⏳ SharedWorkoutLoader: Loading shared workout...');
+    console.log('SharedWorkoutLoader: Loading shared workout...');
     return <SharedWorkoutLoadingState />;
   }
 
   if (shareError) {
-    console.log('❌ SharedWorkoutLoader: Error loading shared workout:', shareError);
+    console.log('SharedWorkoutLoader: Error loading shared workout:', shareError);
     return (
       <SharedWorkoutNotFoundError
         message={shareError}
@@ -83,11 +83,11 @@ export const SharedWorkoutLoader: React.FC<SharedWorkoutLoaderProps> = ({
   }
 
   if (!currentSharedWorkout) {
-    console.log('❌ SharedWorkoutLoader: No shared workout found after loading');
+    console.log('SharedWorkoutLoader: No shared workout found after loading');
     return <SharedWorkoutNotFoundError message="Workout not found or has expired" shareId={shareId} />;
   }
 
-  console.log('✅ SharedWorkoutLoader: Successfully loaded shared workout, rendering children');
+  console.log('SharedWorkoutLoader: Successfully loaded shared workout, rendering children');
   return <>{children(currentSharedWorkout)}</>;
 };
 

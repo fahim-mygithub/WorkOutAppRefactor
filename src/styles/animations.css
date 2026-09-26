@@ -292,6 +292,9 @@
 .text-highlight {
   animation: textHighlight 2s ease-out;
   border-radius: 3px;
-  padding: 1px 2px;
-  transition: all 0.3s ease;
+  /* No padding: the highlight layer must keep the exact glyph metrics of the
+     textarea it sits under, or inserted text drifts off its highlight. */
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+  transition: background-color 0.3s ease;
 }
