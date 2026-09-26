@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { LayoutTemplate, PersonStanding, PencilRuler } from 'lucide-react';
-import { useAppDispatch } from '../store/hooks';
+import { LayoutTemplate, PersonStanding, PencilRuler, Dumbbell } from 'lucide-react';
+import { useAppDispatch, useAppSelector } from '../store/hooks';
 import { useExercises } from '../hooks/useExercises';
 import { startWorkout } from '../store/slices/workoutSlice';
 import {
@@ -81,6 +81,14 @@ export default function BuildWizardPage() {
   const { exercises, isLoading } = useExercises();
 
   const [screen, setScreen] = useState<Screen>('chooser');
+  // Tracked lifts checked on the chooser; "Build workout" hands them to the
+  // custom builder's Visual tab (BuildPage reads `location.state.trackedLifts`).
+  const trackedLifts = useAppSelector((s) => s.trackedLifts.lifts);
+  const [selectedLiftIds, setSelectedLiftIds] = useState<string[]>([]);
+  // Order follows the list, not click order; deleted lifts drop out.
+  const selectedLifts = trackedLifts.filter((l) => selectedLiftIds.includes(l.id));
+  const toggleLift = (id: string) =>
+    setSelectedLiftIds((ids) => (ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id]));
   const [selectedTerms, setSelectedTerms] = useState<string[]>([]);
   const [rows, setRows] = useState<ReviewRow[]>([]);
   const [name, setName] = useState('');
@@ -224,7 +232,24 @@ export default function BuildWizardPage() {
 
   if (screen === 'chooser') {
     return (
-      <WizardShell title="Build a workout" subtitle="How do you want to start?" scrollableBody>
+      <WizardShell
+        title="Build a workout"
+        subtitle="How do you want to start?"
+        scrollableBody
+        footer={
+          selectedLifts.length > 0 ? (
+            <Button
+              variant="primary"
+              size="xl"
+              onClick={() => navigate('/build/custom', { state: { trackedLifts: selectedLifts } })}
+            >
+              <Dumbbell className="h-5 w-5" aria-hidden="true" />
+              Build workout
+              <span className="font-tabular opacity-70">({selectedLifts.length})</span>
+            </Button>
+          ) : undefined
+        }
+      >
         {/* Three ways to start, one row; the running list of tracked lifts sits
             underneath. The body scrolls because the list grows with the user. */}
         <div className="choice-list grid grid-cols-3 gap-2.5 pt-3">
@@ -253,7 +278,11 @@ export default function BuildWizardPage() {
             onClick={() => navigate('/build/custom')}
           />
         </div>
-        <TrackedLifts className="pb-6 pt-8" />
+        <TrackedLifts
+          className="pb-6 pt-8"
+          selectedIds={selectedLiftIds}
+          onToggleSelect={toggleLift}
+        />
       </WizardShell>
     );
   }

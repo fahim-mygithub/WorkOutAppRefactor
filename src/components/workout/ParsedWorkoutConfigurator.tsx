@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   DndContext,
   closestCenter,
@@ -24,8 +24,8 @@ import { ExerciseConfigCard } from './ExerciseConfigCard';
 import { Exercise } from '../../types/exercise';
 import { Card } from '../ui/card';
 import { Button } from '../ui/button';
-import { Input } from '../ui/input';
-import { Play, Plus, RotateCcw, Search } from 'lucide-react';
+import { Play, RotateCcw } from 'lucide-react';
+import { ExerciseQuickAdd, newBuilderExercise } from './ExerciseQuickAdd';
 
 interface ParsedWorkoutConfiguratorProps {
   workout: any;
@@ -47,8 +47,6 @@ export const ParsedWorkoutConfigurator: React.FC<ParsedWorkoutConfiguratorProps>
   className = '',
 }) => {
   const { exercises } = useAppSelector((state) => state.exercise);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [filteredExercises, setFilteredExercises] = useState<Exercise[]>([]);
 
   // Superset state management
   const [supersetMode, setSupersetMode] = useState<number | null>(null);
@@ -61,25 +59,6 @@ export const ParsedWorkoutConfigurator: React.FC<ParsedWorkoutConfiguratorProps>
       coordinateGetter: sortableKeyboardCoordinates,
     })
   );
-
-  // Filter exercises based on search term
-  useEffect(() => {
-    if (!searchTerm.trim()) {
-      setFilteredExercises([]);
-      return;
-    }
-
-    const term = searchTerm.toLowerCase();
-    const filtered = exercises
-      .filter(exercise =>
-        exercise.name.toLowerCase().includes(term) ||
-        exercise.muscleGroup.toLowerCase().includes(term) ||
-        exercise.equipment.toLowerCase().includes(term)
-      )
-      .slice(0, 5); // Show only top 5 results
-
-    setFilteredExercises(filtered);
-  }, [exercises, searchTerm]);
 
   const handleDragEnd = useCallback((event: DragEndEvent) => {
     const { active, over } = event;
@@ -157,18 +136,10 @@ export const ParsedWorkoutConfigurator: React.FC<ParsedWorkoutConfiguratorProps>
   const handleQuickExerciseAdd = useCallback((exercise: Exercise) => {
     if (!workout) return;
 
-    const newExercise = {
-      name: exercise.name,
-      sets: [{ reps: 10, rest: 120 }], // Default: 1 set of 10 reps with 2min rest
-    };
-
     onUpdate({
       ...workout,
-      exercises: [...workout.exercises, newExercise],
+      exercises: [...workout.exercises, newBuilderExercise(exercise)],
     });
-
-    setSearchTerm('');
-    setFilteredExercises([]);
   }, [workout, onUpdate]);
 
   // Handle superset toggling
@@ -275,46 +246,8 @@ export const ParsedWorkoutConfigurator: React.FC<ParsedWorkoutConfiguratorProps>
         ))}
       </dl>
 
-      {/* Quick Add Exercise Search - Only show in non-compact mode */}
-      {!compactMode && (
-        <div className="relative">
-          <Search
-            aria-hidden="true"
-            className="pointer-events-none absolute left-4 top-1/2 z-10 h-4 w-4 -translate-y-1/2 text-ink-subtle"
-          />
-          <Input
-            type="text"
-            placeholder="Add exercises"
-            aria-label="Add exercises"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="rounded-full pl-11"
-          />
-
-          {/* Quick Add Results */}
-          {filteredExercises.length > 0 && (
-            <ul className="absolute left-0 right-0 top-full z-50 mt-2 divide-y divide-hairline overflow-hidden rounded-2xl bg-surface-raised">
-              {filteredExercises.map((exercise) => (
-                <li key={exercise.id}>
-                  <button
-                    type="button"
-                    onClick={() => handleQuickExerciseAdd(exercise)}
-                    className="flex min-h-touch-min w-full items-center gap-3 px-4 py-2 text-left text-body-sm text-ink transition-colors duration-snap hover:bg-surface-subtle focus-visible:bg-surface-subtle focus-visible:outline-none"
-                  >
-                    <Plus className="h-4 w-4 shrink-0 text-ink-muted" aria-hidden="true" />
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate font-semibold">{exercise.name}</span>
-                      <span className="block truncate text-caption text-ink-muted">
-                        {exercise.muscleGroup}
-                      </span>
-                    </span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      )}
+      {/* Quick add - only in non-compact mode (BuildPage renders its own) */}
+      {!compactMode && <ExerciseQuickAdd onAdd={handleQuickExerciseAdd} />}
 
       {/* Exercises: rows on one subtle card, hairlines between */}
       <Card className={`${compactMode ? 'max-h-[28rem]' : 'max-h-[600px]'} overflow-y-auto`}>

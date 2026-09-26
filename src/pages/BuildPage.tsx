@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useAppDispatch, useAppSelector } from '../store/hooks';
 import { useAuth } from '../contexts/AuthContext';
 import { startWorkout } from '../store/slices/workoutSlice';
@@ -18,6 +18,9 @@ import { BuildScreenLayout } from '../components/workout/BuildScreenLayout';
 import { EnhancedTextInput } from '../components/workout/EnhancedTextInput';
 import { ParsedWorkoutConfigurator } from '../components/workout/ParsedWorkoutConfigurator';
 import { RealtimePreview } from '../components/workout/RealtimePreview';
+import { ExerciseQuickAdd, newBuilderExercise } from '../components/workout/ExerciseQuickAdd';
+import { trackedLiftsToWorkout, workoutNameForLifts } from '../lib/trackedLifts';
+import type { TrackedLift } from '../types/trackedLifts';
 import { useExercises } from '../hooks/useExercises';
 import { useUndoRedo } from '../hooks/useUndoRedo';
 import { generateFallbackExerciseId, sanitizeWorkoutExercisesForRedux } from '../utils/workoutConversion';
@@ -40,6 +43,8 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardBody } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Stack } from '@/components/ui/stack';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 
@@ -166,7 +171,20 @@ export default function BuildPage() {
   // Get Firebase user from auth context - MUST be at top level
   const { user } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const dispatch = useAppDispatch();
+
+  // Tracked lifts checked on the Build chooser arrive in router state: open on
+  // Visual with them listed and a name from their categories. The state is
+  // cleared right away so a refresh or back-navigation doesn't re-add them.
+  useEffect(() => {
+    const lifts = (location.state as { trackedLifts?: TrackedLift[] } | null)?.trackedLifts;
+    if (!lifts?.length) return;
+    setEditedWorkout(trackedLiftsToWorkout(lifts));
+    setWorkoutName((name) => name || workoutNameForLifts(lifts));
+    setActiveTab('visual');
+    navigate(location.pathname, { replace: true, state: null });
+  }, [location.state, location.pathname, navigate]);
 
   // Check if we're viewing a shared workout
   const { shareId } = useParams<{ shareId?: string }>() || {};
@@ -784,8 +802,16 @@ export default function BuildPage() {
   }, [handleTextChange]);
 
   // Check if workout has been successfully parsed
-  const hasValidParsedWorkout = parseResult?.success && (editedWorkout || parseResult.workout);
-  const showConfiguration = hasValidParsedWorkout;
+  const visualWorkout =
+    editedWorkout ||
+    (parseResult?.success && parseResult.workout ? prepareWorkoutForConfigurator(parseResult.workout) : null);
+  const showConfiguration = (visualWorkout?.exercises?.length ?? 0) > 0;
+
+  // Visual's "Add an exercise": append to whatever is on the board (or start one).
+  const handleVisualAdd = useCallback((exercise: Exercise) => {
+    const base = visualWorkout ?? { exercises: [], supersets: [] };
+    setEditedWorkout({ ...base, exercises: [...base.exercises, newBuilderExercise(exercise)] });
+  }, [visualWorkout]);
   const isParseDisabled = !workoutText.trim() || !isParsingEnabled || isCurrentlyParsing;
 
   // Render the text input section
@@ -794,7 +820,7 @@ export default function BuildPage() {
   const configurationSection = showConfiguration ? (
     <div className="space-y-5">
       <ParsedWorkoutConfigurator
-        workout={editedWorkout || (parseResult?.workout ? prepareWorkoutForConfigurator(parseResult.workout) : null)}
+        workout={visualWorkout}
         onUpdate={handleWorkoutUpdate}
         compactMode={true}
         showActionButtons={false}
@@ -806,9 +832,6 @@ export default function BuildPage() {
           <Stack direction="row" align="center" gap={2} className="text-body-sm text-danger" role="alert">
             <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden="true" />
             <span className="min-w-0 flex-1">{workoutNameError}</span>
-            <Button variant="ghost" size="sm" onClick={() => setActiveTab('text')}>
-              Add a name
-            </Button>
           </Stack>
         )}
 
@@ -930,22 +953,37 @@ export default function BuildPage() {
       </TabsContent>
 
       <TabsContent value="visual" className="space-y-4">
+        {/* Name + add, same as Text, so a workout can be built here alone. */}
+        <Card className="space-y-5 p-4">
+          <div className="space-y-1.5">
+            <Label htmlFor="visual-workout-name" className="text-ink-muted">
+              Workout name
+            </Label>
+            <Input
+              id="visual-workout-name"
+              type="text"
+              value={workoutName}
+              onChange={(e) => handleWorkoutNameChange(e.target.value)}
+              placeholder="Push day, pull day, legs"
+            />
+          </div>
+          <ExerciseQuickAdd id="visual-exercise-search" label="Add an exercise" onAdd={handleVisualAdd} />
+        </Card>
+
         {showConfiguration ? (
           configurationSection
         ) : (
-          <Card>
-            <CardBody className="p-5 pt-5">
-              <p className="text-body font-semibold text-ink">Nothing to arrange yet</p>
-              <p className="mt-1 text-body-sm text-ink-muted">
-                Write your workout in Text and parse it. The exercises land here to
-                reorder, pair and tune.
-              </p>
-              <Button variant="secondary" className="mt-4" onClick={() => setActiveTab('text')}>
-                <FileText className="h-4 w-4" aria-hidden="true" />
-                Go to Text
-              </Button>
-            </CardBody>
-          </Card>
+          <div className="px-1">
+            <p className="text-body font-semibold text-ink">No exercises yet</p>
+            <p className="mt-1 text-body-sm text-ink-muted">
+              Add one above, or write the workout in Text and it lands here to
+              reorder, pair and tune.
+            </p>
+            <Button variant="secondary" className="mt-4" onClick={() => setActiveTab('text')}>
+              <FileText className="h-4 w-4" aria-hidden="true" />
+              Go to Text
+            </Button>
+          </div>
         )}
       </TabsContent>
 

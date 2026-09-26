@@ -7,11 +7,11 @@ import trackedLifts from '../../store/slices/trackedLiftsSlice';
 import user from '../../store/slices/userSlice';
 import { TrackedLifts } from './TrackedLifts';
 
-function renderList() {
+function renderList(props: React.ComponentProps<typeof TrackedLifts> = {}) {
   const store = configureStore({ reducer: { trackedLifts, user } });
   const { unmount } = render(
     <Provider store={store}>
-      <TrackedLifts />
+      <TrackedLifts {...props} />
     </Provider>,
   );
   return Object.assign(store, { unmount });
@@ -101,5 +101,26 @@ describe('TrackedLifts', () => {
     const store = renderList();
     await screen.findAllByRole('heading', { level: 3 });
     expect(store.getState().trackedLifts.lifts.map((l) => l.name)).toEqual(['Bench Press', 'Seal Row']);
+  });
+
+  it('shows a checkbox per lift only when selection is enabled', async () => {
+    const u = userEvent.setup();
+    const toggled: string[] = [];
+    renderList({ selectedIds: ['seed-seal-row'], onToggleSelect: (id) => toggled.push(id) });
+
+    const bench = await screen.findByRole('checkbox', { name: 'Include Bench Press in a workout' });
+    expect(bench).toHaveAttribute('aria-checked', 'false');
+    expect(screen.getByRole('checkbox', { name: 'Include Seal Row in a workout' })).toHaveAttribute('aria-checked', 'true');
+
+    await u.click(bench);
+    expect(toggled).toEqual(['seed-bench-press']);
+    // the row itself still opens the editor, not the checkbox
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('has no checkboxes without a selection handler', async () => {
+    renderList();
+    await screen.findAllByRole('heading', { level: 3 });
+    expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
   });
 });

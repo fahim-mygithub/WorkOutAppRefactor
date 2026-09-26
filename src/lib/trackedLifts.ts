@@ -8,6 +8,7 @@ import type {
   TrackedLoad,
   TrackedTarget,
 } from '../types/trackedLifts';
+import type { ParsedSet, ParsedWorkout } from '../parser/types';
 
 /** Round away float noise (0.1 + 0.2) without forcing trailing zeros. */
 function num(value: number): string {
@@ -107,4 +108,68 @@ export function groupByCategory(data: TrackedLiftsData): TrackedLiftGroup[] {
     category,
     lifts: data.lifts.filter((l) => l.category === category),
   }));
+}
+
+/** Working sets a tracked lift becomes when it's built into a workout. */
+const WORKING_SETS = 3;
+/** Reps used when a lift has no rep target (matches the builder's quick add). */
+const DEFAULT_REPS = 10;
+
+/**
+ * Turn selected tracked lifts into the builder's parsed-workout shape, so the
+ * Visual tab can open with them already listed. Load maps to set weight where
+ * there is a number (plates, or the added load on a bodyweight lift); a named
+ * step (medicine ball, band) and a time target travel as the exercise note.
+ * An N-rep max becomes one set of N; everything else gets working sets.
+ */
+export function trackedLiftsToWorkout(lifts: TrackedLift[]): ParsedWorkout {
+  return {
+    exercises: lifts.map((lift) => {
+      const { load, target } = lift;
+      const weighted =
+        load.kind === 'weight'
+          ? { value: load.value, unit: load.unit }
+          : load.kind === 'bodyweight'
+            ? load.plus
+            : undefined;
+
+      const reps: ParsedSet['reps'] =
+        target.kind === 'reps'
+          ? target.max !== undefined && target.max > target.min
+            ? { min: target.min, max: target.max }
+            : target.min
+          : target.kind === 'repMax'
+            ? target.reps
+            : target.kind === 'time'
+              ? 1
+              : DEFAULT_REPS;
+
+      const set: ParsedSet = { reps };
+      if (weighted) {
+        set.weight = weighted.value;
+        set.unit = weighted.unit === 'kg' ? 'kg' : 'lbs';
+      }
+      if (target.kind === 'time') set.time = target.seconds;
+
+      const count = target.kind === 'repMax' ? 1 : WORKING_SETS;
+      const notes = [
+        load.kind === 'level' ? load.label.trim() : '',
+        target.kind === 'time' ? formatTarget(target) : '',
+      ]
+        .filter(Boolean)
+        .join('; ');
+
+      return {
+        name: lift.name,
+        sets: Array.from({ length: count }, () => ({ ...set })),
+        ...(notes ? { notes } : {}),
+      };
+    }),
+    supersets: [],
+  };
+}
+
+/** A starting workout name from the lifts' categories, e.g. "Push + Legs". */
+export function workoutNameForLifts(lifts: TrackedLift[]): string {
+  return [...new Set(lifts.map((l) => l.category.trim()).filter(Boolean))].join(' + ');
 }

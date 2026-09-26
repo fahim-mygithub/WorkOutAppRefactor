@@ -4,6 +4,8 @@ import {
   formatTarget,
   seedTrackedLifts,
   groupByCategory,
+  trackedLiftsToWorkout,
+  workoutNameForLifts,
 } from '@/lib/trackedLifts';
 
 describe('formatLoad', () => {
@@ -110,5 +112,44 @@ describe('groupByCategory', () => {
     const state = seedTrackedLifts();
     const groups = groupByCategory({ ...state, categories: ['Push'] });
     expect(groups.map((g) => g.category)).toEqual(['Push', 'Pull', 'Legs']);
+  });
+});
+
+describe('trackedLiftsToWorkout', () => {
+  const [bench, row, squat] = seedTrackedLifts().lifts;
+
+  it('turns the starter lifts into weighted builder exercises', () => {
+    const { exercises, supersets } = trackedLiftsToWorkout([bench, row, squat]);
+    expect(supersets).toEqual([]);
+    // 1-rep max: one set of one
+    expect(exercises[0]).toEqual({ name: 'Bench Press', sets: [{ reps: 1, weight: 265, unit: 'lbs' }] });
+    // no target: working sets at the default reps
+    expect(exercises[1].sets).toHaveLength(3);
+    expect(exercises[1].sets[0]).toEqual({ reps: 10, weight: 160, unit: 'lbs' });
+    // rep count
+    expect(exercises[2].sets).toEqual(Array(3).fill({ reps: 3, weight: 250, unit: 'lbs' }));
+  });
+
+  it('keeps rep ranges, added bodyweight load, named steps and time targets', () => {
+    const { exercises } = trackedLiftsToWorkout([
+      { id: 'a', name: 'Pull-up', category: 'Pull', load: { kind: 'bodyweight', plus: { value: 20, unit: 'kg' } }, target: { kind: 'reps', min: 6, max: 8 } },
+      { id: 'b', name: 'Chest pass', category: 'Push', load: { kind: 'level', label: 'Med ball 6 kg' }, target: { kind: 'time', seconds: 40, tempo: '3-1-3' } },
+    ]);
+    expect(exercises[0].sets[0]).toEqual({ reps: { min: 6, max: 8 }, weight: 20, unit: 'kg' });
+    expect(exercises[1].sets[0]).toEqual({ reps: 1, time: 40 });
+    expect(exercises[1].notes).toBe('Med ball 6 kg; 40 s under tension, tempo 3-1-3');
+  });
+
+  it('gives each set its own object so edits stay per set', () => {
+    const { sets } = trackedLiftsToWorkout([squat]).exercises[0];
+    expect(sets[0]).not.toBe(sets[1]);
+  });
+});
+
+describe('workoutNameForLifts', () => {
+  it('joins the distinct categories in order', () => {
+    const [bench, row, squat] = seedTrackedLifts().lifts;
+    expect(workoutNameForLifts([bench, squat, { ...bench, id: 'x' }])).toBe('Push + Legs');
+    expect(workoutNameForLifts([row])).toBe('Pull');
   });
 });
