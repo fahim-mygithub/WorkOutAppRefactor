@@ -14,6 +14,7 @@ import { sanitizeWorkoutExercisesForRedux } from '../utils/workoutConversion';
 import type { Exercise } from '../types/exercise';
 import { WizardShell } from '../components/build/WizardShell';
 import { ChoiceCard } from '../components/build/ChoiceCard';
+import { TrackedLifts } from '../components/build/TrackedLifts';
 import { BodyMusclePicker } from '../components/build/BodyMusclePicker';
 import { RecommendedWorkout, type ReviewRow } from '../components/build/RecommendedWorkout';
 import { Button } from '../components/ui/button';
@@ -223,32 +224,36 @@ export default function BuildWizardPage() {
 
   if (screen === 'chooser') {
     return (
-      <WizardShell title="Build a workout" subtitle="How do you want to start?">
-        {/* Top-anchored in the upper portion of the screen (not stretched to
-            fill): natural-height options with generous spacing, staggered in. */}
-        <div className="choice-list flex flex-col gap-4 pt-7">
+      <WizardShell title="Build a workout" subtitle="How do you want to start?" scrollableBody>
+        {/* Three ways to start, one row; the running list of tracked lifts sits
+            underneath. The body scrolls because the list grows with the user. */}
+        <div className="choice-list grid grid-cols-3 gap-2.5 pt-3">
           <ChoiceCard
             className="choice-card-in"
+            layout="tile"
             icon={LayoutTemplate}
-            title="Use a Template"
-            description="Push/Pull/Legs, Upper/Lower, Full-Body…"
+            title="Template"
+            description="Push/Pull/Legs, Upper/Lower, Full-Body"
             onClick={() => setScreen('template')}
           />
           <ChoiceCard
             className="choice-card-in"
+            layout="tile"
             icon={PersonStanding}
-            title="By Muscle Group"
+            title="By muscle"
             description="Pick muscles on the body map, get exercises"
             onClick={() => setScreen('muscle-select')}
           />
           <ChoiceCard
             className="choice-card-in"
+            layout="tile"
             icon={PencilRuler}
-            title="Custom Build"
-            description="Free-form text & visual editor"
+            title="Custom"
+            description="Free-form text and visual editor"
             onClick={() => navigate('/build/custom')}
           />
         </div>
+        <TrackedLifts className="pb-6 pt-8" />
       </WizardShell>
     );
   }

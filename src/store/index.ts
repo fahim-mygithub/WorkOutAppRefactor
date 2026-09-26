@@ -6,6 +6,7 @@ import customExerciseReducer from './slices/customExerciseSlice';
 import exerciseHistoryReducer from './slices/exerciseHistorySlice';
 import sharedWorkoutReducer from './slices/sharedWorkoutSlice';
 import scheduleReducer from './slices/scheduleSlice';
+import trackedLiftsReducer from './slices/trackedLiftsSlice';
 
 export const store = configureStore({
   reducer: {
@@ -16,6 +17,7 @@ export const store = configureStore({
     exerciseHistory: exerciseHistoryReducer,
     sharedWorkout: sharedWorkoutReducer,
     schedule: scheduleReducer,
+    trackedLifts: trackedLiftsReducer,
   },
   middleware: (getDefaultMiddleware) =>
     getDefaultMiddleware({
