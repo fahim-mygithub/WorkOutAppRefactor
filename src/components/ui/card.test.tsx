@@ -11,54 +11,34 @@ import {
 } from '@/components/ui/card';
 
 describe('Card', () => {
-  it('renders a <div> with default elevation 1 (shadow-e1)', () => {
+  it('renders a <div> with default elevation 1 (subtle surface)', () => {
     render(<Card data-testid="card">content</Card>);
     const card = screen.getByTestId('card');
     expect(card.tagName).toBe('DIV');
-    expect(card.className).toMatch(/shadow-e1/);
+    expect(card.className.split(/\s+/)).toContain('bg-surface-subtle');
   });
 
   it('applies base surface + radius classes by default', () => {
     render(<Card data-testid="card">content</Card>);
     const card = screen.getByTestId('card');
-    expect(card.className).toMatch(/bg-surface-raised/);
-    expect(card.className).toMatch(/rounded-lg/);
+    expect(card.className).toMatch(/bg-surface-subtle/);
+    expect(card.className).toMatch(/rounded-\[20px\]/);
+    // Tempo: depth by surface step, never a border or drop shadow.
+    expect(card.className).not.toMatch(/shadow-e|border/);
   });
 
-  it('applies elevation 0 -> shadow-e0', () => {
+  it.each([
+    [0, 'bg-surface'],
+    [1, 'bg-surface-subtle'],
+    [2, 'bg-surface-raised'],
+    [3, 'bg-surface-raised'],
+  ] as const)('applies elevation %i -> %s', (elevation, surface) => {
     render(
-      <Card data-testid="card" elevation={0}>
+      <Card data-testid="card" elevation={elevation}>
         x
       </Card>,
     );
-    expect(screen.getByTestId('card').className).toMatch(/shadow-e0/);
-  });
-
-  it('applies elevation 1 -> shadow-e1', () => {
-    render(
-      <Card data-testid="card" elevation={1}>
-        x
-      </Card>,
-    );
-    expect(screen.getByTestId('card').className).toMatch(/shadow-e1/);
-  });
-
-  it('applies elevation 2 -> shadow-e2', () => {
-    render(
-      <Card data-testid="card" elevation={2}>
-        x
-      </Card>,
-    );
-    expect(screen.getByTestId('card').className).toMatch(/shadow-e2/);
-  });
-
-  it('applies elevation 3 -> shadow-e3', () => {
-    render(
-      <Card data-testid="card" elevation={3}>
-        x
-      </Card>,
-    );
-    expect(screen.getByTestId('card').className).toMatch(/shadow-e3/);
+    expect(screen.getByTestId('card').className.split(/\s+/)).toContain(surface);
   });
 
   it('forwards ref to the underlying <div>', () => {
@@ -81,7 +61,7 @@ describe('Card', () => {
     const card = screen.getByTestId('card');
     expect(card.className).toMatch(/bg-blue-500/);
     const tokens = card.className.split(/\s+/);
-    expect(tokens).not.toContain('bg-surface-raised');
+    expect(tokens).not.toContain('bg-surface-subtle');
   });
 
   it('forwards arbitrary div props (e.g. id, role)', () => {
@@ -214,16 +194,15 @@ describe('Card composition', () => {
 });
 
 describe('cardVariants', () => {
-  it('is exported and callable, returning class string with elevation shadow', () => {
+  it('is exported and callable, returning class string with the elevation surface', () => {
     expect(typeof cardVariants).toBe('function');
     const cls = cardVariants({ elevation: 2 });
     expect(typeof cls).toBe('string');
-    expect(cls).toMatch(/shadow-e2/);
     expect(cls).toMatch(/bg-surface-raised/);
   });
 
   it('defaults to elevation 1 when called with no args', () => {
     const cls = cardVariants();
-    expect(cls).toMatch(/shadow-e1/);
+    expect(cls).toMatch(/bg-surface-subtle/);
   });
 });

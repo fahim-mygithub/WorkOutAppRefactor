@@ -105,7 +105,7 @@ export const SheetContent = React.forwardRef<HTMLDivElement, SheetContentProps>(
             <DialogPrimitive.Overlay asChild forceMount>
               <fmotion.div
                 data-sheet-overlay=""
-                className="fixed inset-0 z-40 bg-ink/40 backdrop-blur-sm"
+                className="fixed inset-0 z-40 bg-surface/70 backdrop-blur-sm"
                 {...motionTokens.preset.fade}
               />
             </DialogPrimitive.Overlay>
@@ -116,7 +116,7 @@ export const SheetContent = React.forwardRef<HTMLDivElement, SheetContentProps>(
                 // contract), but the v2 spec asserts on it; set it explicitly.
                 aria-modal="true"
                 className={cn(
-                  'fixed inset-x-0 bottom-0 z-50 max-h-[90vh] overflow-y-auto rounded-t-xl bg-surface-raised p-6 pt-3 shadow-e3',
+                  'fixed inset-x-0 bottom-0 z-50 max-h-[90vh] overflow-y-auto rounded-t-3xl bg-surface-subtle p-6 pt-3 pb-[calc(1.5rem+env(safe-area-inset-bottom))] text-ink shadow-e3',
                   className,
                 )}
                 {...motionTokens.preset.sheetUp}
@@ -128,7 +128,7 @@ export const SheetContent = React.forwardRef<HTMLDivElement, SheetContentProps>(
                 <div
                   data-testid="sheet-drag-handle"
                   aria-hidden="true"
-                  className="mx-auto mb-3 h-1 w-10 rounded-full bg-ink/15"
+                  className="mx-auto mb-4 h-1 w-10 rounded-full bg-ink/20"
                 />
                 {children}
               </fmotion.div>
@@ -151,7 +151,7 @@ export const SheetTitle = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <DialogPrimitive.Title
     ref={ref}
-    className={cn('text-display-lg font-bold text-ink', className)}
+    className={cn('font-display text-display text-ink', className)}
     {...props}
   />
 ));
@@ -167,7 +167,7 @@ export const SheetDescription = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <DialogPrimitive.Description
     ref={ref}
-    className={cn('mt-1 text-body-sm text-ink-subtle', className)}
+    className={cn('mt-1 text-body-sm text-ink-muted', className)}
     {...props}
   />
 ));

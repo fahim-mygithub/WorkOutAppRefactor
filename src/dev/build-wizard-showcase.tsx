@@ -17,8 +17,7 @@ import '@/styles/tokens.css';
 import '@/styles/fonts.css';
 import '../App.css';
 import '../styles/animations.css';
-import '../styles/board.css';
-import { BoardFilters } from '../components/BoardFilters';
+import '../styles/tempo.css';
 import { LayoutTemplate, PersonStanding, PencilRuler } from 'lucide-react';
 import type { Exercise } from '../types/exercise';
 import { WizardShell } from '../components/build/WizardShell';
@@ -194,7 +193,6 @@ const Column: React.FC<{ theme: 'light' | 'dark' }> = ({ theme }) => (
 
 const ShowcaseApp: React.FC = () => (
   <MemoryRouter>
-    <BoardFilters />
     <div className="grid grid-cols-1 2xl:grid-cols-2">
       <Column theme="light" />
       <Column theme="dark" />

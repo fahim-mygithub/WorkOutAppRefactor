@@ -1,19 +1,18 @@
-// Card primitive: composable surface container with elevation tokens (e0..e3).
+// Card primitive: composable surface container. In Tempo, depth comes from
+// surface steps rather than borders or shadows, so `elevation` selects the
+// surface: 0 = ground, 1 = subtle (default card), 2+ = raised (nested/emphasis).
 // Subcomponents (Header/Title/Body/Footer) provide consistent padding + layout.
 import * as React from 'react';
 import { cva, type VariantProps } from 'class-variance-authority';
 import { cn } from '@/lib/utils';
 
-// `.board-card` (board.css) supplies the board surface, asymmetric hand-drawn
-// corners, and the wobbly marker/chalk outline (drawn on a pseudo-element so the
-// card's content stays crisp). Elevation shadows layer underneath for depth.
-const cardVariants = cva('board-card', {
+const cardVariants = cva('relative rounded-[20px] text-ink', {
   variants: {
     elevation: {
-      0: 'shadow-e0',
-      1: 'shadow-e1',
-      2: 'shadow-e2',
-      3: 'shadow-e3',
+      0: 'bg-surface',
+      1: 'bg-surface-subtle',
+      2: 'bg-surface-raised',
+      3: 'bg-surface-raised',
     },
   },
   defaultVariants: {
@@ -50,7 +49,7 @@ export const CardTitle = React.forwardRef<HTMLHeadingElement, CardTitleProps>(
   ({ className, ...props }, ref) => (
     <h3
       ref={ref}
-      className={cn('text-title font-semibold text-ink', className)}
+      className={cn('text-title font-bold text-ink', className)}
       {...props}
     />
   ),

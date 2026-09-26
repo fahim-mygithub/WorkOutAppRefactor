@@ -42,7 +42,7 @@ export const SelectTrigger = React.forwardRef<
   <SelectPrimitive.Trigger
     ref={ref}
     className={cn(
-      'flex min-h-touch-min w-full items-center justify-between gap-2 rounded-md bg-surface-raised px-4 text-body text-ink shadow-e1',
+      'flex min-h-touch-min w-full items-center justify-between gap-2 rounded-xl bg-surface-raised px-4 text-body text-ink',
       'transition-colors duration-snap',
       'placeholder:text-ink-subtle data-[placeholder]:text-ink-subtle',
       'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2',
@@ -53,7 +53,7 @@ export const SelectTrigger = React.forwardRef<
   >
     {children}
     <SelectPrimitive.Icon asChild>
-      <ChevronDown className="h-4 w-4 shrink-0 text-ink-subtle" aria-hidden />
+      <ChevronDown className="h-4 w-4 shrink-0 text-ink-muted" aria-hidden />
     </SelectPrimitive.Icon>
   </SelectPrimitive.Trigger>
 ));
@@ -109,7 +109,7 @@ export const SelectContent = React.forwardRef<
       ref={ref}
       position={position}
       className={cn(
-        'relative z-50 max-h-[--radix-select-content-available-height] min-w-[8rem] overflow-hidden rounded-md bg-surface-raised text-ink shadow-e3',
+        'relative z-50 max-h-[--radix-select-content-available-height] min-w-[8rem] overflow-hidden rounded-2xl bg-surface-raised text-ink shadow-e3',
         position === 'popper' &&
           'w-full min-w-[var(--radix-select-trigger-width)]',
         className,
@@ -154,7 +154,7 @@ export const SelectItem = React.forwardRef<
   <SelectPrimitive.Item
     ref={ref}
     className={cn(
-      'relative flex min-h-touch-min w-full cursor-pointer select-none items-center rounded-sm py-2 pl-8 pr-2 text-body text-ink outline-none',
+      'relative flex min-h-touch-min w-full cursor-pointer select-none items-center rounded-xl py-2 pl-8 pr-2 text-body text-ink outline-none',
       'transition-colors duration-snap',
       'focus:bg-surface-subtle data-[highlighted]:bg-surface-subtle data-[highlighted]:outline-none',
       'data-[disabled]:pointer-events-none data-[disabled]:opacity-50',
@@ -192,7 +192,7 @@ export const SelectSeparator = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <SelectPrimitive.Separator
     ref={ref}
-    className={cn('-mx-1 my-1 h-px bg-surface-subtle', className)}
+    className={cn('-mx-1 my-1 h-px bg-hairline', className)}
     {...props}
   />
 ));

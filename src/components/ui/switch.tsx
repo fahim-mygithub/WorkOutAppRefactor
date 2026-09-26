@@ -1,5 +1,5 @@
 // Switch primitive: token-styled wrapper over Radix Switch for settings
-// toggles (incl. the theme toggle). Renders a <button role="switch"> track
+// toggles. Renders a <button role="switch"> track
 // with a sliding thumb. Accent fill when on, muted surface when off; brand
 // focus-visible ring matching Button. Forwards ref to the underlying button
 // and supports aria-label for accessible naming.
@@ -23,7 +23,7 @@ export const Switch = React.forwardRef<
       // Focus ring (matches Button's brand ring)
       'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface',
       // State colors
-      'data-[state=checked]:bg-accent data-[state=unchecked]:bg-surface-subtle',
+      'data-[state=checked]:bg-accent data-[state=unchecked]:bg-surface-raised',
       // Disabled
       'disabled:cursor-not-allowed disabled:opacity-50',
       className,
@@ -32,7 +32,7 @@ export const Switch = React.forwardRef<
   >
     <SwitchPrimitive.Thumb
       className={cn(
-        'pointer-events-none block h-5 w-5 rounded-full bg-surface-raised shadow-e1 ring-0 transition-transform duration-snap',
+        'pointer-events-none block h-5 w-5 rounded-full bg-ink ring-0 transition-transform duration-snap',
         'data-[state=checked]:translate-x-5 data-[state=unchecked]:translate-x-0.5',
       )}
     />

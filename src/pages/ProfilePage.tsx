@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAppSelector, useAppDispatch } from '../store/hooks';
 import { useAuth } from '../contexts/AuthContext';
-import { setWeightUnit, setTheme, setUnitSystem, setDefaultRestTime, toggleAutoStartTimer, setDefaultProgressionRate, toggleKeyboardShortcuts, toggleKeyboardShortcutsDisplay } from '../store/slices/userSlice';
+import { setWeightUnit, setUnitSystem, setDefaultRestTime, toggleAutoStartTimer, setDefaultProgressionRate, toggleKeyboardShortcuts, toggleKeyboardShortcutsDisplay } from '../store/slices/userSlice';
 import { loadWorkoutHistory } from '../store/slices/exerciseHistorySlice';
 import { ExerciseHistoryService } from '../services/exerciseHistoryService';
 import { startWorkout } from '../store/slices/workoutSlice';
@@ -16,7 +16,7 @@ import { SavedWorkout } from '../services/workoutStorageService';
 import { WorkoutSummary } from '../types/exerciseHistory';
 import { convertSavedWorkoutToExercises, sanitizeWorkoutExercisesForRedux, convertWorkoutHistoryToExercises } from '../utils/workoutConversion';
 import { useExercises } from '../hooks/useExercises';
-import { History, Trophy, TrendingUp, Play, Dumbbell, Moon } from 'lucide-react';
+import { History, Trophy, TrendingUp, Play, Dumbbell } from 'lucide-react';
 import { Card, CardBody } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { IconButton } from '../components/ui/icon-button';
@@ -65,15 +65,6 @@ export default function ProfilePage() {
 
   const handleProgressionRateChange = (rate: 'beginner' | 'intermediate' | 'advanced') => {
     dispatch(setDefaultProgressionRate(rate));
-  };
-
-  // Theme toggle: dark-first. The Switch reflects whether the effective theme is
-  // dark; flipping it dispatches setTheme, which ThemeProvider reads to toggle
-  // the .dark class on <html>. 'system' is treated as dark for the toggle's
-  // checked state (dark-first default).
-  const isDarkTheme = preferences.theme !== 'light';
-  const handleThemeToggle = (checked: boolean) => {
-    dispatch(setTheme(checked ? 'dark' : 'light'));
   };
 
   // Handle opening manual exercise logger
@@ -716,25 +707,6 @@ export default function ProfilePage() {
                 <CardBody className="p-6">
                   <h2 className="text-body font-semibold mb-4">App Settings</h2>
                   <div className="grid md:grid-cols-2 gap-6">
-                    {/* Theme Toggle */}
-                    <div className="flex items-center justify-between">
-                      <div className="flex-1">
-                        <Label htmlFor="settings-theme-toggle" className="gap-2">
-                          <Moon className="h-4 w-4" />
-                          Dark Mode
-                        </Label>
-                        <p className="text-caption text-ink-subtle mt-1">
-                          Toggle between dark and light appearance
-                        </p>
-                      </div>
-                      <Switch
-                        id="settings-theme-toggle"
-                        checked={isDarkTheme}
-                        onCheckedChange={handleThemeToggle}
-                        aria-label="Toggle dark mode"
-                      />
-                    </div>
-
                     {/* Unit System */}
                     <Stack gap={2}>
                       <Label>Unit System</Label>

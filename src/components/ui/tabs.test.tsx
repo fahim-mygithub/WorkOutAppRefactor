@@ -89,11 +89,13 @@ describe('Tabs', () => {
     expect(screen.getByRole('tab', { name: 'Visual' })).toHaveFocus();
   });
 
-  it('active trigger uses the accent token for styling', () => {
+  it('active trigger uses the ink-on-ground selected step', () => {
     render(<BuildHarness />);
     const active = screen.getByRole('tab', { name: 'Text' });
     // Active state classes reference the accent token (text + indicator).
-    expect(active.className).toMatch(/data-\[state=active\]:.*accent/);
+    // Tempo: the selected segment is an ink-on-ground step (amber is reserved
+    // for the one forward action on screen).
+    expect(active.className).toMatch(/data-\[state=active\]:text-ink/);
   });
 
   it('disabled trigger: has disabled attrs, disabled styling, and is not selectable', async () => {

@@ -5,8 +5,7 @@ const config: Config = {
     './index.html',
     './src/**/*.{js,ts,jsx,tsx}',
   ],
-  darkMode: 'class',
-  theme: {
+    theme: {
     extend: {
       colors: {
         // --- Shadcn-style aliases (preserved from Task 3) ---
@@ -52,6 +51,13 @@ const config: Config = {
           fg: 'hsl(var(--accent-fg))',
           foreground: 'hsl(var(--accent-foreground))',
         },
+        // Ice: done / informational (Tempo)
+        'accent-2': {
+          DEFAULT: 'hsl(var(--accent-2))',
+          fg: 'hsl(var(--accent-2-fg))',
+        },
+        // List-row separators only
+        hairline: 'hsl(var(--hairline))',
         // Semantic state
         success: 'hsl(var(--success))',
         warning: 'hsl(var(--warning))',
@@ -82,27 +88,15 @@ const config: Config = {
         e3: '0 8px 24px hsl(var(--shadow) / 0.10)',
       },
       fontFamily: {
-        // Default/body voice = legible handwriting (Kalam). The whole board
-        // speaks in handwriting; numbers/inputs opt back out via `font-num`.
-        sans: ['Kalam', 'ui-sans-serif', 'system-ui', 'sans-serif'],
-        // Display / headers / labels = chalk handwriting. Kalam (bold via the
-        // `.font-marker`/`.font-display` weight rule in board.css) reads clearer
-        // and lighter than the old Permanent Marker while staying on-theme.
-        marker: ['Kalam', 'ui-sans-serif', 'cursive'],
-        display: ['Kalam', 'ui-sans-serif', 'sans-serif'],
-        // Explicit legible-handwriting body voice.
-        hand: ['Kalam', 'ui-sans-serif', 'cursive'],
-        // Crisp numeric/data face — weight/reps/timers stay glanceable mid-set.
-        // Deliberately NOT handwritten (the one skeuomorphic exception).
-        num: [
-          'ui-sans-serif',
-          'system-ui',
-          '-apple-system',
-          'BlinkMacSystemFont',
-          '"Segoe UI"',
-          'Roboto',
-          'sans-serif',
-        ],
+        // Tempo: one family, Archivo (variable width + weight). Width does the
+        // expressive work — see `.font-display` / `.font-wide` in tempo.css.
+        sans: ['Archivo', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+        display: ['Archivo', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+        // Legacy heading voice (pre-Tempo); plain Archivo bold until each
+        // surface is redesigned to use `font-display` deliberately.
+        marker: ['Archivo', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+        // Live metrics — pair with `font-tabular` so digits don't jitter.
+        num: ['Archivo', 'ui-sans-serif', 'system-ui', 'sans-serif'],
         mono: ['ui-monospace', 'SFMono-Regular', 'Menlo', 'monospace'],
       },
       fontSize: {
@@ -110,14 +104,17 @@ const config: Config = {
         'body-sm':    ['14px', { lineHeight: '1.45',                            fontWeight: '500' }],
         'body':       ['16px', { lineHeight: '1.5',                             fontWeight: '400' }],
         'title':      ['22px', { lineHeight: '1.2',  letterSpacing: '-0.01em', fontWeight: '600' }],
-        'display':    ['32px', { lineHeight: '1.1',  letterSpacing: '-0.02em', fontWeight: '700' }],
-        'display-lg': ['48px', { lineHeight: '1.05', letterSpacing: '-0.02em', fontWeight: '700' }],
-        'metric':     ['56px', { lineHeight: '1.0',  letterSpacing: '-0.02em', fontWeight: '700' }],
+        'display':    ['32px', { lineHeight: '1.05', letterSpacing: '-0.02em', fontWeight: '800' }],
+        'display-lg': ['48px', { lineHeight: '0.98', letterSpacing: '-0.03em', fontWeight: '800' }],
+        'metric':     ['56px', { lineHeight: '0.95', letterSpacing: '-0.03em', fontWeight: '800' }],
+        // Live-set hero numbers (weight / reps / rest countdown)
+        'metric-xl':  ['96px', { lineHeight: '0.9',  letterSpacing: '-0.04em', fontWeight: '800' }],
       },
       spacing: {
         // 4-pt baseline already covered by Tailwind defaults; add semantic touch sizes
         'touch-min': '44px', // iOS HIG minimum
         'touch-lg': '56px',  // primary live-workout buttons
+        'touch-xl': '68px',  // the one bottom-anchored primary action (Tempo)
       },
       transitionDuration: {
         snap: '120ms',

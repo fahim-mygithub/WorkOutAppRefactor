@@ -87,7 +87,7 @@ export const ModalContent = React.forwardRef<HTMLDivElement, ModalContentProps>(
             <DialogPrimitive.Overlay asChild forceMount>
               <fmotion.div
                 data-modal-overlay=""
-                className="fixed inset-0 z-40 bg-ink/50 backdrop-blur-sm"
+                className="fixed inset-0 z-40 bg-surface/75 backdrop-blur-sm"
                 {...motionTokens.preset.fade}
               />
             </DialogPrimitive.Overlay>
@@ -99,7 +99,7 @@ export const ModalContent = React.forwardRef<HTMLDivElement, ModalContentProps>(
                   // Transform-free centering (see file header): auto-margins on a
                   // fixed, height-fit box center it on both axes; `transform` is
                   // left to the scale animation.
-                  'fixed inset-0 z-50 m-auto flex h-fit max-h-[88svh] w-[calc(100%-2rem)] max-w-md flex-col overflow-hidden rounded-2xl bg-surface-raised shadow-e3',
+                  'fixed inset-0 z-50 m-auto flex h-fit max-h-[88svh] w-[calc(100%-2rem)] max-w-md flex-col overflow-hidden rounded-3xl bg-surface-subtle text-ink shadow-e3',
                   className,
                 )}
                 {...motionTokens.preset.scale}
@@ -124,7 +124,7 @@ export const ModalTitle = React.forwardRef<HTMLHeadingElement, ModalTitleProps>(
   ({ className, ...props }, ref) => (
     <DialogPrimitive.Title
       ref={ref}
-      className={cn('text-display-lg font-bold text-ink', className)}
+      className={cn('font-display text-display text-ink', className)}
       {...props}
     />
   ),
@@ -141,7 +141,7 @@ export const ModalDescription = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <DialogPrimitive.Description
     ref={ref}
-    className={cn('mt-1 text-body-sm text-ink-subtle', className)}
+    className={cn('mt-1 text-body-sm text-ink-muted', className)}
     {...props}
   />
 ));

@@ -9,12 +9,12 @@ import { cva, type VariantProps } from 'class-variance-authority';
 import { cn } from '@/lib/utils';
 
 const textareaVariants = cva(
-  'flex w-full min-h-[5rem] rounded-md border bg-surface px-3 py-2 text-body text-ink shadow-e1 transition-colors duration-snap placeholder:text-ink-subtle focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50',
+  'flex w-full min-h-[5rem] rounded-xl border-0 bg-surface-raised px-4 py-3 text-body text-ink transition-shadow duration-snap placeholder:text-ink-subtle focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50',
   {
     variants: {
       error: {
-        true: 'border-danger focus-visible:ring-danger',
-        false: 'border-input',
+        true: 'ring-2 ring-danger focus-visible:ring-danger',
+        false: '',
       },
     },
     defaultVariants: {

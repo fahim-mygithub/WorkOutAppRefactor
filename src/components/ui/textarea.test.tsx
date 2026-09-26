@@ -11,12 +11,12 @@ describe('Textarea', () => {
     expect(el.tagName).toBe('TEXTAREA');
   });
 
-  it('applies base token styling (bg-surface, text-ink, rounded-md)', () => {
+  it('applies base token styling (bg-surface-raised, text-ink, rounded-xl)', () => {
     render(<Textarea aria-label="notes" />);
     const el = screen.getByRole('textbox', { name: /notes/i });
-    expect(el.className).toMatch(/bg-surface/);
+    expect(el.className).toMatch(/bg-surface-raised/);
     expect(el.className).toMatch(/text-ink/);
-    expect(el.className).toMatch(/rounded-md/);
+    expect(el.className).toMatch(/rounded-xl/);
   });
 
   it('uses a brand-accent focus ring (focus-visible:ring-accent)', () => {
@@ -32,11 +32,11 @@ describe('Textarea', () => {
     expect(el.className).not.toMatch(/#[0-9a-fA-F]{3,6}/);
   });
 
-  it('reflects error state with aria-invalid and danger border', () => {
+  it('reflects error state with aria-invalid and danger ring', () => {
     render(<Textarea aria-label="notes" error />);
     const el = screen.getByRole('textbox', { name: /notes/i });
     expect(el).toHaveAttribute('aria-invalid', 'true');
-    expect(el.className).toMatch(/border-danger/);
+    expect(el.className).toMatch(/ring-danger/);
   });
 
   it('does not set aria-invalid when error is absent', () => {
@@ -110,6 +110,6 @@ describe('Textarea', () => {
   it('exports a textareaVariants helper returning class strings', async () => {
     const mod = await import('@/components/ui/textarea');
     expect(typeof mod.textareaVariants).toBe('function');
-    expect(mod.textareaVariants({ error: true })).toMatch(/border-danger/);
+    expect(mod.textareaVariants({ error: true })).toMatch(/ring-danger/);
   });
 });

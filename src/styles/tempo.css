@@ -1,0 +1,123 @@
+/**
+ * tempo.css — the few global rules the Tempo theme needs beyond Tailwind
+ * (docs/plans/2026-09-26-tempo-ui-design.md).
+ *
+ * Tempo gets depth from surface steps, not outlines, so most of this file is
+ * typography plus the functional muscle-map / wizard rules. The legacy
+ * chalkboard class names (.board-card, .sketch-border, .marker-underline,
+ * .chalk-strike, .board-active) are kept as quiet Tempo equivalents only until
+ * each surface is redesigned; new code must not use them.
+ */
+
+/* ---------------------------------------------------------------------------
+ * Typography. Preflight resets heading weight to `inherit`, so the display
+ * voice pins its own weight and width.
+ *   - .font-display → Archivo expanded 800: screen titles + hero numbers.
+ *   - .font-marker  → legacy heading/label voice; plain Archivo bold until the
+ *                     surface using it is redesigned.
+ * ------------------------------------------------------------------------- */
+.font-display {
+  font-weight: 800;
+  font-stretch: 125%;
+  letter-spacing: -0.02em;
+}
+.font-marker {
+  font-weight: 700;
+}
+
+/* Tempo "expanded" width without the display weight — for pill labels and
+ * secondary numbers that want the same voice at a lighter weight. */
+.font-wide {
+  font-stretch: 112%;
+}
+
+/* ---------------------------------------------------------------------------
+ * Legacy chalkboard classes → quiet Tempo equivalents (to be removed).
+ * ------------------------------------------------------------------------- */
+.board-card {
+  position: relative;
+  background-color: hsl(var(--surface-subtle));
+  border-radius: 20px;
+}
+.chalk-strike {
+  text-decoration: line-through;
+  text-decoration-color: hsl(var(--ink-muted));
+}
+.board-active {
+  box-shadow: 0 0 0 2px hsl(var(--accent));
+}
+
+/* ---------------------------------------------------------------------------
+ * Home muscle map (MuscleWiki SVG). Muscle <g> fills are `currentColor`, so
+ * `color` drives them; the body outline group draws the separation strokes.
+ * ------------------------------------------------------------------------- */
+.muscle-map {
+  color: hsl(var(--surface-raised)); /* resting muscle */
+}
+.muscle-map svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.muscle-map g.bodymap {
+  cursor: pointer;
+  transition: color 140ms ease;
+}
+.muscle-map g.bodymap:hover {
+  color: hsl(var(--accent-2));
+}
+/* The body outline is decorative: never let it intercept muscle clicks. */
+.muscle-map g.body-map__model {
+  pointer-events: none;
+}
+.muscle-map svg [stroke] {
+  stroke: hsl(var(--surface));
+}
+/* MuscleWiki ships hidden joint markers — keep them hidden. */
+.muscle-map g[id].hidden {
+  display: none;
+}
+
+/* ---------------------------------------------------------------------------
+ * Build wizard — muscle MULTI-SELECT picker (BodyMusclePicker).
+ * Selected groups light up amber; figures are bounded by HEIGHT so the tall
+ * body always fits the no-scroll wizard body.
+ * ------------------------------------------------------------------------- */
+.muscle-map g.bodymap.is-selected,
+.muscle-map g.bodymap.is-selected:hover {
+  color: hsl(var(--accent));
+}
+.muscle-picker .muscle-map svg {
+  width: auto;
+  height: 100%;
+  max-height: 100%;
+  max-width: 100%;
+}
+
+/* ---------------------------------------------------------------------------
+ * Build wizard — Screen 1 choice cards: a subtle staggered fade-up on load.
+ * ------------------------------------------------------------------------- */
+@keyframes choiceCardIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.choice-card-in {
+  animation: choiceCardIn 0.34s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.choice-list > .choice-card-in:nth-child(2) {
+  animation-delay: 70ms;
+}
+.choice-list > .choice-card-in:nth-child(3) {
+  animation-delay: 140ms;
+}
+@media (prefers-reduced-motion: reduce) {
+  .choice-card-in {
+    animation: none;
+  }
+}

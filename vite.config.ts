@@ -113,8 +113,8 @@ export default defineConfig(({ command, mode }) => {
         name: 'Workout Tracker',
         short_name: 'Workout',
         description: 'Track your workouts and build strength',
-        theme_color: '#1f2937',
-        background_color: '#111827',
+        theme_color: '#121826',
+        background_color: '#121826',
         display: 'standalone',
         icons: [
           {

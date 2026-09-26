@@ -104,14 +104,14 @@ describe('IconButton', () => {
     );
   });
 
-  it('applies the ghost variant (no solid bg-accent/danger, hover bg-surface-subtle)', () => {
+  it('applies the ghost variant (no solid bg-accent/danger, hover bg-surface-raised)', () => {
     render(
       <IconButton aria-label="x" variant="ghost">
         <TestIcon />
       </IconButton>,
     );
     const btn = screen.getByRole('button', { name: 'x' });
-    expect(btn.className).toMatch(/hover:bg-surface-subtle/);
+    expect(btn.className).toMatch(/hover:bg-surface-raised/);
     const tokens = btn.className.split(/\s+/);
     expect(tokens).not.toContain('bg-accent');
     expect(tokens).not.toContain('bg-danger');

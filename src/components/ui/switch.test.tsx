@@ -78,7 +78,7 @@ describe('Switch', () => {
   it('uses a muted track token when unchecked', () => {
     render(<Switch aria-label="track" />);
     const sw = screen.getByRole('switch', { name: /track/i });
-    expect(sw.className).toMatch(/data-\[state=unchecked\]:bg-surface-subtle/);
+    expect(sw.className).toMatch(/data-\[state=unchecked\]:bg-surface-raised/);
   });
 
   it('renders a thumb that moves between checked/unchecked positions', () => {

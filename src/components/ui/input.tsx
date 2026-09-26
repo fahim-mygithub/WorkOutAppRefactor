@@ -7,12 +7,11 @@ import { cva, type VariantProps } from 'class-variance-authority';
 import { cn } from '@/lib/utils';
 
 const inputVariants = cva(
-  // Surface + border tokens, brand-blue focus ring, danger-token error state
-  // via aria-invalid, and the shared disabled affordances mirroring Button.
-  // `font-num` keeps typed values (weight, reps, names) in the crisp data face —
-  // never handwritten — so they stay glanceable mid-set (the one skeuomorphic
-  // exception). 2px board-line border reads as a hand-drawn input box.
-  'flex w-full rounded-md border-2 border-border bg-surface font-num text-ink transition-colors duration-snap placeholder:text-ink-subtle focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface aria-[invalid=true]:border-danger aria-[invalid=true]:focus-visible:ring-danger disabled:cursor-not-allowed disabled:opacity-50',
+  // Tempo: filled field on the raised surface, no outline at rest. Amber
+  // focus ring; aria-invalid draws a danger ring (the accessible contract
+  // drives the styling). `font-num` + tabular digits keep typed weights/reps
+  // steady while editing.
+  'flex w-full rounded-xl border-0 bg-surface-raised font-num font-tabular text-ink transition-shadow duration-snap placeholder:text-ink-subtle focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface aria-[invalid=true]:ring-2 aria-[invalid=true]:ring-danger aria-[invalid=true]:focus-visible:ring-danger disabled:cursor-not-allowed disabled:opacity-50',
   {
     variants: {
       size: {

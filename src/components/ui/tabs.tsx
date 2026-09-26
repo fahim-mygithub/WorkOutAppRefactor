@@ -23,7 +23,7 @@ export const TabsList = React.forwardRef<
   <TabsPrimitive.List
     ref={ref}
     className={cn(
-      'inline-flex items-center justify-center gap-1 rounded-lg bg-surface-subtle p-1',
+      'inline-flex items-center justify-center gap-1 rounded-full bg-surface-raised p-1',
       className,
     )}
     {...props}
@@ -42,11 +42,13 @@ export const TabsTrigger = React.forwardRef<
   <TabsPrimitive.Trigger
     ref={ref}
     className={cn(
-      'inline-flex min-h-9 items-center justify-center whitespace-nowrap rounded-md px-3 text-body-sm font-medium text-ink-muted transition-colors duration-snap',
+      'inline-flex min-h-9 items-center justify-center whitespace-nowrap rounded-full px-4 text-body-sm font-semibold text-ink-muted transition-colors duration-snap',
       'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2',
       'disabled:pointer-events-none disabled:opacity-50 disabled:cursor-not-allowed',
       'hover:text-ink',
-      'data-[state=active]:bg-surface-raised data-[state=active]:text-accent data-[state=active]:shadow-e1',
+      // Selected segment is a quiet ink-on-ground step, not amber: amber is
+      // reserved for the one forward action on screen.
+      'data-[state=active]:bg-surface data-[state=active]:text-ink',
       className,
     )}
     {...props}

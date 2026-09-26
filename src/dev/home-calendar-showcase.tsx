@@ -17,8 +17,7 @@ import '@/styles/tokens.css';
 import '@/styles/fonts.css';
 import '../App.css';
 import '../styles/animations.css';
-import '../styles/board.css';
-import { BoardFilters } from '../components/BoardFilters';
+import '../styles/tempo.css';
 import { WorkoutCalendar } from '../components/home/WorkoutCalendar';
 import { TodayWorkout } from '../components/home/TodayWorkout';
 import { BodyMuscleMap } from '../components/home/BodyMuscleMap';
@@ -153,7 +152,6 @@ const Column: React.FC<{ theme: 'light' | 'dark' }> = ({ theme }) => (
 
 const ShowcaseApp: React.FC = () => (
   <MemoryRouter>
-    <BoardFilters />
     <div className="grid grid-cols-1 lg:grid-cols-2">
       <Column theme="light" />
       <Column theme="dark" />

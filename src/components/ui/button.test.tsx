@@ -62,10 +62,10 @@ describe('Button', () => {
     );
   });
 
-  it('applies the ghost variant (no solid background, hover bg-surface-subtle)', () => {
+  it('applies the ghost variant (no solid background, hover bg-surface-raised)', () => {
     render(<Button variant="ghost">More</Button>);
     const btn = screen.getByRole('button', { name: /more/i });
-    expect(btn.className).toMatch(/hover:bg-surface-subtle/);
+    expect(btn.className).toMatch(/hover:bg-surface-raised/);
     expect(btn.className).not.toMatch(/(?:^|\s)bg-accent(?:\s|$)/);
     expect(btn.className).not.toMatch(/(?:^|\s)bg-danger(?:\s|$)/);
   });

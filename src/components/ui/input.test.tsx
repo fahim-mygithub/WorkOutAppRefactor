@@ -21,16 +21,16 @@ describe('Input', () => {
     expect(screen.getByTestId('inp')).toHaveAttribute('type', 'email');
   });
 
-  it('applies the surface background base class by default', () => {
+  it('applies the raised surface fill by default', () => {
     render(<Input data-testid="inp" />);
     const tokens = screen.getByTestId('inp').className.split(/\s+/);
-    expect(tokens).toContain('bg-surface');
+    expect(tokens).toContain('bg-surface-raised');
   });
 
-  it('applies the border token base class by default', () => {
+  it('has no outline at rest (filled field)', () => {
     render(<Input data-testid="inp" />);
     const tokens = screen.getByTestId('inp').className.split(/\s+/);
-    expect(tokens).toContain('border-border');
+    expect(tokens).toContain('border-0');
   });
 
   it('applies a focus-visible accent ring', () => {
@@ -75,7 +75,7 @@ describe('Input', () => {
     const el = screen.getByTestId('inp');
     expect(el).toHaveAttribute('aria-invalid', 'true');
     // Error state surfaces the danger token on border + ring.
-    expect(el.className).toMatch(/aria-\[invalid=true\]:border-danger/);
+    expect(el.className).toMatch(/aria-\[invalid=true\]:ring-danger/);
     expect(el.className).toMatch(/aria-\[invalid=true\]:focus-visible:ring-danger/);
   });
 
@@ -161,10 +161,10 @@ describe('inputVariants', () => {
     expect(typeof inputVariants()).toBe('string');
   });
 
-  it('default invocation includes bg-surface, border-border, and min-h-touch-min', () => {
+  it('default invocation includes bg-surface-raised, border-0, and min-h-touch-min', () => {
     const cls = inputVariants();
-    expect(cls).toMatch(/bg-surface/);
-    expect(cls).toMatch(/border-border/);
+    expect(cls).toMatch(/bg-surface-raised/);
+    expect(cls).toMatch(/border-0/);
     expect(cls).toMatch(/min-h-touch-min/);
   });
 
