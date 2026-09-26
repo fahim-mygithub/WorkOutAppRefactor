@@ -7,6 +7,7 @@ import { saveCustomExercise } from '../../store/slices/customExerciseSlice';
 import { CustomExerciseService } from '../../services/customExerciseService';
 import { Button } from '../ui/button';
 import { IconButton } from '../ui/icon-button';
+import { ArrowRight, Loader2, X } from 'lucide-react';
 
 interface InlineSuggestionsProps {
   issues: ParseIssue[];
@@ -102,12 +103,10 @@ export const InlineSuggestions: React.FC<InlineSuggestionsProps> = ({
   };
   if (isValidating) {
     return (
-      <div className="mt-2 p-3 bg-surface-raised border border-border rounded-lg">
-        <div className="flex items-center gap-2 text-ink-subtle text-body-sm">
-          <div className="w-4 h-4 border-2 border-border border-t-accent rounded-full animate-spin"></div>
-          Checking exercise names...
-        </div>
-      </div>
+      <p className="flex items-center gap-2 pt-1 text-body-sm text-ink-muted" aria-live="polite">
+        <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+        Checking exercise names
+      </p>
     );
   }
 
@@ -119,151 +118,127 @@ export const InlineSuggestions: React.FC<InlineSuggestionsProps> = ({
     issue => issue.suggestions.length > 0 && issue.suggestions[0].confidence >= 90
   ).length;
 
+  // Match confidence is informational, not an outcome: ice for a near-certain
+  // match, muted for a likely one, warning when it's a guess.
   const getConfidenceColor = (confidence: number) => {
-    if (confidence >= 90) return 'bg-success/15 text-success border-success/40';
-    if (confidence >= 70) return 'bg-warning/15 text-warning border-warning/40';
-    return 'bg-danger/15 text-danger border-danger/40';
+    if (confidence >= 90) return 'bg-accent-2/15 text-accent-2';
+    if (confidence >= 70) return 'bg-surface text-ink-muted';
+    return 'bg-warning/15 text-warning';
   };
 
-  const getConfidenceIcon = (confidence: number) => {
-    if (confidence >= 90) {
-      return (
-        <svg className="w-3 h-3 text-success" fill="currentColor" viewBox="0 0 20 20">
-          <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-        </svg>
-      );
+  const getKeepLabel = (exerciseName: string) => {
+    switch (customExerciseStatus[exerciseName]) {
+      case 'saving':
+        return 'Saving';
+      case 'saved':
+        return 'Saved';
+      case 'error':
+        return 'Not saved';
+      default:
+        return 'Keep';
     }
-    if (confidence >= 70) {
-      return (
-        <svg className="w-3 h-3 text-warning" fill="currentColor" viewBox="0 0 20 20">
-          <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-        </svg>
-      );
-    }
-    return (
-      <svg className="w-3 h-3 text-danger" fill="currentColor" viewBox="0 0 20 20">
-        <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-      </svg>
-    );
   };
 
   return (
-    <div className="mt-2 p-4 bg-surface-raised border border-border rounded-lg space-y-3">
+    <div className="mt-2 rounded-2xl bg-surface-raised px-4 pb-3 pt-2">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <svg className="w-4 h-4 text-warning" fill="currentColor" viewBox="0 0 20 20">
-            <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-          </svg>
-          <span className="text-body-sm font-medium text-ink">
-            {issues.length} exercise{issues.length !== 1 ? 's' : ''} not found
-          </span>
-        </div>
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-body-sm font-semibold text-ink">
+          <span className="font-tabular">{issues.length}</span> exercise{issues.length !== 1 ? 's' : ''} not found
+        </p>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1">
           {highConfidenceCount > 0 && (
             <Button
-              variant="primary"
-              size="sm"
+              variant="secondary"
+              size="md"
               onClick={onApplyAllHighConfidence}
-              className="bg-success hover:bg-success/90 text-ink-inverse"
+              className="bg-surface"
               title={`Auto-fix ${highConfidenceCount} high-confidence matches`}
             >
-              Auto-fix {highConfidenceCount}
+              Fix {highConfidenceCount}
             </Button>
           )}
           <IconButton
             variant="ghost"
-            size="sm"
             onClick={onDismiss}
             aria-label="Dismiss suggestions"
             title="Dismiss suggestions"
           >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
+            <X className="h-4 w-4" aria-hidden="true" />
           </IconButton>
         </div>
       </div>
 
-      {/* Suggestions */}
-      <div className="space-y-2">
+      {/* Suggestions: one row per unrecognized name */}
+      <ul className="divide-y divide-hairline">
         {issues.slice(0, 5).map((issue, index) => {
           const topSuggestion = issue.suggestions[0];
           if (!topSuggestion) return null;
+          const keepStatus = customExerciseStatus[issue.exerciseName];
 
           return (
-            <div key={`${issue.exerciseName}-${index}`} className="flex items-center justify-between p-2 bg-surface-subtle rounded border border-border">
-              <div className="flex items-center gap-3 flex-1 min-w-0">
-                {/* Original text */}
-                <div className="flex items-center gap-1 flex-shrink-0">
-                  <span className="text-danger font-medium text-body-sm line-through">
-                    {issue.exerciseName}
-                  </span>
-                  <svg className="w-3 h-3 text-ink-subtle" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8l4 4m0 0l-4 4m4-4H3" />
-                  </svg>
-                </div>
+            <li key={`${issue.exerciseName}-${index}`} className="py-3">
+              <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-body-sm">
+                <span className="text-ink-muted line-through decoration-ink-subtle">
+                  {issue.exerciseName}
+                </span>
+                <ArrowRight className="h-3 w-3 shrink-0 text-ink-subtle" aria-label="suggested" />
+                <span className="min-w-0 truncate font-semibold text-ink">
+                  {topSuggestion.exercise.name}
+                </span>
+                <span
+                  className={`shrink-0 rounded-full px-2 py-0.5 font-tabular text-caption ${getConfidenceColor(topSuggestion.confidence)}`}
+                >
+                  {topSuggestion.confidence}%
+                </span>
+              </div>
 
-                {/* Suggestion */}
-                <div className="flex items-center gap-2 flex-1 min-w-0">
-                  <span className="text-ink font-medium text-body-sm truncate">
-                    {topSuggestion.exercise.name}
-                  </span>
-
-                  {/* Confidence badge */}
-                  <div className={`flex items-center gap-1 px-2 py-0.5 rounded border text-caption flex-shrink-0 ${getConfidenceColor(topSuggestion.confidence)}`}>
-                    {getConfidenceIcon(topSuggestion.confidence)}
-                    {topSuggestion.confidence}%
-                  </div>
-                </div>
-
-                {/* Exercise details */}
-                <div className="text-caption text-ink-subtle flex-shrink-0 hidden sm:block">
+              <div className="mt-2 flex items-center justify-between gap-2">
+                <span className="truncate text-caption text-ink-subtle">
                   {topSuggestion.exercise.muscleGroup}
+                </span>
+                <div className="flex shrink-0 items-center gap-1">
+                  <Button
+                    variant="secondary"
+                    size="md"
+                    onClick={() => handleOpenExerciseModal(issue)}
+                    className="bg-surface"
+                    title="Browse and select from exercise database"
+                  >
+                    Fix
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="md"
+                    onClick={() => handleKeepAsCustom(issue.exerciseName)}
+                    disabled={keepStatus === 'saving'}
+                    className={
+                      keepStatus === 'saved'
+                        ? 'text-success hover:text-success'
+                        : keepStatus === 'error'
+                          ? 'text-danger hover:text-danger'
+                          : undefined
+                    }
+                    title="Save as custom exercise"
+                  >
+                    {getKeepLabel(issue.exerciseName)}
+                  </Button>
                 </div>
               </div>
-
-              {/* Actions */}
-              <div className="flex items-center gap-1 ml-3">
-                <Button
-                  variant="primary"
-                  size="sm"
-                  onClick={() => handleOpenExerciseModal(issue)}
-                  title="Browse and select from exercise database"
-                >
-                  Fix
-                </Button>
-                <Button
-                  variant="primary"
-                  size="sm"
-                  onClick={() => handleKeepAsCustom(issue.exerciseName)}
-                  disabled={customExerciseStatus[issue.exerciseName] === 'saving'}
-                  className="bg-success hover:bg-success/90 text-ink-inverse"
-                  title="Save as custom exercise"
-                >
-                  {customExerciseStatus[issue.exerciseName] === 'saving' ? 'Saving...' :
-                   customExerciseStatus[issue.exerciseName] === 'saved' ? 'Saved ✓' :
-                   customExerciseStatus[issue.exerciseName] === 'error' ? 'Error' :
-                   'Keep'}
-                </Button>
-              </div>
-            </div>
+            </li>
           );
         })}
-      </div>
+      </ul>
 
-      {/* Footer info */}
-      {issues.length > 5 && (
-        <div className="text-caption text-ink-subtle text-center pt-2 border-t border-border">
-          Showing 5 of {issues.length} suggestions
-        </div>
-      )}
-
-      {/* Help text */}
-      <div className="text-caption text-ink-subtle">
-        Click "Fix" to browse exercise database or "Keep" to save as custom exercise.
-      </div>
+      <p className="border-t border-hairline pt-2 text-caption text-ink-subtle">
+        {issues.length > 5 && (
+          <>
+            Showing <span className="font-tabular">5</span> of <span className="font-tabular">{issues.length}</span>.{' '}
+          </>
+        )}
+        Fix picks from the library; Keep saves it as your own exercise.
+      </p>
 
       {/* Exercise Selection Modal */}
       <ExerciseSelectionModal
@@ -272,7 +247,7 @@ export const InlineSuggestions: React.FC<InlineSuggestionsProps> = ({
         onSelect={handleSelectExercise}
         originalExerciseName={selectedIssueForModal?.exerciseName || ''}
         exerciseDatabase={exerciseDatabase}
-        title="Select Replacement Exercise"
+        title="Select a replacement"
       />
     </div>
   );

@@ -45,13 +45,13 @@ interface CharlieLiftField {
   required?: boolean;
 }
 const LIFT_FIELDS: CharlieLiftField[] = [
-  { key: 'bb-bench', label: 'Barbell Bench Press', group: 'Push', required: true },
-  { key: 'db-bench', label: 'Dumbbell Bench Press', group: 'Push', hint: 'per dumbbell', required: true },
-  { key: 'seal-row', label: 'Seal Row', group: 'Pull', required: true },
-  { key: 'pullup-heavy', label: 'Weighted Pull-up — added load', group: 'Pull', hint: '~5 reps (e.g. 35)', required: true },
-  { key: 'bodyweight', label: 'Bodyweight', group: 'Pull', hint: 'scales the pull-up' },
-  { key: 'back-squat', label: 'Back Squat', group: 'Legs', required: true },
-  { key: 'front-squat', label: 'Front Squat', group: 'Legs', hint: 'blank → 0.82× back squat' },
+  { key: 'bb-bench', label: 'Barbell bench press', group: 'Push', required: true },
+  { key: 'db-bench', label: 'Dumbbell bench press', group: 'Push', hint: 'Per dumbbell', required: true },
+  { key: 'seal-row', label: 'Seal row', group: 'Pull', required: true },
+  { key: 'pullup-heavy', label: 'Weighted pull-up, added load', group: 'Pull', hint: 'For about 5 reps, e.g. 35', required: true },
+  { key: 'bodyweight', label: 'Bodyweight', group: 'Pull', hint: 'Optional, scales the pull-up' },
+  { key: 'back-squat', label: 'Back squat', group: 'Legs', required: true },
+  { key: 'front-squat', label: 'Front squat', group: 'Legs', hint: 'Optional, defaults to 82% of back squat' },
   { key: 'deadlift', label: 'Deadlift', group: 'Legs', required: true },
 ];
 
@@ -265,10 +265,10 @@ export default function BuildWizardPage() {
           <ChoiceCard
             icon={LayoutTemplate}
             title="Charlie Split"
-            description="Push / Pull / Legs · auto-fills your month"
+            description="Push, pull, legs. Fills your month for you."
             onClick={() => setScreen('template-detail')}
           />
-          <p className="px-1 text-caption text-ink-subtle">More splits coming soon.</p>
+          <p className="px-1 text-body-sm text-ink-muted">More splits coming soon.</p>
         </div>
       </WizardShell>
     );
@@ -278,38 +278,40 @@ export default function BuildWizardPage() {
     return (
       <WizardShell
         title="Charlie Split"
-        subtitle="Push / Pull / Legs, every day"
+        subtitle="Push, pull, legs, on rotation"
         onBack={() => setScreen('template')}
         footer={
-          <Button variant="primary" size="lg" className="w-full" onClick={() => setScreen('template-1rm')}>
+          <Button variant="primary" size="xl" onClick={() => setScreen('template-1rm')}>
             Set up my lifts
           </Button>
         }
       >
-        <div className="flex flex-col gap-4 pt-4">
-          <div className="flex gap-3">
-            {(['push', 'pull', 'legs'] as const).map((g) => {
+        <div className="flex flex-col gap-5 pt-4">
+          <p className="text-body text-ink-muted">
+            A continuous rotation that fills your calendar and carries into next month from wherever
+            you left off.
+          </p>
+          {/* The three days as rows on one subtle card — what each day trains. */}
+          <ul className="divide-y divide-hairline rounded-[20px] bg-surface-subtle">
+            {(
+              [
+                ['push', 'Bench press, alternating dumbbell and barbell, plus three rotating supersets'],
+                ['pull', 'Weighted pull-ups and seal rows, back and arms'],
+                ['legs', 'Squat, front squat and deadlift cycle, plus core and stability'],
+              ] as const
+            ).map(([g, detail]) => {
               const m = MUSCLE_GROUP_META[g];
               const Icon = m.icon;
               return (
-                <div
-                  key={g}
-                  className="flex flex-1 flex-col items-center gap-1 rounded-md border border-ink/8 bg-surface-raised p-3"
-                >
-                  <Icon className={m.textClass} size={22} aria-hidden="true" />
-                  <span className="text-caption text-ink-muted">{m.label}</span>
-                </div>
+                <li key={g} className="flex items-start gap-3 px-4 py-3.5">
+                  <Icon className={cn('mt-0.5 shrink-0', m.textClass)} size={22} aria-hidden="true" />
+                  <div className="min-w-0">
+                    <p className="text-body font-semibold text-ink">{m.label}</p>
+                    <p className="mt-0.5 text-body-sm text-ink-muted">{detail}</p>
+                  </div>
+                </li>
               );
             })}
-          </div>
-          <p className="text-body-sm text-ink-muted">
-            A continuous Push/Pull/Legs rotation that fills your calendar and carries into next month
-            from wherever you left off.
-          </p>
-          <ul className="list-disc space-y-1 pl-5 text-body-sm text-ink-muted">
-            <li>Push — alternating volume/heavy bench (DB ↔ BB) + 3 rotating supersets</li>
-            <li>Pull — weighted pull-ups &amp; seal rows, back + arms</li>
-            <li>Legs — squat / front-squat / deadlift cycle + core &amp; stability</li>
           </ul>
         </div>
       </WizardShell>
@@ -320,13 +322,12 @@ export default function BuildWizardPage() {
     return (
       <WizardShell
         title="Your starting maxes"
-        subtitle="We scale every working set from these. Editable anytime."
+        subtitle="Every working set scales from these. You can change them later."
         onBack={() => setScreen('template-detail')}
         footer={
           <Button
             variant="primary"
-            size="lg"
-            className="w-full"
+            size="xl"
             disabled={!canAutofillCharlie}
             onClick={handleActivateCharlie}
           >
@@ -334,32 +335,33 @@ export default function BuildWizardPage() {
           </Button>
         }
       >
-        <div className="flex h-full flex-col gap-5 overflow-y-auto pt-2 pb-2">
+        <div className="flex h-full flex-col gap-5 overflow-y-auto overscroll-contain pb-2 pt-2">
           {(['Push', 'Pull', 'Legs'] as const).map((group) => (
-            <div key={group} className="flex flex-col gap-2">
-              <h4 className="font-marker text-body text-ink">{group}</h4>
-              {LIFT_FIELDS.filter((f) => f.group === group).map((f) => (
-                <label key={f.key} className="flex items-center justify-between gap-3">
-                  <span className="flex-1 text-body-sm text-ink-muted">
-                    {f.label}
-                    {f.required && <span className="text-danger"> *</span>}
-                    {f.hint && <span className="block text-caption text-ink-subtle">{f.hint}</span>}
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <Input
-                      type="number"
-                      inputMode="decimal"
-                      size="sm"
-                      className={cn('w-24 text-right')}
-                      placeholder="0"
-                      value={maxes[f.key] ?? ''}
-                      onChange={(e) => setMaxes((v) => ({ ...v, [f.key]: e.target.value }))}
-                    />
-                    <span className="text-caption text-ink-subtle">lbs</span>
-                  </span>
-                </label>
-              ))}
-            </div>
+            <section key={group} className="flex flex-col gap-2">
+              <h2 className="px-1 text-body-sm font-semibold text-ink-muted">{group}</h2>
+              <div className="divide-y divide-hairline rounded-[20px] bg-surface-subtle">
+                {LIFT_FIELDS.filter((f) => f.group === group).map((f) => (
+                  <label key={f.key} className="flex items-center justify-between gap-3 py-2.5 pl-4 pr-3">
+                    <span className="min-w-0 flex-1 text-body-sm text-ink">
+                      {f.label}
+                      {f.required && <span className="sr-only"> (required)</span>}
+                      {f.hint && <span className="block text-caption text-ink-muted">{f.hint}</span>}
+                    </span>
+                    <span className="flex shrink-0 items-center gap-2">
+                      <Input
+                        type="number"
+                        inputMode="decimal"
+                        className="w-24 text-right font-semibold"
+                        placeholder="0"
+                        value={maxes[f.key] ?? ''}
+                        onChange={(e) => setMaxes((v) => ({ ...v, [f.key]: e.target.value }))}
+                      />
+                      <span className="w-6 text-caption text-ink-muted">lbs</span>
+                    </span>
+                  </label>
+                ))}
+              </div>
+            </section>
           ))}
         </div>
       </WizardShell>
@@ -377,8 +379,7 @@ export default function BuildWizardPage() {
         footer={
           <Button
             variant="primary"
-            size="lg"
-            className="w-full"
+            size="xl"
             disabled={selectedTerms.length === 0 || (!exercisesReady && !isLoading)}
             onClick={goToReview}
           >
@@ -405,12 +406,11 @@ export default function BuildWizardPage() {
       footer={
         <Button
           variant="primary"
-          size="lg"
-          className="w-full"
+          size="xl"
           disabled={rows.length === 0}
           onClick={handleStart}
         >
-          Start Workout
+          Start workout
         </Button>
       }
     >

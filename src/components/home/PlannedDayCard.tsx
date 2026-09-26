@@ -1,11 +1,11 @@
 /**
  * The planned-day "training card" — a centered, closable card (not a bottom
- * sheet) that previews a Charlie-Split day the way a coach's index card would:
- * a looping demo clip per movement, supersets braced together by a colored
- * chalk spine, the prescribed load + rep range, and what you did last time.
- * Each accessory can be rerolled in place.
+ * sheet) that previews a Charlie-Split day: a looping demo clip per movement,
+ * supersets grouped on one subtle card with hairline rows, the prescribed load +
+ * rep range as tabular numbers, and what you did last time. Each accessory can
+ * be rerolled in place. One amber action: start the workout.
  */
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useReducedMotion } from 'framer-motion';
 import { X, Play, Shuffle, Dumbbell, Sparkles, History } from 'lucide-react';
 import type { WorkoutCalendarDay } from '../../utils/statsCalculator';
@@ -118,7 +118,7 @@ function ExerciseClip({
   return (
     <div
       ref={containerRef}
-      className={cn('relative shrink-0 overflow-hidden rounded-lg', className)}
+      className={cn('relative shrink-0 overflow-hidden rounded-xl', className)}
       style={{ backgroundColor: `hsl(${hue} / 0.09)` }}
     >
       {/* Placeholder — always behind the clip so loading never looks broken. */}
@@ -144,7 +144,7 @@ function ExerciseClip({
         />
       )}
       {badge && (
-        <span className="absolute left-1 top-1 flex h-4 w-4 items-center justify-center rounded-full bg-ink/70 text-[10px] font-bold leading-none text-surface-raised">
+        <span className="absolute left-1 top-1 flex h-4 w-4 items-center justify-center rounded-full bg-ink text-[10px] font-bold leading-none text-ink-inverse">
           {badge}
         </span>
       )}
@@ -171,7 +171,7 @@ function SlotRow({
   const load = formatLoad(slot);
   const unseeded = load === '—';
   return (
-    <div className="flex items-start gap-3 py-2">
+    <div className="flex items-start gap-3 py-3">
       <ExerciseClip
         exercise={slot.exercise}
         badge={badge}
@@ -184,31 +184,30 @@ function SlotRow({
         <h5
           className={cn(
             'truncate text-ink',
-            featured ? 'font-marker text-title leading-tight' : 'text-body-sm font-semibold',
+            featured ? 'text-title font-bold leading-tight' : 'text-body font-semibold',
           )}
         >
           {slot.title}
         </h5>
         <div className="mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
-          <span className="text-caption text-ink-subtle">{slot.equipment}</span>
+          <span className="text-caption text-ink-muted">{slot.equipment}</span>
           {slot.cues.map((cue) => (
             <span
               key={cue}
-              className="rounded px-1 py-px text-[10px] font-medium text-ink-muted"
-              style={{ backgroundColor: `hsl(${hue} / 0.13)` }}
+              className="rounded-full bg-surface-raised px-2 py-px text-caption text-ink-muted"
             >
               {cue}
             </span>
           ))}
         </div>
         <div className="mt-1 flex items-center gap-1 text-caption">
-          <History size={11} className="shrink-0 text-ink-subtle" aria-hidden="true" />
+          <History size={12} className="shrink-0 text-ink-subtle" aria-hidden="true" />
           {last ? (
             <span className="text-ink-muted">
               Last <span className="font-num font-tabular text-ink">{last}</span>
             </span>
           ) : (
-            <span className="text-ink-subtle/70">No previous log</span>
+            <span className="text-ink-subtle">No previous log</span>
           )}
         </div>
       </div>
@@ -217,23 +216,23 @@ function SlotRow({
         <div className="text-right">
           <div
             className={cn(
-              'font-num font-tabular text-body-sm font-bold leading-tight',
+              'font-display font-tabular text-title leading-tight',
               unseeded ? 'text-ink-subtle' : 'text-ink',
             )}
           >
             {load}
             {loadHasUnit(slot) && <span className="ml-0.5 text-caption font-normal text-ink-subtle">lb</span>}
           </div>
-          <div className="font-num font-tabular text-caption text-ink-subtle">{formatScheme(slot)}</div>
+          <div className="font-num font-tabular text-body-sm text-ink-muted">{formatScheme(slot)}</div>
         </div>
         {onReroll && (
           <IconButton
             variant="ghost"
-            size="sm"
+            size="md"
             aria-label={`Swap ${slot.title}`}
             onClick={onReroll}
           >
-            <Shuffle size={15} />
+            <Shuffle size={16} />
           </IconButton>
         )}
       </div>
@@ -256,21 +255,8 @@ function Group({
   if (group.kind === 'compound') {
     const slot = group.slots[0];
     return (
-      <section
-        className="relative overflow-hidden rounded-xl bg-surface-subtle p-3 pl-4"
-        style={{ backgroundColor: `hsl(${hue} / 0.07)` }}
-      >
-        <span
-          aria-hidden="true"
-          className="absolute inset-y-0 left-0 w-[3px]"
-          style={{ backgroundColor: `hsl(${hue})` }}
-        />
-        <p
-          className="mb-1 text-[10px] font-mono font-semibold uppercase tracking-[0.14em]"
-          style={{ color: `hsl(${hue})` }}
-        >
-          Main lift
-        </p>
+      <section className="rounded-[20px] bg-surface-subtle px-4 pb-1 pt-3">
+        <GroupLabel hue={hue}>Main lift</GroupLabel>
         <SlotRow slot={slot} hue={hue} reduced={reduced} featured />
       </section>
     );
@@ -278,33 +264,19 @@ function Group({
 
   if (group.kind === 'superset') {
     return (
-      <section className="relative rounded-xl border border-board-line/25 bg-surface-subtle/50 py-2 pl-4 pr-2">
-        {/* The brace: a colored chalk spine linking the paired movements. */}
-        <span
-          aria-hidden="true"
-          className="absolute inset-y-3 left-0 w-[3px] rounded-full"
-          style={{ backgroundColor: `hsl(${hue} / 0.6)` }}
-        />
-        <div className="mb-0.5 flex items-center gap-2">
-          <span
-            className="rounded px-1.5 py-0.5 text-[10px] font-mono font-semibold uppercase tracking-[0.12em]"
-            style={{ backgroundColor: `hsl(${hue} / 0.16)`, color: `hsl(${hue})` }}
-          >
-            Superset
-          </span>
-          {group.label && <span className="truncate text-caption text-ink-subtle">{group.label}</span>}
-        </div>
-        {group.slots.map((slot, i) => (
-          <div key={slot.roleKey ?? i}>
-            {i > 0 && <div className="ml-[68px] h-px bg-board-line/15" />}
+      <section className="rounded-[20px] bg-surface-subtle px-4 pb-1 pt-3">
+        <GroupLabel hue={hue} detail={group.label}>Superset</GroupLabel>
+        <div className="divide-y divide-hairline">
+          {group.slots.map((slot, i) => (
             <SlotRow
+              key={slot.roleKey ?? i}
               slot={slot}
               hue={hue}
               reduced={reduced}
               onReroll={slot.roleKey ? () => onReroll(slot) : undefined}
             />
-          </div>
-        ))}
+          ))}
+        </div>
       </section>
     );
   }
@@ -312,12 +284,8 @@ function Group({
   // standalone accessory (e.g. the biceps finisher — straight sets, no superset)
   const slot = group.slots[0];
   return (
-    <section className="rounded-xl border border-board-line/25 bg-surface-subtle/50 px-3 py-1">
-      {group.label && (
-        <p className="pt-1 text-[10px] font-mono font-semibold uppercase tracking-[0.12em] text-ink-subtle">
-          {group.label}
-        </p>
-      )}
+    <section className="rounded-[20px] bg-surface-subtle px-4 pb-1 pt-3">
+      {group.label && <GroupLabel hue={hue}>{group.label}</GroupLabel>}
       <SlotRow
         slot={slot}
         hue={hue}
@@ -325,6 +293,29 @@ function Group({
         onReroll={slot.roleKey ? () => onReroll(slot) : undefined}
       />
     </section>
+  );
+}
+
+/** Small sentence-case group label led by the day's muscle-hue dot. */
+function GroupLabel({
+  hue,
+  detail,
+  children,
+}: {
+  hue: string;
+  detail?: string;
+  children: ReactNode;
+}) {
+  return (
+    <p className="flex items-center gap-2 text-body-sm text-ink-muted">
+      <span
+        aria-hidden="true"
+        className="h-2 w-2 shrink-0 rounded-full"
+        style={{ backgroundColor: `hsl(${hue})` }}
+      />
+      <span className="font-semibold text-ink">{children}</span>
+      {detail && <span className="truncate">{detail}</span>}
+    </p>
   );
 }
 
@@ -366,43 +357,37 @@ export function PlannedDayCard({ day, planned, isOpen, onClose }: PlannedDayCard
   return (
     <Modal open={isOpen} onOpenChange={(next) => !next && onClose()}>
       <ModalContent>
-        {/* Header — colored chalk band carries the day identity */}
-        <header
-          className="relative shrink-0 px-4 pb-3 pt-4"
-          style={{ backgroundColor: `hsl(${hue} / 0.1)` }}
-        >
+        {/* Header — context line + display title; the muscle hue is a single dot. */}
+        <header className="relative shrink-0 px-5 pb-3 pt-5">
           <IconButton
             variant="ghost"
-            size="sm"
+            size="md"
             aria-label="Close"
             onClick={onClose}
-            className="absolute right-2 top-2"
+            className="absolute right-3 top-3"
           >
-            <X size={18} />
+            <X size={20} />
           </IconButton>
 
-          <p className="text-caption font-mono uppercase tracking-wide text-ink-subtle">
-            {day.isToday ? 'Today · Planned' : 'Planned'} · {dateLabel}
+          <p className="flex items-center gap-2 pr-12 text-body-sm text-ink-muted">
+            <span
+              aria-hidden="true"
+              className="h-2.5 w-2.5 shrink-0 rounded-full"
+              style={{ backgroundColor: `hsl(${hue})` }}
+            />
+            <span className="truncate">
+              {day.isToday ? 'Planned for today' : `Planned, ${dateLabel}`}
+            </span>
           </p>
 
-          <div className="mt-1.5 flex items-center gap-3">
-            <div
-              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg"
-              style={{ backgroundColor: `hsl(${hue})` }}
-            >
-              <Glyph size={24} className="text-ink-inverse" aria-hidden="true" />
-            </div>
-            <div className="min-w-0 flex-1">
-              <ModalTitle className="font-marker text-display leading-none text-ink">
-                {meta.label}
-              </ModalTitle>
-              <p className="mt-0.5 truncate text-body-sm text-ink-muted">{planned.variantLabel}</p>
-            </div>
+          <div className="mt-1 flex items-center gap-3 pr-12">
+            <Glyph size={28} className="shrink-0 text-ink-muted" aria-hidden="true" />
+            <ModalTitle className="min-w-0 truncate leading-none">{meta.label}</ModalTitle>
+          </div>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <p className="min-w-0 truncate text-body text-ink-muted">{planned.variantLabel}</p>
             {planned.isRetest && (
-              <span
-                className="inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-1 text-caption font-medium"
-                style={{ backgroundColor: `hsl(${hue} / 0.16)`, color: `hsl(${hue})` }}
-              >
+              <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-surface-raised px-2.5 py-1 text-caption text-accent-2">
                 <Sparkles size={12} aria-hidden="true" />
                 1RM test
               </span>
@@ -414,7 +399,7 @@ export function PlannedDayCard({ day, planned, isOpen, onClose }: PlannedDayCard
         </header>
 
         {/* Body — the prescription, scrollable */}
-        <div className="flex-1 space-y-2.5 overflow-y-auto px-4 py-3">
+        <div className="flex-1 space-y-3 overflow-y-auto px-4 py-2">
           {groups.length === 0 ? (
             <p className="py-8 text-center text-body-sm text-ink-muted">
               Building your session…
@@ -435,19 +420,19 @@ export function PlannedDayCard({ day, planned, isOpen, onClose }: PlannedDayCard
         </div>
 
         {/* Footer — the one action that matters, plus a bulk reroll escape hatch */}
-        <footer className="shrink-0 space-y-2 border-t border-board-line/20 bg-surface-raised px-4 pb-4 pt-3">
-          <Button variant="primary" size="lg" className="w-full" onClick={handleStart}>
-            <Play size={18} />
-            <span>Start this workout</span>
+        <footer className="shrink-0 space-y-1 px-4 pb-4 pt-3">
+          <Button variant="primary" size="xl" onClick={handleStart}>
+            <Play size={20} fill="currentColor" aria-hidden="true" />
+            <span>Start workout</span>
           </Button>
-          <button
-            type="button"
+          <Button
+            variant="ghost"
+            className="w-full"
             onClick={() => rerollAccessories(planned.dateKey)}
-            className="flex w-full items-center justify-center gap-1.5 text-caption text-ink-subtle transition-colors hover:text-ink-muted"
           >
-            <Shuffle size={13} />
+            <Shuffle size={16} aria-hidden="true" />
             Shuffle all accessories
-          </button>
+          </Button>
         </footer>
       </ModalContent>
     </Modal>

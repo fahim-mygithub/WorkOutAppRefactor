@@ -111,18 +111,21 @@ const SharedWorkoutBuildView: React.FC<SharedWorkoutBuildViewProps> = ({
 
   return (
     <div>
-      {/* Show shared workout info banner */}
-      <div className="bg-accent text-accent-fg p-4 mb-6">
-        <div className="max-w-4xl mx-auto">
-          <h2 className="text-title font-semibold mb-1">Viewing Shared Workout</h2>
-          <p className="text-body-sm opacity-90">
-            "{sharedWorkout.workoutData.name}" by {sharedWorkout.creatorName}
+      {/* Shared-workout context: a quiet subtle card, not an amber banner
+          (amber is reserved for the page's one forward action). */}
+      <div className="mx-auto w-full max-w-xl px-4 pt-6">
+        <div className="rounded-[20px] bg-surface-subtle p-4">
+          <p className="text-body-sm text-ink-muted">Shared by {sharedWorkout.creatorName}</p>
+          <h2 className="mt-1 break-words font-display text-title text-ink">
+            {sharedWorkout.workoutData.name}
+          </h2>
+          <p className="mt-2 text-body-sm text-accent-2">
+            <span className="font-tabular">{sharedWorkout.metadata.viewCount}</span> views
+            {' · '}
+            <span className="font-tabular">{sharedWorkout.metadata.useCount}</span> uses
           </p>
-          <p className="text-caption opacity-80 mt-1">
-            {sharedWorkout.metadata.viewCount} views • {sharedWorkout.metadata.useCount} uses
-          </p>
-          <p className="text-caption opacity-80 mt-1">
-            Make changes and start your workout!
+          <p className="mt-2 text-body-sm text-ink-muted">
+            Change anything you like, then start the workout.
           </p>
         </div>
       </div>
@@ -157,6 +160,9 @@ export default function BuildPage() {
   const [workoutNameError, setWorkoutNameError] = useState('');
   const [isPreviewCollapsed, setIsPreviewCollapsed] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
+  // Text / Visual / Templates. A successful manual parse moves the user on to
+  // Visual, where the next decision (review, then start) lives.
+  const [activeTab, setActiveTab] = useState('text');
 
   // Get Firebase user from auth context - MUST be at top level
   const { user } = useAuth();
@@ -368,6 +374,7 @@ export default function BuildPage() {
     setParseResult(result);
     if (result.success && result.workout) {
       setEditedWorkout(prepareWorkoutForConfigurator(result.workout));
+      setActiveTab('visual');
       console.log('✅ Manual parse completed successfully');
     } else {
       console.log('❌ Manual parse failed');
@@ -401,7 +408,7 @@ export default function BuildPage() {
   // Handle share workout
   const handleShareWorkout = () => {
     if (!workoutName.trim()) {
-      setWorkoutNameError('Please enter a workout name');
+      setWorkoutNameError('Name your workout first.');
       return;
     }
 
@@ -569,7 +576,7 @@ export default function BuildPage() {
     });
 
     if (!workoutName.trim()) {
-      setWorkoutNameError('Please enter a workout name');
+      setWorkoutNameError('Name your workout first.');
       return;
     }
 
@@ -641,7 +648,7 @@ export default function BuildPage() {
     console.log('✅ WorkoutStorageService is available, proceeding with save...');
 
     if (!workoutName.trim()) {
-      setWorkoutNameError('Please enter a workout name');
+      setWorkoutNameError('Name your workout first.');
       return;
     }
 
@@ -699,7 +706,7 @@ export default function BuildPage() {
       console.log('✅ Workout saved successfully:', workoutId);
 
       // Show success message and optionally navigate
-      alert(`Workout "${workoutName}" saved successfully! You can find it in your Profile.`);
+      alert(`Saved "${workoutName}". You can find it in your profile.`);
 
       // Optionally reset the form or navigate to profile
       // navigate('/profile');
@@ -786,7 +793,7 @@ export default function BuildPage() {
   // Render the configuration section with action buttons. Declared before the
   // mode-selector tabs because the Visual tab renders it.
   const configurationSection = showConfiguration ? (
-    <div className="space-y-4">
+    <div className="space-y-5">
       <ParsedWorkoutConfigurator
         workout={editedWorkout || (parseResult?.workout ? prepareWorkoutForConfigurator(parseResult.workout) : null)}
         onUpdate={handleWorkoutUpdate}
@@ -794,141 +801,117 @@ export default function BuildPage() {
         showActionButtons={false}
       />
 
-      {/* Action Buttons directly under configurator */}
-      <Stack gap={2} className="pt-4 border-t border-border">
-        {/* Save Workout Button */}
-        <Button
-          variant="primary"
-          size="lg"
-          className="w-full bg-success text-ink-inverse hover:bg-success/90"
-          onClick={handleSaveWorkout}
-          disabled={isSaving || !user?.uid}
-        >
-          {isSaving ? (
-            <>
-              <Loader2 className="h-5 w-5 animate-spin" aria-hidden="true" />
-              Saving...
-            </>
-          ) : (
-            <>
-              <Save className="h-5 w-5" aria-hidden="true" />
-              {user?.uid ? 'Save Workout' : 'Login to Save'}
-            </>
-          )}
+      {/* One amber action (start), the rest secondary or ghost */}
+      <Stack gap={2}>
+        {workoutNameError && (
+          <Stack direction="row" align="center" gap={2} className="text-body-sm text-danger" role="alert">
+            <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden="true" />
+            <span className="min-w-0 flex-1">{workoutNameError}</span>
+            <Button variant="ghost" size="sm" onClick={() => setActiveTab('text')}>
+              Add a name
+            </Button>
+          </Stack>
+        )}
+
+        <Button variant="primary" size="xl" onClick={handleStartWorkout}>
+          <Play className="h-5 w-5" fill="currentColor" aria-hidden="true" />
+          Start workout
         </Button>
 
-        {/* Save Error Message */}
+        <div className={isViewingSharedWorkout ? 'grid grid-cols-1' : 'grid grid-cols-2 gap-2'}>
+          <Button
+            variant="secondary"
+            size="lg"
+            onClick={handleSaveWorkout}
+            disabled={isSaving || !user?.uid}
+          >
+            {isSaving ? (
+              <>
+                <Loader2 className="h-5 w-5 animate-spin" aria-hidden="true" />
+                Saving
+              </>
+            ) : (
+              <>
+                <Save className="h-5 w-5" aria-hidden="true" />
+                {user?.uid ? 'Save routine' : 'Sign in to save'}
+              </>
+            )}
+          </Button>
+
+          {!isViewingSharedWorkout && (
+            <Button
+              variant="secondary"
+              size="lg"
+              onClick={handleShareWorkout}
+              disabled={!user?.uid}
+            >
+              <Share2 className="h-5 w-5" aria-hidden="true" />
+              {user?.uid ? 'Share' : 'Sign in to share'}
+            </Button>
+          )}
+        </div>
+
         {saveError && (
-          <Stack direction="row" align="center" gap={2} className="text-body-sm text-danger">
+          <Stack direction="row" align="center" gap={2} className="text-body-sm text-danger" role="alert">
             <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden="true" />
             {saveError}
           </Stack>
         )}
 
-        {/* Share Workout Button */}
-        {!isViewingSharedWorkout && (
-          <Button
-            variant="primary"
-            size="lg"
-            className="w-full"
-            onClick={handleShareWorkout}
-            disabled={!user?.uid}
-          >
-            <Share2 className="h-5 w-5" aria-hidden="true" />
-            {user?.uid ? 'Share Workout' : 'Login to Share'}
-          </Button>
-        )}
-
-        {/* Start Workout Button */}
-        <Button
-          variant="primary"
-          size="lg"
-          className="w-full"
-          onClick={handleStartWorkout}
-        >
-          <Play className="h-5 w-5" aria-hidden="true" />
-          Start Workout
-        </Button>
-
-        {workoutNameError && (
-          <Stack direction="row" align="center" gap={2} className="text-body-sm text-danger">
-            <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden="true" />
-            {workoutNameError}
-          </Stack>
-        )}
-
-        <Button
-          variant="secondary"
-          size="lg"
-          className="w-full"
-          onClick={handleClearWorkout}
-        >
-          <Trash2 className="h-5 w-5" aria-hidden="true" />
-          Clear & Start Over
+        <Button variant="ghost" onClick={handleClearWorkout}>
+          <Trash2 className="h-4 w-4" aria-hidden="true" />
+          Clear and start over
         </Button>
       </Stack>
     </div>
   ) : null;
 
-  // History (undo/redo) controls — shown under the Text editor tab.
+  // History (undo/redo) controls: a quiet row under the text editor.
   const historyControls = (
-    <Card elevation={1}>
-      <CardBody className="p-4 pt-4">
-        <Stack direction="row" align="center" justify="between" gap={2}>
-          <Stack direction="row" align="center" gap={2}>
-            <span className="text-body-sm font-medium text-ink">History</span>
-            <span className="text-caption text-ink-subtle">
-              ({canUndoWorkoutText || canRedoWorkoutText ? 'Available' : 'No changes'})
-            </span>
-          </Stack>
-
-          <Stack direction="row" align="center" gap={2}>
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={undoWorkoutText}
-              disabled={!canUndoWorkoutText}
-              title="Undo (Ctrl+Z)"
-            >
-              <Undo2 className="h-4 w-4" aria-hidden="true" />
-              Undo
-            </Button>
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={redoWorkoutText}
-              disabled={!canRedoWorkoutText}
-              title="Redo (Ctrl+Y)"
-            >
-              <Redo2 className="h-4 w-4" aria-hidden="true" />
-              Redo
-            </Button>
-          </Stack>
-        </Stack>
-      </CardBody>
-    </Card>
+    <Stack direction="row" align="center" justify="end" gap={1}>
+      <Button
+        variant="ghost"
+        onClick={undoWorkoutText}
+        disabled={!canUndoWorkoutText}
+        title="Undo (Ctrl+Z)"
+      >
+        <Undo2 className="h-4 w-4" aria-hidden="true" />
+        Undo
+      </Button>
+      <Button
+        variant="ghost"
+        onClick={redoWorkoutText}
+        disabled={!canRedoWorkoutText}
+        title="Redo (Ctrl+Y)"
+      >
+        <Redo2 className="h-4 w-4" aria-hidden="true" />
+        Redo
+      </Button>
+    </Stack>
   );
 
   // Mode selector: Text (natural-language editor) / Visual (parsed
   // configurator) / Templates. Built on the Tabs primitive.
   const textInputSection = (
-    <Tabs defaultValue="text" className="space-y-4">
-      <TabsList className="w-full">
-        <TabsTrigger value="text" className="flex-1 gap-1.5">
+    <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
+      <TabsList className="flex w-full">
+        <TabsTrigger value="text" className="min-h-[44px] flex-1 gap-1.5">
           <FileText className="h-4 w-4" aria-hidden="true" />
           Text
         </TabsTrigger>
-        <TabsTrigger value="visual" className="flex-1 gap-1.5">
+        <TabsTrigger value="visual" className="min-h-[44px] flex-1 gap-1.5">
           <LayoutGrid className="h-4 w-4" aria-hidden="true" />
           Visual
         </TabsTrigger>
-        <TabsTrigger value="templates" className="flex-1 gap-1.5">
+        <TabsTrigger value="templates" className="min-h-[44px] flex-1 gap-1.5">
           <Sparkles className="h-4 w-4" aria-hidden="true" />
           Templates
         </TabsTrigger>
       </TabsList>
 
-      <TabsContent value="text" className="space-y-6">
+      <TabsContent value="text" className="space-y-4">
+        {historyControls}
+
         <EnhancedTextInput
           workoutText={workoutText}
           workoutName={workoutName}
@@ -945,37 +928,36 @@ export default function BuildPage() {
           isCollapsed={isPreviewCollapsed}
           onToggleCollapse={() => setIsPreviewCollapsed(!isPreviewCollapsed)}
         />
-
-        {/* Undo/Redo Controls */}
-        {historyControls}
       </TabsContent>
 
       <TabsContent value="visual" className="space-y-4">
         {showConfiguration ? (
           configurationSection
         ) : (
-          <Card elevation={1}>
-            <CardBody className="flex flex-col items-center gap-2 py-10 text-center">
-              <LayoutGrid className="h-8 w-8 text-ink-subtle" aria-hidden="true" />
-              <p className="text-body font-medium text-ink">Nothing to configure yet</p>
-              <p className="text-body-sm text-ink-muted">
-                Write your workout in the Text tab and parse it to configure
-                exercises here.
+          <Card>
+            <CardBody className="p-5 pt-5">
+              <p className="text-body font-semibold text-ink">Nothing to arrange yet</p>
+              <p className="mt-1 text-body-sm text-ink-muted">
+                Write your workout in Text and parse it. The exercises land here to
+                reorder, pair and tune.
               </p>
+              <Button variant="secondary" className="mt-4" onClick={() => setActiveTab('text')}>
+                <FileText className="h-4 w-4" aria-hidden="true" />
+                Go to Text
+              </Button>
             </CardBody>
           </Card>
         )}
       </TabsContent>
 
       <TabsContent value="templates" className="space-y-4">
-        <Card elevation={1}>
-          <CardBody className="flex flex-col items-center gap-2 py-10 text-center">
-            <Sparkles className="h-8 w-8 text-ink-subtle" aria-hidden="true" />
-            <p className="text-body font-medium text-ink">Templates</p>
-            <p className="text-body-sm text-ink-muted">
+        <Card>
+          <CardBody className="p-5 pt-5">
+            <p className="text-body font-semibold text-ink">Templates</p>
+            <p className="mt-1 text-body-sm text-ink-muted">
               Saved and starter templates will appear here.
             </p>
-            <Button variant="secondary" size="sm" className="mt-2" onClick={handleLoadExample}>
+            <Button variant="secondary" className="mt-4" onClick={handleLoadExample}>
               Load example workout
             </Button>
           </CardBody>
@@ -986,27 +968,28 @@ export default function BuildPage() {
 
   // Render parse errors at bottom (only when there are errors)
   const parseErrorsSection = parseResult && !parseResult.success ? (
-    <Card elevation={1}>
-      <CardBody className="p-6 pt-6">
-        <Stack direction="row" align="center" gap={2} className="mb-3">
+    <Card>
+      <CardBody className="p-4 pt-4" role="alert">
+        <Stack direction="row" align="center" gap={2} className="mb-1">
           <AlertTriangle className="h-5 w-5 text-danger" aria-hidden="true" />
-          <h3 className="text-title font-medium text-ink">Parse Errors</h3>
+          <h3 className="text-body font-semibold text-ink">
+            Couldn&rsquo;t read <span className="font-tabular">{parseResult.errors.length}</span> line{parseResult.errors.length !== 1 ? 's' : ''}
+          </h3>
         </Stack>
 
-        <Stack gap={2}>
+        <ul className="divide-y divide-hairline">
           {parseResult.errors.map((error, index) => (
-            <div key={index} className="rounded border border-danger bg-danger/10 p-3">
-              <div className="text-danger font-medium">
-                Line {error.line}: {error.message}
+            <li key={index} className="py-3 text-body-sm">
+              <div className="flex gap-3">
+                <span className="shrink-0 font-tabular text-ink-muted">Line {error.line}</span>
+                <span className="min-w-0 text-danger">{error.message}</span>
               </div>
               {error.suggestion && (
-                <div className="text-body-sm text-danger/80 mt-1">
-                  Suggestion: {error.suggestion}
-                </div>
+                <p className="mt-1 text-ink-muted">Try: {error.suggestion}</p>
               )}
-            </div>
+            </li>
           ))}
-        </Stack>
+        </ul>
       </CardBody>
     </Card>
   ) : null;

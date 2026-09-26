@@ -4,7 +4,7 @@
 // weight is derived from what was ACTUALLY lifted. Styled to sit quietly in the
 // no-scroll player and stay out of the way until acted on.
 import React from 'react';
-import { TrendingDown, Check } from 'lucide-react';
+import { TrendingDown } from 'lucide-react';
 import type { InSessionDecision } from '@/types/progression';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -25,27 +25,26 @@ export const InSessionSuggestion: React.FC<InSessionSuggestionProps> = ({
   const suggestedWeight = decision.suggestedWeight;
   const canApply = suggestedWeight != null && suggestedWeight > 0;
 
+  // "Log set" stays the player's one amber action, so this cue offers the
+  // suggested load as a secondary pill and "Keep" as ghost.
   return (
-    <div
-      role="status"
-      className="rounded-lg border border-accent/40 bg-surface-subtle p-3"
-    >
+    <div role="status" className="rounded-2xl bg-surface-subtle p-3">
       <div className="mb-2 flex items-start gap-2">
-        <TrendingDown className="mt-0.5 h-4 w-4 shrink-0 text-accent" aria-hidden="true" />
+        <TrendingDown className="mt-0.5 h-4 w-4 shrink-0 text-accent-2" aria-hidden="true" />
         <p className="text-body-sm leading-snug text-ink">{decision.message}</p>
       </div>
       <div className="flex gap-2">
         {canApply && (
-          <Button size="sm" onClick={() => onApply(suggestedWeight)} className="flex-1">
-            <Check className="h-4 w-4" />
-            <span>
-              Use <span className="font-num font-tabular">{suggestedWeight}</span> lbs
-            </span>
+          <Button
+            variant="secondary"
+            onClick={() => onApply(suggestedWeight)}
+            className="flex-1"
+          >
+            Use <span className="font-num font-tabular">{suggestedWeight}</span> lb
           </Button>
         )}
         <Button
-          variant="secondary"
-          size="sm"
+          variant="ghost"
           onClick={onKeep}
           className={cn(canApply ? 'flex-1' : 'w-full')}
         >

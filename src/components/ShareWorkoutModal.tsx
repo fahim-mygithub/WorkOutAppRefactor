@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Copy, Check, Share, ExternalLink } from 'lucide-react';
+import { Copy, Check, Share, ExternalLink, Loader2 } from 'lucide-react';
 import { generateShareUrl } from '../utils/shareIdGenerator';
 import { useAppSelector, useAppDispatch } from '../store/hooks';
 import { createSharedWorkout, clearShareError, clearLastCreatedShareId } from '../store/slices/sharedWorkoutSlice';
@@ -129,24 +129,16 @@ export const ShareWorkoutModal: React.FC<ShareWorkoutModalProps> = ({
         if (!next) handleClose();
       }}
     >
-      <SheetContent>
-        <Stack direction="row" align="center" gap={3} className="mb-1">
-          <Share aria-hidden="true" className="h-6 w-6 text-accent" />
-          <SheetTitle className="text-title">Share Workout</SheetTitle>
-        </Stack>
+      <SheetContent className="mx-auto max-w-lg">
+        <p className="text-body-sm text-ink-muted">{workoutData.name}</p>
+        <SheetTitle className="mt-1 font-display text-title">Share workout</SheetTitle>
 
         {!shareUrl ? (
           // Share creation form
-          <div className="space-y-4">
-            <div>
-              <h3 className="text-body font-semibold text-ink mb-1">
-                {workoutData.name}
-              </h3>
-              <SheetDescription className="mt-0">
-                Create a shareable link that allows others to view and perform
-                your workout.
-              </SheetDescription>
-            </div>
+          <div className="mt-2 space-y-5">
+            <SheetDescription className="mt-0">
+              Make a link anyone can open to view and do this workout.
+            </SheetDescription>
 
             {/* Share Settings */}
             <Stack
@@ -154,14 +146,14 @@ export const ShareWorkoutModal: React.FC<ShareWorkoutModalProps> = ({
               align="center"
               justify="between"
               gap={3}
-              className="rounded-lg bg-surface-subtle p-3"
+              className="rounded-2xl bg-surface-raised px-4 py-3"
             >
               <div className="min-w-0">
-                <p className="text-body-sm font-medium text-ink">
-                  Allow Anonymous Access
+                <p className="text-body-sm font-semibold text-ink">
+                  Open without an account
                 </p>
                 <p className="text-caption text-ink-muted">
-                  Anyone with the link can access this workout
+                  People who aren&rsquo;t signed in can still use the link
                 </p>
               </div>
               <Switch
@@ -173,53 +165,39 @@ export const ShareWorkoutModal: React.FC<ShareWorkoutModalProps> = ({
 
             {/* Error Display */}
             {shareError && (
-              <div className="rounded-lg border border-danger bg-danger/10 p-3">
-                <p className="text-body-sm text-danger">{shareError}</p>
-              </div>
+              <p role="alert" className="text-body-sm text-danger">{shareError}</p>
             )}
 
             {/* Action Buttons */}
-            <Stack direction="row" gap={3}>
+            <Stack gap={2}>
               <Button
-                variant="secondary"
-                className="flex-1"
-                onClick={handleClose}
-              >
-                Cancel
-              </Button>
-              <Button
-                className="flex-1"
+                size="xl"
                 onClick={handleCreateShare}
                 disabled={isCreating}
               >
                 {isCreating ? (
-                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-accent-fg border-t-transparent" />
+                  <Loader2 className="h-5 w-5 animate-spin" aria-hidden="true" />
                 ) : (
-                  <Share className="h-4 w-4" aria-hidden="true" />
+                  <Share className="h-5 w-5" aria-hidden="true" />
                 )}
-                <span>{isCreating ? 'Creating...' : 'Create Share Link'}</span>
+                <span>{isCreating ? 'Creating link' : 'Create share link'}</span>
+              </Button>
+              <Button variant="ghost" onClick={handleClose}>
+                Cancel
               </Button>
             </Stack>
           </div>
         ) : (
           // Share URL display
-          <div className="space-y-4">
-            <div className="text-center">
-              <div className="mx-auto mb-3 flex h-16 w-16 items-center justify-center rounded-full bg-success">
-                <Check className="h-8 w-8 text-ink-inverse" aria-hidden="true" />
-              </div>
-              <h3 className="text-body font-semibold text-ink mb-1">
-                Share Link Created!
-              </h3>
-              <p className="text-body-sm text-ink-muted">
-                Your workout is now shareable. Anyone with this link can access
-                it.
-              </p>
-            </div>
+          <div className="mt-2 space-y-5">
+            <p className="flex items-center gap-2 text-body-sm text-success" role="status">
+              <Check className="h-4 w-4 shrink-0" aria-hidden="true" />
+              Link ready. Anyone with it can open this workout.
+            </p>
 
             {/* Share URL Input */}
-            <div className="space-y-3">
-              <Label htmlFor="share-url-input">Share URL</Label>
+            <div className="space-y-1.5">
+              <Label htmlFor="share-url-input" className="text-ink-muted">Share link</Label>
               <Stack direction="row" gap={2}>
                 <Input
                   id="share-url-input"
@@ -230,47 +208,42 @@ export const ShareWorkoutModal: React.FC<ShareWorkoutModalProps> = ({
                 />
                 <IconButton
                   aria-label={copySuccess ? 'Copied' : 'Copy share URL'}
-                  variant={copySuccess ? 'primary' : 'secondary'}
+                  variant="secondary"
                   onClick={handleCopyUrl}
                 >
                   {copySuccess ? (
-                    <Check className="h-4 w-4" aria-hidden="true" />
+                    <Check className="h-4 w-4 text-accent-2" aria-hidden="true" />
                   ) : (
                     <Copy className="h-4 w-4" aria-hidden="true" />
                   )}
                 </IconButton>
               </Stack>
               {copySuccess && (
-                <p className="text-caption text-success">Copied to clipboard!</p>
+                <p className="text-caption text-accent-2" role="status">Copied</p>
               )}
             </div>
 
             {/* Social Share Buttons */}
             <div className="space-y-2">
-              <p className="text-body-sm font-medium text-ink-muted">
-                Share to:
-              </p>
+              <p className="text-body-sm text-ink-muted">Send it with</p>
               <Stack direction="row" gap={2}>
                 <Button
                   variant="secondary"
-                  size="sm"
-                  className="flex-1"
+                  className="flex-1 px-3"
                   onClick={() => handleShareToSocial('twitter')}
                 >
                   Twitter
                 </Button>
                 <Button
                   variant="secondary"
-                  size="sm"
-                  className="flex-1"
+                  className="flex-1 px-3"
                   onClick={() => handleShareToSocial('facebook')}
                 >
                   Facebook
                 </Button>
                 <Button
                   variant="secondary"
-                  size="sm"
-                  className="flex-1"
+                  className="flex-1 px-3"
                   onClick={() => handleShareToSocial('whatsapp')}
                 >
                   WhatsApp
@@ -279,17 +252,16 @@ export const ShareWorkoutModal: React.FC<ShareWorkoutModalProps> = ({
             </div>
 
             {/* Quick Actions */}
-            <Stack direction="row" gap={3}>
+            <Stack gap={2}>
+              <Button size="xl" onClick={handleClose}>
+                Done
+              </Button>
               <Button
-                variant="secondary"
-                className="flex-1"
+                variant="ghost"
                 onClick={() => window.open(shareUrl, '_blank')}
               >
                 <ExternalLink className="h-4 w-4" aria-hidden="true" />
-                <span>Preview</span>
-              </Button>
-              <Button className="flex-1" onClick={handleClose}>
-                Done
+                <span>Preview link</span>
               </Button>
             </Stack>
           </div>

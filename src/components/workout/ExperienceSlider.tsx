@@ -3,6 +3,7 @@ import { Info } from 'lucide-react';
 import type { ExperienceLevel } from '../../types/progression';
 import { Card } from '@/components/ui/card';
 import { IconButton } from '@/components/ui/icon-button';
+import { cn } from '@/lib/utils';
 
 interface ExperienceSliderProps {
   currentLevel: ExperienceLevel;
@@ -10,156 +11,137 @@ interface ExperienceSliderProps {
   showTooltip?: boolean;
 }
 
+const LEVELS: {
+  value: ExperienceLevel;
+  label: string;
+  description: string;
+  increment: string;
+}[] = [
+  {
+    value: 'aggressive',
+    label: 'Aggressive',
+    description: 'For beginners. Larger weight jumps for faster linear progression.',
+    increment: '+10',
+  },
+  {
+    value: 'standard',
+    label: 'Standard',
+    description: 'For intermediate lifters. Moderate, steady weight increases.',
+    increment: '+5',
+  },
+  {
+    value: 'conservative',
+    label: 'Conservative',
+    description: 'For advanced lifters. Smaller increments with undulating periodization.',
+    increment: '+2.5',
+  },
+];
+
+/**
+ * Progression-rate slider (Tempo): a three-stop range on the raised track with
+ * an ice fill up to the thumb, the chosen level's increment as a display
+ * number, and its one-line description underneath. The "about" copy is
+ * disclosed on demand behind the info button.
+ */
 export const ExperienceSlider: React.FC<ExperienceSliderProps> = ({
   currentLevel,
   onChange,
-  showTooltip = true
+  showTooltip = true,
 }) => {
   const [showInfo, setShowInfo] = useState(false);
 
-  const levels: {
-    value: ExperienceLevel;
-    label: string;
-    description: string;
-    fill: string;
-    tint: string;
-  }[] = [
-    {
-      value: 'aggressive',
-      label: 'Aggressive',
-      description: 'Recommended for beginners. Larger weight jumps for faster linear progression.',
-      fill: 'bg-success',
-      tint: 'bg-success/10'
-    },
-    {
-      value: 'standard',
-      label: 'Standard',
-      description: 'Balanced progression for intermediate lifters. Moderate weight increases.',
-      fill: 'bg-accent',
-      tint: 'bg-accent/10'
-    },
-    {
-      value: 'conservative',
-      label: 'Conservative',
-      description: 'For advanced lifters. Smaller increments with undulating periodization.',
-      fill: 'bg-muscle-core',
-      tint: 'bg-muscle-core/10'
-    }
-  ];
-
-  const currentIndex = levels.findIndex(l => l.value === currentLevel);
+  const currentIndex = Math.max(
+    0,
+    LEVELS.findIndex((l) => l.value === currentLevel),
+  );
+  const current = LEVELS[currentIndex];
 
   const handleSliderChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const index = parseInt(e.target.value);
-    onChange(levels[index].value);
+    onChange(LEVELS[index].value);
   };
 
-  // Token-driven track gradient: active third uses its semantic hue, rest muted.
-  const trackBackground = `linear-gradient(to right,
-    ${currentIndex === 0 ? 'hsl(var(--success))' : 'hsl(var(--surface-subtle))'} 0% 33.33%,
-    ${currentIndex === 1 ? 'hsl(var(--accent))' : 'hsl(var(--surface-subtle))'} 33.33% 66.66%,
-    ${currentIndex === 2 ? 'hsl(var(--muscle-core))' : 'hsl(var(--surface-subtle))'} 66.66% 100%)`;
+  // Ice fill up to the thumb (informational, not an action), raised track beyond it.
+  const pct = (currentIndex / (LEVELS.length - 1)) * 100;
+  const trackBackground = `linear-gradient(to right, hsl(var(--accent-2)) 0% ${pct}%, hsl(var(--surface-raised)) ${pct}% 100%)`;
 
   return (
     <Card className="p-4">
-      <div className="flex items-center justify-between mb-3">
-        <h3 className="text-body-sm font-semibold text-ink">Progression Rate</h3>
+      <div className="flex items-center justify-between">
+        <h3 className="text-body-sm font-semibold text-ink">Progression rate</h3>
         {showTooltip && (
           <IconButton
             variant="ghost"
-            size="sm"
+            size="md"
             aria-label="About progression rate"
+            aria-expanded={showInfo}
             onClick={() => setShowInfo(!showInfo)}
+            className="-mr-2"
           >
-            <Info className="w-4 h-4" />
+            <Info size={18} aria-hidden="true" />
           </IconButton>
         )}
       </div>
 
       {showInfo && (
-        <div className="mb-4 p-3 bg-accent/10 rounded-md text-body-sm text-ink-muted">
-          Adjust how aggressively weights increase based on your experience level.
-          Beginners benefit from larger jumps, while advanced lifters need smaller, more strategic increases.
-        </div>
+        <p className="mb-3 text-body-sm text-ink-muted">
+          Sets how quickly weights increase. Beginners benefit from larger jumps; advanced lifters
+          need smaller, more deliberate increases.
+        </p>
       )}
 
-      <div className="space-y-4">
-        {/* Slider */}
-        <div className="relative">
-          <input
-            type="range"
-            min="0"
-            max="2"
-            step="1"
-            value={currentIndex}
-            onChange={handleSliderChange}
-            className="experience-slider w-full h-2 rounded-md appearance-none cursor-pointer"
-            style={{ background: trackBackground }}
-          />
-
-          {/* Labels */}
-          <div className="flex justify-between mt-2">
-            {levels.map((level, index) => (
-              <div
-                key={level.value}
-                className={`text-caption font-medium transition-colors duration-snap ${
-                  index === currentIndex ? 'text-ink' : 'text-ink-subtle'
-                }`}
-              >
-                {level.label}
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Current Selection Details */}
-        <div className={`p-3 rounded-md ${levels[currentIndex].tint}`}>
-          <div className="flex items-center justify-between mb-1">
-            <span className="font-medium text-ink">{levels[currentIndex].label}</span>
-            <span className={`px-2 py-1 text-caption font-medium rounded-full text-ink-inverse ${levels[currentIndex].fill}`}>
-              Active
-            </span>
-          </div>
-          <p className="text-body-sm text-ink-muted">{levels[currentIndex].description}</p>
-        </div>
-
-        {/* Quick Examples */}
-        <div className="text-caption text-ink-subtle space-y-1">
-          <p className="font-medium">Example increments (upper body):</p>
-          <div className="grid grid-cols-3 gap-2 text-center">
-            <div className={currentIndex === 0 ? 'font-bold text-ink' : ''}>
-              Aggressive: +10 lbs
-            </div>
-            <div className={currentIndex === 1 ? 'font-bold text-ink' : ''}>
-              Standard: +5 lbs
-            </div>
-            <div className={currentIndex === 2 ? 'font-bold text-ink' : ''}>
-              Conservative: +2.5 lbs
-            </div>
-          </div>
-        </div>
+      <div className="flex items-end gap-3">
+        <span className="font-display font-tabular text-display text-ink">{current.increment}</span>
+        <span className="pb-1 text-body-sm text-ink-muted">lb per step, upper body</span>
       </div>
+
+      <input
+        type="range"
+        min="0"
+        max="2"
+        step="1"
+        value={currentIndex}
+        onChange={handleSliderChange}
+        aria-label="Progression rate"
+        aria-valuetext={current.label}
+        className="experience-slider mt-4 h-2 w-full cursor-pointer appearance-none rounded-full"
+        style={{ background: trackBackground }}
+      />
+
+      <div className="mt-2 flex justify-between">
+        {LEVELS.map((level, index) => (
+          <span
+            key={level.value}
+            className={cn(
+              'text-caption transition-colors duration-snap',
+              index === currentIndex ? 'font-semibold text-ink' : 'text-ink-muted',
+            )}
+          >
+            {level.label}
+          </span>
+        ))}
+      </div>
+
+      <p className="mt-3 text-body-sm text-ink-muted">{current.description}</p>
 
       <style>{`
         .experience-slider::-webkit-slider-thumb {
           appearance: none;
-          width: 20px;
-          height: 20px;
-          background: hsl(var(--surface-raised));
-          border: 2px solid hsl(var(--accent));
+          width: 24px;
+          height: 24px;
+          background: hsl(var(--ink));
+          border: 0;
           border-radius: 50%;
           cursor: pointer;
-          box-shadow: 0 2px 4px hsl(var(--shadow) / 0.2);
         }
 
         .experience-slider::-moz-range-thumb {
-          width: 20px;
-          height: 20px;
-          background: hsl(var(--surface-raised));
-          border: 2px solid hsl(var(--accent));
+          width: 24px;
+          height: 24px;
+          background: hsl(var(--ink));
+          border: 0;
           border-radius: 50%;
           cursor: pointer;
-          box-shadow: 0 2px 4px hsl(var(--shadow) / 0.2);
         }
       `}</style>
     </Card>

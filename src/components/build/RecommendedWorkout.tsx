@@ -74,8 +74,8 @@ export function RecommendedWorkout({
   return (
     <div className="flex h-full flex-col">
       {/* Name — pinned, top-half, keyboard-friendly. */}
-      <div className="shrink-0 pb-3">
-        <Label htmlFor="workout-name" className="mb-1">
+      <div className="shrink-0 pb-4">
+        <Label htmlFor="workout-name" className="mb-1.5 text-ink-muted">
           Workout name
         </Label>
         <Input
@@ -94,70 +94,71 @@ export function RecommendedWorkout({
             No exercises yet. Go back and pick some muscles.
           </p>
         ) : (
-          <ul className="space-y-4">
+          <ul className="space-y-5">
             {groups.map((group) => (
               <li key={group.term}>
-                <div className="mb-1.5 flex items-baseline justify-between">
-                  <h2 className="font-marker text-body font-bold text-ink">{group.term}</h2>
-                  <span className="text-caption text-ink-subtle">
-                    {group.rows.length} exercise{group.rows.length !== 1 ? 's' : ''}
+                <div className="mb-2 flex items-baseline justify-between px-1">
+                  <h2 className="text-body font-semibold text-ink">{group.term}</h2>
+                  <span className="text-caption text-ink-muted">
+                    <span className="font-tabular">{group.rows.length}</span> exercise
+                    {group.rows.length !== 1 ? 's' : ''}
                   </span>
                 </div>
 
-                <ul className="space-y-2">
-                  {group.rows.map((row) => (
-                    <li
-                      key={row.rowId}
-                      className="sketch-border flex items-center gap-2 rounded-xl bg-surface-raised p-2.5"
-                    >
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-body text-ink">{row.exercise.name}</p>
-                        <p className="mt-0.5 text-caption text-ink-muted">
-                          {/* Draft default from buildDefaultSets (3 × 10); the user
-                              dials in real weights/reps live during the workout. */}
-                          <span className="font-num font-tabular">3 × 10</span>
-                          {row.exercise.equipment ? ` · ${row.exercise.equipment}` : ''}
-                        </p>
-                      </div>
+                {/* One subtle card per muscle; exercises are rows split by hairlines. */}
+                <div className="rounded-[20px] bg-surface-subtle">
+                  <ul className="divide-y divide-hairline">
+                    {group.rows.map((row) => (
+                      <li key={row.rowId} className="flex items-center gap-1 py-2 pl-4 pr-1.5">
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-body font-medium text-ink">{row.exercise.name}</p>
+                          <p className="mt-0.5 truncate text-caption text-ink-muted">
+                            {/* Draft default from buildDefaultSets (3 × 10); the user
+                                dials in real weights/reps live during the workout. */}
+                            <span className="font-tabular">3 × 10</span>
+                            {row.exercise.equipment ? ` · ${row.exercise.equipment}` : ''}
+                          </p>
+                        </div>
 
-                      <div className="flex shrink-0 items-center gap-1">
-                        <IconButton
-                          variant="ghost"
-                          size="sm"
-                          aria-label={`Randomize ${group.term} exercise`}
-                          onClick={() => onRandomize(row.rowId)}
-                        >
-                          <Shuffle size={17} aria-hidden="true" />
-                        </IconButton>
-                        <IconButton
-                          variant="ghost"
-                          size="sm"
-                          aria-label={`Choose a different ${group.term} exercise`}
-                          onClick={() => setEditing(row)}
-                        >
-                          <Pencil size={16} aria-hidden="true" />
-                        </IconButton>
-                        <IconButton
-                          variant="ghost"
-                          size="sm"
-                          aria-label={`Remove ${row.exercise.name}`}
-                          onClick={() => onRemove(row.rowId)}
-                        >
-                          <Trash2 size={16} aria-hidden="true" />
-                        </IconButton>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
+                        <div className="flex shrink-0 items-center">
+                          <IconButton
+                            variant="ghost"
+                            size="md"
+                            aria-label={`Randomize ${group.term} exercise`}
+                            onClick={() => onRandomize(row.rowId)}
+                          >
+                            <Shuffle size={18} aria-hidden="true" />
+                          </IconButton>
+                          <IconButton
+                            variant="ghost"
+                            size="md"
+                            aria-label={`Choose a different ${group.term} exercise`}
+                            onClick={() => setEditing(row)}
+                          >
+                            <Pencil size={17} aria-hidden="true" />
+                          </IconButton>
+                          <IconButton
+                            variant="ghost"
+                            size="md"
+                            aria-label={`Remove ${row.exercise.name}`}
+                            onClick={() => onRemove(row.rowId)}
+                          >
+                            <Trash2 size={17} aria-hidden="true" />
+                          </IconButton>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
 
-                <button
-                  type="button"
-                  onClick={() => onAddForTerm(group.term)}
-                  className="mt-2 inline-flex items-center gap-1 text-body-sm text-accent hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface"
-                >
-                  <Plus size={15} aria-hidden="true" />
-                  Add another {group.term} exercise
-                </button>
+                  <button
+                    type="button"
+                    onClick={() => onAddForTerm(group.term)}
+                    className="flex min-h-touch-min w-full items-center gap-2 border-t border-hairline px-4 text-body-sm font-semibold text-ink-muted transition-colors duration-snap hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent rounded-b-[20px]"
+                  >
+                    <Plus size={16} aria-hidden="true" />
+                    Add another {group.term.toLowerCase()} exercise
+                  </button>
+                </div>
               </li>
             ))}
           </ul>
@@ -167,10 +168,10 @@ export function RecommendedWorkout({
       {/* Swap picker — pick a specific exercise for the row's muscle. */}
       <Sheet open={editing !== null} onOpenChange={(open) => !open && setEditing(null)}>
         <SheetContent className="max-w-xl">
-          <SheetTitle className="font-marker">
+          <SheetTitle className="text-title">
             {editing ? `${editing.term} exercises` : 'Exercises'}
           </SheetTitle>
-          <ul className="mt-3 space-y-1">
+          <ul className="mt-3 divide-y divide-hairline">
             {swapOptions.map((option) => {
               const isCurrent = editing?.exercise.id === option.id;
               return (
@@ -182,9 +183,9 @@ export function RecommendedWorkout({
                       setEditing(null);
                     }}
                     className={cn(
-                      'flex w-full items-center justify-between gap-3 rounded-lg px-3 py-2.5 text-left transition-colors',
-                      'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent',
-                      isCurrent ? 'bg-accent/10 text-ink' : 'text-ink hover:bg-surface-subtle',
+                      'flex min-h-touch-lg w-full items-center justify-between gap-3 px-1 py-2.5 text-left text-ink transition-colors duration-snap',
+                      'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent',
+                      !isCurrent && 'hover:text-ink-muted',
                     )}
                   >
                     <span className="min-w-0">
@@ -194,7 +195,7 @@ export function RecommendedWorkout({
                       </span>
                     </span>
                     {isCurrent && (
-                      <span className="shrink-0 font-marker text-caption text-accent">current</span>
+                      <span className="shrink-0 text-caption font-semibold text-accent-2">Current</span>
                     )}
                   </button>
                 </li>

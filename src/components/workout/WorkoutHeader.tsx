@@ -1,5 +1,5 @@
 // WorkoutHeader — workout title, live duration readout (isolated leaf), an
-// "End Workout" action, and the overall + current-exercise progress bars.
+// "End workout" action, and the overall + current-exercise progress bars.
 // Extracted from WorkoutPage so the orchestrator stays thin. The live clock is
 // delegated to <WorkoutDurationTimer> so the per-second tick does not re-render
 // this header's progress math.
@@ -37,80 +37,76 @@ export const WorkoutHeader: React.FC<WorkoutHeaderProps> = ({
       : 0;
 
   return (
-    <Card elevation={1} className="mb-6 p-6">
+    <Card elevation={1} className="mb-6 p-5">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          {/* Workout name in the marker hand, swiped with a hand-drawn underline */}
-          <h1 className="text-display font-marker leading-none text-ink">
-            <span className="marker-underline">{name}</span>
-          </h1>
-          <div className="mt-3">
+          <p className="text-body-sm text-ink-muted">
+            Exercise{' '}
+            <span className="font-num font-tabular text-ink">{currentExerciseNumber}</span>{' '}
+            of{' '}
+            <span className="font-num font-tabular text-ink">{totalExercises}</span>
+          </p>
+          <h1 className="mt-1 break-words font-display text-display text-ink">{name}</h1>
+          <div className="mt-2">
             <WorkoutDurationTimer />
           </div>
         </div>
-        <Button variant="danger" size="sm" onClick={onEndWorkout}>
-          End
+        <Button variant="secondary" size="sm" onClick={onEndWorkout}>
+          End workout
         </Button>
       </div>
 
-      {/* Progress */}
-      <div className="mt-5">
-        {/* Overall workout progress */}
-        <div className="mb-3">
-          <div className="mb-1 flex items-end justify-between">
-            <span className="font-marker text-body-sm uppercase tracking-wide text-ink-muted">
-              Overall
-            </span>
-            <span className="font-num font-tabular text-title font-bold text-accent">
+      {/* Progress: ice fills as sets are done. */}
+      <div className="mt-5 space-y-4">
+        <div>
+          <div className="mb-1.5 flex items-baseline justify-between">
+            <span className="text-body-sm text-ink-muted">Workout</span>
+            <span className="font-display font-tabular text-title text-ink">
               {overallPercentage}%
             </span>
           </div>
-          <div className="h-3 w-full rounded-full bg-surface-subtle sketch-border">
+          <div
+            role="progressbar"
+            aria-label="Workout progress"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={overallPercentage}
+            className="h-2 w-full overflow-hidden rounded-full bg-surface-raised"
+          >
             <div
-              className="h-3 rounded-full bg-accent transition-all duration-slow"
+              className="h-full rounded-full bg-accent-2 transition-[width] duration-slow"
               style={{ width: `${overallPercentage}%` }}
             />
           </div>
-          <div className="mt-1 flex justify-between text-caption text-ink-subtle">
-            <span>
-              <span className="font-num font-tabular">{overallCompletedSets}</span>{' '}
-              done
-            </span>
-            <span>
-              <span className="font-num font-tabular">{overallTotalSets}</span>{' '}
-              total sets
-            </span>
-          </div>
+          <p className="mt-1.5 text-caption text-ink-muted">
+            <span className="font-num font-tabular text-ink">{overallCompletedSets}</span> of{' '}
+            <span className="font-num font-tabular text-ink">{overallTotalSets}</span> sets done
+          </p>
         </div>
 
-        {/* Current exercise progress */}
-        <div className="mb-1 flex justify-between text-body-sm text-ink-subtle">
-          <span>
-            Exercise{' '}
-            <span className="font-num font-tabular text-ink">
-              {currentExerciseNumber}
-            </span>{' '}
-            of{' '}
-            <span className="font-num font-tabular text-ink">
-              {totalExercises}
+        <div>
+          <div className="mb-1.5 flex items-baseline justify-between text-body-sm text-ink-muted">
+            <span>This exercise</span>
+            <span>
+              <span className="font-num font-tabular text-ink">{currentExerciseCompletedSets}</span>{' '}
+              of{' '}
+              <span className="font-num font-tabular text-ink">{currentExerciseTotalSets}</span>{' '}
+              sets
             </span>
-          </span>
-          <span>
-            <span className="font-num font-tabular">
-              {currentExerciseCompletedSets}
-            </span>{' '}
-            /{' '}
-            <span className="font-num font-tabular">
-              {currentExerciseTotalSets}
-            </span>{' '}
-            sets
-          </span>
-        </div>
-        <div className="h-2 w-full rounded-full bg-surface-subtle">
+          </div>
           <div
-            className="h-2 rounded-full bg-accent transition-all duration-smooth"
-            style={{ width: `${exercisePercentage}%` }}
-          />
+            role="progressbar"
+            aria-label="Exercise progress"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={Math.round(exercisePercentage)}
+            className="h-1.5 w-full overflow-hidden rounded-full bg-surface-raised"
+          >
+            <div
+              className="h-full rounded-full bg-accent-2 transition-[width] duration-smooth"
+              style={{ width: `${exercisePercentage}%` }}
+            />
+          </div>
         </div>
       </div>
     </Card>

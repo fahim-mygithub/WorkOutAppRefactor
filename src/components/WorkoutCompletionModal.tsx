@@ -1,10 +1,9 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAppDispatch, useAppSelector } from '../store/hooks';
 import { useAuth } from '../contexts/AuthContext';
 import { endWorkout, setShowCompletionModal } from '../store/slices/workoutSlice';
 import { WorkoutStorageService } from '../services/workoutStorageService';
-import { Trophy, Clock, Target, TrendingUp, Check, Edit3 } from 'lucide-react';
 import {
   Sheet,
   SheetContent,
@@ -12,7 +11,6 @@ import {
   SheetDescription,
 } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
-import { Stack } from '@/components/ui/stack';
 
 interface WorkoutCompletionModalProps {
   isOpen: boolean;
@@ -28,25 +26,15 @@ export const WorkoutCompletionModal: React.FC<WorkoutCompletionModalProps> = ({
   const { activeWorkout } = useAppSelector((state) => state.workout);
   const { user } = useAuth();
   const [isCompleting, setIsCompleting] = useState(false);
-  const [showConfetti, setShowConfetti] = useState(false);
-
-  useEffect(() => {
-    if (isOpen) {
-      setShowConfetti(true);
-      const timer = setTimeout(() => setShowConfetti(false), 3000);
-      return () => clearTimeout(timer);
-    }
-  }, [isOpen]);
-
+  // Compact clock for the summary: 1:05:09 / 42:07.
   const formatTime = (seconds: number): string => {
     const hours = Math.floor(seconds / 3600);
     const minutes = Math.floor((seconds % 3600) / 60);
-    const remainingSeconds = seconds % 60;
-
+    const ss = String(seconds % 60).padStart(2, '0');
     if (hours > 0) {
-      return `${hours}h ${minutes}m ${remainingSeconds}s`;
+      return `${hours}:${String(minutes).padStart(2, '0')}:${ss}`;
     }
-    return `${minutes}m ${remainingSeconds}s`;
+    return `${minutes}:${ss}`;
   };
 
   const calculateStats = () => {
@@ -81,12 +69,12 @@ export const WorkoutCompletionModal: React.FC<WorkoutCompletionModalProps> = ({
     setIsCompleting(true);
     try {
       await WorkoutStorageService.saveCompletedWorkout(user.uid, activeWorkout);
-      console.log('✅ Workout saved successfully');
+      console.log('Workout saved successfully');
       dispatch(endWorkout());
       dispatch(setShowCompletionModal(false));
       navigate('/profile', { state: { showWorkoutComplete: true } });
     } catch (error) {
-      console.error('❌ Error saving workout:', error);
+      console.error('Error saving workout:', error);
 
       // Show user-friendly error message
       alert('Failed to save workout. Your progress will still be ended. Please check your connection and try again.');
@@ -108,6 +96,13 @@ export const WorkoutCompletionModal: React.FC<WorkoutCompletionModalProps> = ({
 
   if (!activeWorkout) return null;
 
+  const summary = [
+    { value: formatTime(activeWorkout.duration), label: 'time' },
+    { value: `${stats.completedSets}/${stats.totalSets}`, label: 'sets' },
+    { value: stats.totalReps.toLocaleString(), label: 'reps' },
+    { value: stats.totalVolume.toLocaleString(), label: 'lb moved' },
+  ];
+
   return (
     <Sheet
       open={isOpen}
@@ -115,109 +110,58 @@ export const WorkoutCompletionModal: React.FC<WorkoutCompletionModalProps> = ({
         if (!next) onClose();
       }}
     >
-      <SheetContent className="max-w-md overflow-hidden sm:mx-auto">
-        {/* Confetti Effect */}
-        {showConfetti && (
-          <div className="pointer-events-none absolute inset-0 overflow-hidden">
-            {Array.from({ length: 50 }).map((_, i) => (
-              <div
-                key={i}
-                className="absolute h-2 w-2 animate-bounce rounded bg-accent"
-                style={{
-                  left: `${Math.random() * 100}%`,
-                  top: `${Math.random() * 100}%`,
-                  animationDelay: `${Math.random() * 2}s`,
-                  animationDuration: `${1 + Math.random() * 2}s`
-                }}
-              />
-            ))}
-          </div>
-        )}
+      <SheetContent className="max-w-md sm:mx-auto">
+        <p className="text-body-sm text-accent-2">{activeWorkout.name}</p>
+        <SheetTitle className="mt-1 font-display text-display text-ink">Workout complete</SheetTitle>
+        <SheetDescription className="sr-only">
+          Your session summary. Save it to your history or keep editing.
+        </SheetDescription>
 
-        {/* Header */}
-        <div className="mb-6 text-center">
-          <Trophy className="mx-auto mb-2 h-16 w-16 animate-pulse text-warning" aria-hidden="true" />
-          <SheetTitle className="text-title font-marker"><span className="marker-underline">Workout Complete!</span></SheetTitle>
-          <SheetDescription>
-            Congratulations on finishing your workout
-          </SheetDescription>
-        </div>
+        {/* The numbers do the celebrating. */}
+        <dl className="mt-6 grid grid-cols-2 gap-x-4 gap-y-5">
+          {summary.map((s) => (
+            <div key={s.label} className="min-w-0">
+              <dt className="sr-only">{s.label}</dt>
+              <dd className="truncate font-display font-tabular text-display text-ink">{s.value}</dd>
+              <dd aria-hidden="true" className="text-body-sm text-ink-muted">{s.label}</dd>
+            </div>
+          ))}
+        </dl>
 
-        {/* Workout Summary */}
-        <h3 className="mb-4 text-body font-bold text-ink font-marker">{activeWorkout.name}</h3>
-
-        <div className="mb-6 grid grid-cols-2 gap-4">
-          <div className="rounded-lg bg-surface-subtle p-4 text-center">
-            <Clock className="mx-auto mb-2 h-6 w-6 text-accent" aria-hidden="true" />
-            <div className="text-body-sm text-ink-subtle font-marker">Duration</div>
-            <div className="text-body font-bold text-ink font-num font-tabular">{formatTime(activeWorkout.duration)}</div>
-          </div>
-
-          <div className="rounded-lg bg-surface-subtle p-4 text-center">
-            <Target className="mx-auto mb-2 h-6 w-6 text-success" aria-hidden="true" />
-            <div className="text-body-sm text-ink-subtle font-marker">Sets Completed</div>
-            <div className="text-body font-bold text-ink font-num font-tabular">{stats.completedSets}/{stats.totalSets}</div>
-          </div>
-
-          <div className="rounded-lg bg-surface-subtle p-4 text-center">
-            <TrendingUp className="mx-auto mb-2 h-6 w-6 text-accent" aria-hidden="true" />
-            <div className="text-body-sm text-ink-subtle font-marker">Total Reps</div>
-            <div className="text-body font-bold text-ink font-num font-tabular">{stats.totalReps.toLocaleString()}</div>
-          </div>
-
-          <div className="rounded-lg bg-surface-subtle p-4 text-center">
-            <Trophy className="mx-auto mb-2 h-6 w-6 text-warning" aria-hidden="true" />
-            <div className="text-body-sm text-ink-subtle font-marker">Volume</div>
-            <div className="text-body font-bold text-ink"><span className="font-num font-tabular">{stats.totalVolume.toLocaleString()}</span> lbs</div>
-          </div>
-        </div>
-
-        {/* Exercises Summary */}
-        <div className="mb-6">
-          <h4 className="mb-3 text-body font-semibold text-ink font-marker">Exercises Completed</h4>
-          <div className="max-h-32 space-y-2 overflow-y-auto">
+        {/* Exercises: quiet rows, hairlines between. */}
+        <section aria-label="Exercises" className="mt-6">
+          <ul className="max-h-40 overflow-y-auto">
             {activeWorkout.exercises.map((exercise) => {
               const completedSets = exercise.sets.filter(set => set.completed).length;
+              const allDone = completedSets === exercise.sets.length && completedSets > 0;
               return (
-                <Stack
+                <li
                   key={exercise.id}
-                  direction="row"
-                  align="center"
-                  justify="between"
-                  className="rounded bg-surface-subtle p-2"
+                  className="flex min-h-touch-min items-center justify-between gap-3 border-b border-hairline py-2 last:border-b-0"
                 >
-                  <span className="text-body-sm text-ink">{exercise.exercise.name}</span>
-                  <span className="text-caption text-ink-subtle"><span className="font-num font-tabular">{completedSets}/{exercise.sets.length}</span> sets</span>
-                </Stack>
+                  <span className="min-w-0 truncate text-body-sm text-ink">{exercise.exercise.name}</span>
+                  <span className={allDone ? 'shrink-0 text-body-sm text-accent-2' : 'shrink-0 text-body-sm text-ink-muted'}>
+                    <span className="font-num font-tabular">{completedSets}/{exercise.sets.length}</span> sets
+                  </span>
+                </li>
               );
             })}
-          </div>
-        </div>
+          </ul>
+        </section>
 
-        {/* Action Buttons */}
-        <Stack direction="row" gap={3}>
+        <div className="mt-8 flex flex-col gap-2">
           <Button
-            variant="secondary"
-            className="flex-1"
-            onClick={handleContinueEditing}
-          >
-            <Edit3 className="h-5 w-5" aria-hidden="true" />
-            <span>Continue Editing</span>
-          </Button>
-
-          <Button
-            className="flex-1 bg-success hover:bg-success/90 text-ink-inverse"
+            size="xl"
             onClick={handleCompleteWorkout}
             disabled={isCompleting}
+            aria-busy={isCompleting}
           >
-            {isCompleting ? (
-              <span className="h-5 w-5 animate-spin rounded-full border-2 border-ink-inverse border-t-transparent" />
-            ) : (
-              <Check className="h-5 w-5" aria-hidden="true" />
-            )}
-            <span>{isCompleting ? 'Saving...' : 'Complete Workout'}</span>
+            {isCompleting ? 'Saving…' : 'Save workout'}
           </Button>
-        </Stack>
+          <Button variant="ghost" size="lg" onClick={handleContinueEditing}>
+            Keep editing
+          </Button>
+        </div>
       </SheetContent>
     </Sheet>
   );

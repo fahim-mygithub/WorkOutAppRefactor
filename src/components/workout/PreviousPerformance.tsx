@@ -2,7 +2,6 @@ import React from 'react';
 import { WorkoutExercise, WorkoutSet } from '../../types/exercise';
 import { ExerciseHistory, PerformedSet } from '../../types/exerciseHistory';
 import { TrendingUp, TrendingDown, Minus, Trophy } from 'lucide-react';
-import { Card } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 
 interface PreviousPerformanceProps {
@@ -63,11 +62,9 @@ export const PreviousPerformance: React.FC<PreviousPerformanceProps> = ({
 
   if (isLoading) {
     return (
-      <Card className="p-4 mb-4" aria-busy="true">
-        <div className="flex items-center justify-between mb-3">
-          <h3 className="font-marker text-body text-ink-muted">
-            Previous performance
-          </h3>
+      <section aria-label="Last time" aria-busy="true" className="mb-4">
+        <div className="mb-2 flex items-center justify-between">
+          <h3 className="text-body-sm font-semibold text-ink-muted">Last time</h3>
           <Skeleton className="h-4 w-16" />
         </div>
         <div className="space-y-2">
@@ -75,164 +72,159 @@ export const PreviousPerformance: React.FC<PreviousPerformanceProps> = ({
             <Skeleton key={i} className="h-8 w-full" />
           ))}
         </div>
-      </Card>
+      </section>
     );
   }
 
   if (!previousPerformance) {
     return (
-      <Card className="p-4 mb-4 border border-accent/30 bg-accent/10">
-        <div className="flex items-center gap-2 mb-2">
-          <TrendingUp className="h-4 w-4 text-accent" />
-          <h3 className="font-marker text-body text-ink">
-            First time performing this exercise
-          </h3>
+      <section aria-label="Last time" className="mb-4 flex items-start gap-2">
+        <TrendingUp aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-accent-2" />
+        <div>
+          <h3 className="text-body-sm font-semibold text-ink">First time doing this exercise</h3>
+          <p className="text-caption text-ink-muted">
+            No history yet. Today sets your baseline.
+          </p>
         </div>
-        <p className="text-caption text-ink-muted">
-          No previous performance data available. Time to set your baseline!
-        </p>
-      </Card>
+      </section>
     );
   }
 
+  const unitOf = (u?: string) => (u === 'kg' ? 'kg' : 'lb');
+
   return (
-    <Card className="p-4 mb-4 border border-border">
-      <div className="flex items-center justify-between mb-3">
+    <section aria-label="Last time" className="mb-4">
+      <div className="mb-2 flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <h3 className="font-marker text-body text-ink-muted">
-            Previous performance
-          </h3>
+          <h3 className="text-body-sm font-semibold text-ink-muted">Last time</h3>
           {previousPerformance.personalRecords && (
-            <div className="flex gap-1">
+            <div className="flex gap-1 text-success">
               {previousPerformance.personalRecords.maxWeight && (
-                <Trophy className="h-3 w-3 text-warning" aria-label="Weight PR" />
+                <Trophy className="h-3 w-3" aria-label="Weight PR" />
               )}
               {previousPerformance.personalRecords.maxReps && (
-                <Trophy className="h-3 w-3 text-accent" aria-label="Reps PR" />
+                <Trophy className="h-3 w-3" aria-label="Reps PR" />
               )}
               {previousPerformance.personalRecords.maxVolume && (
-                <Trophy className="h-3 w-3 text-success" aria-label="Volume PR" />
+                <Trophy className="h-3 w-3" aria-label="Volume PR" />
               )}
             </div>
           )}
         </div>
-        <div className="text-caption text-ink-subtle">
+        <p className="font-num font-tabular text-caption text-ink-subtle">
           {new Date(previousPerformance.workoutDate).toLocaleDateString()}
-        </div>
+        </p>
       </div>
 
       {matchingSets ? (
-        // Show exact matching configuration
-        <div className="space-y-2">
-          <div className="flex items-center justify-between text-caption text-ink-subtle border-b border-border pb-1">
+        // Exact matching configuration: one row per set, last time vs. today.
+        <div>
+          <div
+            aria-hidden="true"
+            className="grid grid-cols-[2rem_1fr_1fr_3.5rem] gap-2 pb-1 text-caption text-ink-subtle"
+          >
             <span>Set</span>
-            <span>Previous</span>
-            <span>Current</span>
-            <span>Comparison</span>
+            <span>Last time</span>
+            <span>Today</span>
+            <span className="text-right">Change</span>
           </div>
 
-          {currentExercise.sets.map((currentSet, index) => {
-            const previousSet = matchingSets[index];
-            const currentWeight = currentSet.weight || 0;
-            const previousWeight = previousSet?.weight || 0;
-            const comparison = previousSet ? getWeightComparison(currentWeight, previousWeight) : 'same';
+          <ul className="divide-y divide-hairline">
+            {currentExercise.sets.map((currentSet, index) => {
+              const previousSet = matchingSets[index];
+              const currentWeight = currentSet.weight || 0;
+              const previousWeight = previousSet?.weight || 0;
+              const comparison = previousSet ? getWeightComparison(currentWeight, previousWeight) : 'same';
 
-            return (
-              <div key={currentSet.id} className="flex items-center justify-between text-body-sm">
-                <span className="w-8 font-num font-tabular text-ink-subtle">
-                  {index + 1}
-                </span>
-
-                <div className="flex-1 text-center">
-                  {previousSet ? (
-                    <span className="text-ink-muted font-num font-tabular">
-                      {previousSet.actualReps} × {previousSet.weight}
-                      {previousSet.unit === 'kg' ? 'kg' : 'lbs'}
-                    </span>
-                  ) : (
-                    <span className="text-ink-subtle">-</span>
-                  )}
-                </div>
-
-                <div className="flex-1 text-center">
-                  <span className="text-ink-muted font-tabular">
-                    {currentSet.reps} × {currentWeight}
-                    {currentSet.unit === 'kg' ? 'kg' : 'lbs'}
+              return (
+                <li
+                  key={currentSet.id}
+                  className="grid min-h-10 grid-cols-[2rem_1fr_1fr_3.5rem] items-center gap-2 font-num font-tabular text-body-sm"
+                >
+                  <span className="text-ink-subtle">{index + 1}</span>
+                  <span className="text-ink-muted">
+                    {previousSet ? (
+                      <>
+                        {previousSet.actualReps} × {previousSet.weight} {unitOf(previousSet.unit)}
+                      </>
+                    ) : (
+                      <span className="text-ink-subtle">–</span>
+                    )}
                   </span>
-                </div>
-
-                <div className="w-16 flex justify-center">
-                  {previousSet && (
-                    <>
-                      {comparison === 'up' && (
-                        <div className="flex items-center gap-1 text-success">
-                          <TrendingUp className="h-3 w-3" />
-                          <span className="font-num font-tabular text-caption">+{currentWeight - previousWeight}</span>
-                        </div>
-                      )}
-                      {comparison === 'down' && (
-                        <div className="flex items-center gap-1 text-danger">
-                          <TrendingDown className="h-3 w-3" />
-                          <span className="font-num font-tabular text-caption">-{previousWeight - currentWeight}</span>
-                        </div>
-                      )}
-                      {comparison === 'same' && (
-                        <div className="flex items-center gap-1 text-ink-subtle">
-                          <Minus className="h-3 w-3" />
-                        </div>
-                      )}
-                    </>
-                  )}
-                </div>
-              </div>
-            );
-          })}
+                  <span className="text-ink">
+                    {currentSet.reps} × {currentWeight} {unitOf(currentSet.unit)}
+                  </span>
+                  <span className="flex justify-end">
+                    {previousSet && (
+                      <>
+                        {comparison === 'up' && (
+                          <span className="flex items-center gap-1 text-accent-2">
+                            <TrendingUp className="h-3 w-3" aria-hidden="true" />
+                            <span className="text-caption">+{currentWeight - previousWeight}</span>
+                          </span>
+                        )}
+                        {comparison === 'down' && (
+                          <span className="flex items-center gap-1 text-ink-muted">
+                            <TrendingDown className="h-3 w-3" aria-hidden="true" />
+                            <span className="text-caption">-{previousWeight - currentWeight}</span>
+                          </span>
+                        )}
+                        {comparison === 'same' && (
+                          <Minus className="h-3 w-3 text-ink-subtle" aria-label="Same weight" />
+                        )}
+                      </>
+                    )}
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
         </div>
       ) : (
-        // Show general previous performance when configuration doesn't match
-        <div className="space-y-2">
-          <div className="text-caption text-warning mb-2">
-            Configuration doesn't match. Last performed: {previousPerformance.configuration}
-          </div>
+        // Configuration differs: summarize last time instead of comparing rows.
+        <div>
+          <p className="mb-3 text-caption text-ink-muted">
+            Different setup last time ({previousPerformance.configuration}).
+          </p>
 
-          <div className="bg-surface-subtle rounded-md p-3">
-            <div className="grid grid-cols-2 gap-4 text-body-sm">
-              <div>
-                <span className="text-ink-subtle">Sets × Reps:</span>
-                <span className="ml-2 font-medium text-ink">
-                  {previousPerformance.configuration}
-                </span>
-              </div>
-              <div>
-                <span className="text-ink-subtle">Weight Range:</span>
-                <span className="ml-2 font-medium text-ink font-num font-tabular">
-                  {Math.min(...previousPerformance.sets.map(s => s.weight))} - {Math.max(...previousPerformance.sets.map(s => s.weight))}
-                  {previousPerformance.sets[0]?.unit === 'kg' ? 'kg' : 'lbs'}
-                </span>
-              </div>
-              <div>
-                <span className="text-ink-subtle">Total Volume:</span>
-                <span className="ml-2 font-medium text-ink font-num font-tabular">
-                  {previousPerformance.totalVolume.toLocaleString()}
-                </span>
-              </div>
-              <div>
-                <span className="text-ink-subtle">Workout:</span>
-                <span className="ml-2 font-medium text-ink">
-                  {previousPerformance.workoutName || 'Quick Workout'}
-                </span>
-              </div>
+          <dl className="grid grid-cols-2 gap-x-4 gap-y-3">
+            <div className="flex flex-col-reverse">
+              <dt className="text-caption text-ink-muted">Sets × reps</dt>
+              <dd className="font-display font-tabular text-title text-ink">
+                {previousPerformance.configuration}
+              </dd>
             </div>
-          </div>
+            <div className="flex flex-col-reverse">
+              <dt className="text-caption text-ink-muted">Weight range</dt>
+              <dd className="font-display font-tabular text-title text-ink">
+                {Math.min(...previousPerformance.sets.map(s => s.weight))}–{Math.max(...previousPerformance.sets.map(s => s.weight))}
+                <span className="ml-1 text-body-sm font-semibold text-ink-muted">
+                  {unitOf(previousPerformance.sets[0]?.unit)}
+                </span>
+              </dd>
+            </div>
+            <div className="flex flex-col-reverse">
+              <dt className="text-caption text-ink-muted">Total volume</dt>
+              <dd className="font-display font-tabular text-title text-ink">
+                {previousPerformance.totalVolume.toLocaleString()}
+              </dd>
+            </div>
+            <div className="flex flex-col-reverse">
+              <dt className="text-caption text-ink-muted">Workout</dt>
+              <dd className="truncate text-body font-semibold text-ink">
+                {previousPerformance.workoutName || 'Quick workout'}
+              </dd>
+            </div>
+          </dl>
         </div>
       )}
 
       {previousPerformance.notes && (
-        <div className="mt-3 p-2 bg-surface-subtle rounded-md text-caption">
+        <p className="mt-3 text-caption text-ink-muted">
           <span className="text-ink-subtle">Notes: </span>
-          <span className="text-ink-muted">{previousPerformance.notes}</span>
-        </div>
+          {previousPerformance.notes}
+        </p>
       )}
-    </Card>
+    </section>
   );
 };

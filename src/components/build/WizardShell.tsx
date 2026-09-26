@@ -11,7 +11,7 @@ import { IconButton } from '../ui/icon-button';
  * STRUCTURALLY rather than by discipline:
  *
  *   h-full flex column (fills AppShell's <main>, never taller)
- *     ├─ header  shrink-0   back + title + progress dots
+ *     ├─ header  shrink-0   back + muted context line + display title
  *     ├─ body    flex-1 min-h-0   the step content lives in the TOP half, so an
  *     │                            on-screen keyboard only ever covers empty space
  *     └─ footer  shrink-0   the single primary action, pinned to the bottom
@@ -22,7 +22,7 @@ import { IconButton } from '../ui/icon-button';
  * `scrollableBody`, keeping the header and the Start button pinned.
  */
 export interface WizardShellProps {
-  /** Step heading, in the marker voice. */
+  /** Step heading, in the display voice. */
   title: string;
   /** Optional one-line helper under the title. */
   subtitle?: string;
@@ -69,19 +69,26 @@ export function WizardShell({
           <span className="h-touch-min w-touch-min shrink-0" aria-hidden="true" />
         )}
 
-        <div className="min-w-0 flex-1 pt-1.5">
-          <h1 className="truncate font-marker text-title leading-tight text-ink">{title}</h1>
-          {subtitle && <p className="mt-0.5 text-body-sm text-ink-muted">{subtitle}</p>}
+        <div className="min-w-0 flex-1 pt-1">
+          {/* Context line: step progress when the flow has steps. */}
+          {showDots && (
+            <p className="text-body-sm text-ink-muted">
+              Step <span className="font-tabular">{step}</span> of{' '}
+              <span className="font-tabular">{totalSteps}</span>
+            </p>
+          )}
+          <h1 className="truncate font-display text-title text-ink">{title}</h1>
+          {subtitle && <p className="mt-1 text-body-sm text-ink-muted">{subtitle}</p>}
         </div>
 
         {showDots && (
-          <div className="flex shrink-0 items-center gap-1.5 pt-4" aria-hidden="true">
+          <div className="flex shrink-0 items-center gap-1.5 pt-3" aria-hidden="true">
             {Array.from({ length: totalSteps! }, (_, i) => (
               <span
                 key={i}
                 className={cn(
-                  'h-2 w-2 rounded-full transition-colors',
-                  i < step! ? 'bg-accent' : 'bg-ink/20',
+                  'h-1.5 rounded-full transition-[width,background-color] duration-smooth',
+                  i < step! ? 'w-5 bg-accent' : 'w-1.5 bg-surface-raised',
                 )}
               />
             ))}
@@ -101,7 +108,7 @@ export function WizardShell({
 
       {/* Footer — pinned primary action. */}
       {footer && (
-        <div className="shrink-0 border-t border-ink/10 px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+        <div className="shrink-0 px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3">
           {footer}
         </div>
       )}

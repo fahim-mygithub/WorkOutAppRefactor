@@ -2,6 +2,8 @@ import React from 'react';
 import { Exercise } from '../../types/exercise';
 import { Button } from '../ui/button';
 import { IconButton } from '../ui/icon-button';
+import { Card } from '../ui/card';
+import { X } from 'lucide-react';
 
 interface ParseIssue {
   exerciseName: string;
@@ -88,149 +90,133 @@ export const ParseIssuesResolver: React.FC<ParseIssuesResolverProps> = ({
   const selectedCorrectionsCount = Object.keys(selectedCorrections).length;
 
   return (
-    <div className="bg-warning/10 border border-warning/30 rounded-lg p-6 space-y-4">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <svg className="w-5 h-5 text-warning" fill="currentColor" viewBox="0 0 20 20">
-            <path fillRule="evenodd" d="M8.485 3.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 3.495zM10 6a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 6zm0 9a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
-          </svg>
-          <h3 className="font-semibold text-ink">
-            Found {visibleIssues.length} exercise{visibleIssues.length !== 1 ? 's' : ''} that might need correction
+    <Card className="space-y-4 p-4">
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <h3 className="text-body font-semibold text-ink">
+            <span className="font-tabular">{visibleIssues.length}</span> exercise{visibleIssues.length !== 1 ? 's' : ''} might need a fix
           </h3>
+          <p className="mt-0.5 text-body-sm text-ink-muted">
+            Names the library doesn't know are kept as custom exercises.
+          </p>
         </div>
-
-        <div className="flex gap-2">
-          {highConfidenceCount > 0 && (
-            <Button
-              variant="primary"
-              size="sm"
-              onClick={handleApplyAllHighConfidence}
-              className="bg-success hover:bg-success/90 text-ink-inverse"
-              title="Apply corrections with 85%+ confidence"
-            >
-              Auto-fix {highConfidenceCount} high-confidence
-            </Button>
-          )}
-
-          {selectedCorrectionsCount > 0 && (
-            <Button
-              variant="primary"
-              size="sm"
-              onClick={handleApplySelectedCorrections}
-            >
-              Apply {selectedCorrectionsCount} selected
-            </Button>
-          )}
-
-          <IconButton
-            variant="ghost"
-            size="sm"
-            onClick={onDismiss}
-            aria-label="Dismiss corrections"
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </IconButton>
-        </div>
+        <IconButton
+          variant="ghost"
+          onClick={onDismiss}
+          aria-label="Dismiss corrections"
+        >
+          <X className="h-4 w-4" aria-hidden="true" />
+        </IconButton>
       </div>
 
-      <div className="space-y-3">
+      <ul className="divide-y divide-hairline border-t border-hairline">
         {visibleIssues.map((issue, index) => (
-          <div key={issue.exerciseName + index} className="bg-surface-raised border border-border rounded p-4">
-            <div className="flex items-start justify-between mb-3">
-              <div>
-                <h4 className="font-medium text-ink">
-                  "{issue.exerciseName}" not found
+          <li key={issue.exerciseName + index} className="py-3">
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <h4 className="truncate text-body font-semibold text-ink">
+                  {issue.exerciseName}
                 </h4>
-                <p className="text-body-sm text-ink-subtle mt-1">
-                  Line {issue.lineNumber}: {issue.context}
+                <p className="truncate text-body-sm text-ink-muted">
+                  <span className="font-tabular">Line {issue.lineNumber}</span>: {issue.context}
                 </p>
               </div>
 
               <Button
                 variant="ghost"
-                size="sm"
                 onClick={() => handleIgnoreExercise(issue.exerciseName)}
                 title="Keep as custom exercise"
               >
-                Keep as-is
+                Keep as is
               </Button>
             </div>
 
             {issue.suggestions.length > 0 ? (
-              <div className="space-y-2">
-                <p className="text-body-sm text-ink-subtle mb-2">Did you mean:</p>
-                {issue.suggestions.slice(0, 3).map((suggestion, suggestionIndex) => (
-                  <div
-                    key={suggestionIndex}
-                    className={`flex items-center justify-between p-3 border rounded cursor-pointer transition-all ${
-                      selectedCorrections[issue.exerciseName] === suggestion
-                        ? 'border-accent bg-accent/10'
-                        : 'border-border hover:border-ink-subtle hover:bg-surface-subtle'
-                    }`}
-                    onClick={() => handleSelectSuggestion(issue.exerciseName, suggestion)}
-                  >
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2">
-                        <span className="font-medium text-ink">
-                          {suggestion.exercise.name}
-                        </span>
-                        <span className={`text-caption px-2 py-1 rounded ${
-                          suggestion.confidence >= 85 ? 'bg-success/15 text-success' :
-                          suggestion.confidence >= 70 ? 'bg-warning/15 text-warning' :
-                          'bg-danger/15 text-danger'
-                        }`}>
-                          {suggestion.confidence}% match
-                        </span>
-                      </div>
-                      <div className="text-body-sm text-ink-subtle mt-1">
-                        {suggestion.exercise.muscleGroup} • {suggestion.exercise.equipment}
-                      </div>
-                      <div className="text-caption text-ink-subtle mt-1">
-                        {suggestion.reason}
-                      </div>
-                    </div>
-
-                    <div className="flex gap-2 ml-4">
-                      <Button
-                        variant="primary"
-                        size="sm"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onApplyCorrection(issue.exerciseName, suggestion.exercise, issue.lineNumber);
+              <div className="mt-2">
+                <p className="mb-1 text-caption text-ink-subtle">Did you mean</p>
+                <div role="radiogroup" aria-label={`Suggestions for ${issue.exerciseName}`} className="space-y-1">
+                  {issue.suggestions.slice(0, 3).map((suggestion, suggestionIndex) => {
+                    const selected = selectedCorrections[issue.exerciseName] === suggestion;
+                    return (
+                      <div
+                        key={suggestionIndex}
+                        role="radio"
+                        aria-checked={selected}
+                        tabIndex={0}
+                        className={`flex cursor-pointer items-center justify-between gap-3 rounded-2xl px-3 py-2 transition-colors duration-snap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent ${
+                          selected ? 'bg-surface-raised' : 'hover:bg-surface-raised/60'
+                        }`}
+                        onClick={() => handleSelectSuggestion(issue.exerciseName, suggestion)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            handleSelectSuggestion(issue.exerciseName, suggestion);
+                          }
                         }}
                       >
-                        Replace
-                      </Button>
-                    </div>
-                  </div>
-                ))}
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2">
+                            <span className="truncate text-body-sm font-semibold text-ink">
+                              {suggestion.exercise.name}
+                            </span>
+                            <span className={`shrink-0 rounded-full px-2 py-0.5 font-tabular text-caption ${
+                              suggestion.confidence >= 85 ? 'bg-accent-2/15 text-accent-2' :
+                              suggestion.confidence >= 70 ? 'bg-surface text-ink-muted' :
+                              'bg-warning/15 text-warning'
+                            }`}>
+                              {suggestion.confidence}%
+                            </span>
+                          </div>
+                          <div className="truncate text-caption text-ink-muted">
+                            {suggestion.exercise.muscleGroup} · {suggestion.exercise.equipment}. {suggestion.reason}
+                          </div>
+                        </div>
+
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          className="shrink-0"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onApplyCorrection(issue.exerciseName, suggestion.exercise, issue.lineNumber);
+                          }}
+                        >
+                          Replace
+                        </Button>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             ) : (
-              <div className="text-body-sm text-ink-subtle italic">
-                No similar exercises found. This will be kept as a custom exercise.
-              </div>
+              <p className="mt-1 text-body-sm text-ink-muted">
+                Nothing similar in the library. It stays a custom exercise.
+              </p>
             )}
-          </div>
+          </li>
         ))}
-      </div>
+      </ul>
 
-      <div className="flex justify-between items-center pt-3 border-t border-warning/30">
-        <p className="text-body-sm text-ink-subtle">
-          Exercises not found in database will be saved as custom exercises
-        </p>
-
-        <div className="flex gap-2">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={onDismiss}
-          >
-            Continue with custom exercises
+      <div className="flex flex-col gap-2">
+        {selectedCorrectionsCount > 0 && (
+          <Button variant="primary" size="lg" onClick={handleApplySelectedCorrections}>
+            Apply <span className="font-tabular">{selectedCorrectionsCount}</span> selected
           </Button>
-        </div>
+        )}
+        {highConfidenceCount > 0 && (
+          <Button
+            variant="secondary"
+            size="lg"
+            onClick={handleApplyAllHighConfidence}
+            title="Apply corrections with 85%+ confidence"
+          >
+            Fix <span className="font-tabular">{highConfidenceCount}</span> close match{highConfidenceCount !== 1 ? 'es' : ''}
+          </Button>
+        )}
+        <Button variant="ghost" onClick={onDismiss}>
+          Continue with custom exercises
+        </Button>
       </div>
-    </div>
+    </Card>
   );
 };

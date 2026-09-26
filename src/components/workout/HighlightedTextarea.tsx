@@ -2,6 +2,7 @@ import React, { useRef, useEffect, useState, useCallback } from 'react';
 import { ParseIssue } from '../../parser/workoutParser';
 
 interface HighlightedTextareaProps {
+  id?: string;
   value: string;
   onChange: (value: string) => void;
   onClick?: () => void;
@@ -17,6 +18,7 @@ interface HighlightedTextareaProps {
 
 export const HighlightedTextarea = React.forwardRef<HTMLTextAreaElement, HighlightedTextareaProps>((
   {
+    id,
     value,
     onChange,
     onClick,
@@ -71,7 +73,7 @@ export const HighlightedTextarea = React.forwardRef<HTMLTextAreaElement, Highlig
         // Determine highlight color based on confidence
         let highlightClass = 'bg-danger/20 border-b-2 border-danger'; // Low confidence
         if (confidence >= 90) {
-          highlightClass = 'bg-success/20 border-b-2 border-success'; // High confidence
+          highlightClass = 'bg-accent-2/20 border-b-2 border-accent-2'; // High confidence
         } else if (confidence >= 70) {
           highlightClass = 'bg-warning/20 border-b-2 border-warning'; // Medium confidence
         }
@@ -109,7 +111,7 @@ export const HighlightedTextarea = React.forwardRef<HTMLTextAreaElement, Highlig
     // Highlight superset notation (ss, superset)
     highlighted = highlighted.replace(
       /\b(ss|superset)\b/gi,
-      '<span class="text-muscle-cardio font-bold bg-muscle-cardio/20 px-1 rounded">$1</span>'
+      '<span class="text-muscle-cardio font-bold bg-muscle-cardio/20 rounded">$1</span>'
     );
 
     // Highlight rest times (e.g., rest 90s, rest 2min)
@@ -170,18 +172,19 @@ export const HighlightedTextarea = React.forwardRef<HTMLTextAreaElement, Highlig
     }
   }, [scrollTop, scrollLeft]);
 
+  // The highlight layer and the textarea must lay text out identically, so both
+  // share one padding/wrapping class string (plus the caller's typography). The
+  // wrapper owns the Tempo surface: raised fill, rounded-xl, amber focus ring.
+  const layerClass = `w-full px-4 py-3 whitespace-pre-wrap break-words ${className}`;
+
   return (
-    <div className="relative">
+    <div className="relative rounded-xl bg-surface-raised transition-shadow duration-snap focus-within:ring-2 focus-within:ring-accent focus-within:ring-offset-2 focus-within:ring-offset-surface-subtle">
       {/* Highlight layer */}
       <div
         ref={highlightRef}
-        className={`absolute inset-0 pointer-events-none overflow-hidden whitespace-pre-wrap break-words ${className}`}
+        aria-hidden="true"
+        className={`absolute inset-0 pointer-events-none overflow-hidden ${layerClass}`}
         style={{
-          fontSize: 'inherit',
-          fontFamily: 'inherit',
-          lineHeight: 'inherit',
-          padding: '12px', // Match textarea padding
-          border: '1px solid transparent', // Match textarea border
           color: 'transparent',
           zIndex: 1,
         }}
@@ -189,7 +192,7 @@ export const HighlightedTextarea = React.forwardRef<HTMLTextAreaElement, Highlig
           __html: createHighlightedText()
         }}
       />
-      
+
       {/* Actual textarea */}
       <textarea
         ref={(el) => {
@@ -200,6 +203,7 @@ export const HighlightedTextarea = React.forwardRef<HTMLTextAreaElement, Highlig
             ref.current = el;
           }
         }}
+        id={id}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         onClick={onClick}
@@ -209,7 +213,7 @@ export const HighlightedTextarea = React.forwardRef<HTMLTextAreaElement, Highlig
         placeholder={placeholder}
         rows={rows}
         disabled={disabled}
-        className={`relative bg-transparent resize-y ${className}`}
+        className={`relative block resize-y rounded-xl border-0 bg-transparent text-ink placeholder:text-ink-subtle focus:outline-none disabled:cursor-not-allowed disabled:opacity-50 ${layerClass}`}
         style={{
           zIndex: 2,
         }}

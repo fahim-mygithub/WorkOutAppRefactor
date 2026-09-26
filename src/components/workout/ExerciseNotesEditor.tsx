@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useId } from 'react';
 import { Edit2, Save, X, ChevronDown, ChevronUp, FileText } from 'lucide-react';
 import { WorkoutExercise } from '../../types/exercise';
 import { Input } from '../ui/input';
@@ -20,6 +20,7 @@ export const ExerciseNotesEditor: React.FC<ExerciseNotesEditorProps> = ({
   const [customTitle, setCustomTitle] = useState(exercise.customTitle || '');
   const [notes, setNotes] = useState(exercise.notes || '');
   const [showNotes, setShowNotes] = useState(!!exercise.notes);
+  const notesId = useId();
   const titleInputRef = useRef<HTMLInputElement>(null);
   const notesTextareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -81,7 +82,7 @@ export const ExerciseNotesEditor: React.FC<ExerciseNotesEditorProps> = ({
                 if (e.key === 'Enter') handleSaveTitle();
                 if (e.key === 'Escape') handleCancelTitle();
               }}
-              className="flex-1 text-title font-bold"
+              className="flex-1 font-sans text-body font-semibold"
               placeholder={exercise.exercise.name}
               maxLength={100}
             />
@@ -95,7 +96,7 @@ export const ExerciseNotesEditor: React.FC<ExerciseNotesEditorProps> = ({
               <Save className="w-4 h-4" />
             </IconButton>
             <IconButton
-              variant="danger"
+              variant="ghost"
               size="sm"
               onClick={handleCancelTitle}
               aria-label="Cancel"
@@ -108,7 +109,7 @@ export const ExerciseNotesEditor: React.FC<ExerciseNotesEditorProps> = ({
           <div className="flex items-start justify-between">
             <div className="flex-1">
               <div className="flex items-center gap-2">
-                <h2 className="font-marker text-display leading-none text-ink">
+                <h2 className="break-words font-display text-title text-ink">
                   {displayTitle}
                 </h2>
                 <IconButton
@@ -120,13 +121,13 @@ export const ExerciseNotesEditor: React.FC<ExerciseNotesEditorProps> = ({
                   }}
                   aria-label="Edit title"
                   title="Edit title"
-                  className="text-ink-subtle hover:text-ink"
+                  className="shrink-0 text-ink-subtle hover:text-ink"
                 >
                   <Edit2 className="w-4 h-4" />
                 </IconButton>
               </div>
               {hasCustomTitle && (
-                <p className="text-caption text-ink-subtle mt-0.5">
+                <p className="mt-0.5 text-caption text-ink-muted">
                   Original: {exercise.exercise.name}
                 </p>
               )}
@@ -138,12 +139,15 @@ export const ExerciseNotesEditor: React.FC<ExerciseNotesEditorProps> = ({
       {/* Notes Section */}
       <div>
         {showNotes ? (
-          <div className="bg-surface-subtle rounded-lg p-3">
-            <div className="flex items-center justify-between mb-2">
-              <div className="flex items-center gap-2 text-body-sm text-ink-muted">
-                <FileText className="w-4 h-4" />
+          <div>
+            <div className="mb-1.5 flex items-center justify-between">
+              <label
+                htmlFor={notesId}
+                className="flex items-center gap-2 text-body-sm font-semibold text-ink-muted"
+              >
+                <FileText className="h-4 w-4" aria-hidden="true" />
                 <span>Notes</span>
-              </div>
+              </label>
               <IconButton
                 variant="ghost"
                 size="sm"
@@ -160,15 +164,16 @@ export const ExerciseNotesEditor: React.FC<ExerciseNotesEditorProps> = ({
             </div>
             <Textarea
               ref={notesTextareaRef}
+              id={notesId}
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               onBlur={handleNotesBlur}
-              placeholder="Add notes for this exercise (e.g., form cues, tempo, variations)..."
+              placeholder="Form cues, tempo, variations"
               className="resize-none"
               rows={3}
               maxLength={500}
             />
-            <div className="flex justify-end mt-1">
+            <div className="mt-1 flex justify-end">
               <span className="font-num font-tabular text-caption text-ink-subtle">
                 {notes.length}/500
               </span>
@@ -177,27 +182,28 @@ export const ExerciseNotesEditor: React.FC<ExerciseNotesEditorProps> = ({
         ) : (
           <>
             {exercise.notes ? (
-              <div className="bg-surface-subtle rounded-lg p-3 cursor-pointer hover:bg-surface-raised transition-colors duration-snap"
-                   onClick={() => setShowNotes(true)}>
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2 text-body-sm text-ink-muted mb-1">
-                      <FileText className="w-4 h-4" />
-                      <span>Notes</span>
-                      <ChevronDown className="w-4 h-4" />
-                    </div>
-                    <p className="text-body-sm text-ink line-clamp-2">
-                      {exercise.notes}
-                    </p>
-                  </div>
-                </div>
-              </div>
+              <button
+                type="button"
+                onClick={() => setShowNotes(true)}
+                aria-label="Edit notes"
+                className="block w-full rounded-xl bg-surface-raised/50 px-4 py-3 text-left transition-colors duration-snap hover:bg-surface-raised focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+              >
+                <span className="mb-1 flex items-center gap-2 text-body-sm text-ink-muted">
+                  <FileText className="h-4 w-4" aria-hidden="true" />
+                  <span>Notes</span>
+                  <ChevronDown className="h-4 w-4" aria-hidden="true" />
+                </span>
+                <span className="line-clamp-2 text-body-sm text-ink">
+                  {exercise.notes}
+                </span>
+              </button>
             ) : (
               <button
+                type="button"
                 onClick={() => setShowNotes(true)}
-                className="flex items-center gap-2 text-body-sm text-ink-subtle hover:text-ink-muted transition-colors duration-snap"
+                className="flex min-h-touch-min items-center gap-2 text-body-sm text-ink-muted transition-colors duration-snap hover:text-ink"
               >
-                <FileText className="w-4 h-4" />
+                <FileText className="h-4 w-4" aria-hidden="true" />
                 <span>Add notes</span>
               </button>
             )}

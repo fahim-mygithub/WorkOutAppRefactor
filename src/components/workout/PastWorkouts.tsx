@@ -4,7 +4,7 @@ import { WorkoutStorageService, SavedWorkout } from '../../services/workoutStora
 import { ExerciseHistoryService } from '../../services/exerciseHistoryService';
 import { WorkoutSummary } from '../../types/exerciseHistory';
 import { Card } from '@/components/ui/card';
-import { IconButton } from '@/components/ui/icon-button';
+import { ChevronDown, ChevronRight } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 
 interface PastWorkout {
@@ -129,148 +129,90 @@ export const PastWorkouts: React.FC<PastWorkoutsProps> = ({
     });
   };
 
+  const title = mode === 'autofill' ? 'Saved and past workouts' : 'Past workouts';
+
   return (
-    <Card className={`p-6 ${className}`}>
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-2">
-          <svg className="w-5 h-5 text-muscle-core" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-          </svg>
-          <h3 className="text-title font-medium text-ink">
-            {mode === 'autofill' ? 'Saved Workouts & Templates' : 'Past Workouts'}
-          </h3>
-          {allWorkouts.length > 0 && (
-            <span className="text-caption bg-muscle-core/15 text-muscle-core px-2 py-1 rounded">
-              {allWorkouts.length} workout{allWorkouts.length !== 1 ? 's' : ''}
-            </span>
-          )}
-        </div>
+    <Card className={className}>
+      {/* The whole header row is the disclosure toggle. */}
+      <button
+        type="button"
+        onClick={() => setIsExpanded(!isExpanded)}
+        aria-expanded={isExpanded}
+        className="flex min-h-touch-lg w-full items-center justify-between gap-3 rounded-[20px] px-4 py-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+      >
+        <span className="min-w-0">
+          <span className="block text-body font-semibold text-ink">{title}</span>
+          <span className="block text-body-sm text-ink-muted">
+            {isLoading
+              ? 'Loading'
+              : allWorkouts.length > 0
+                ? `${allWorkouts.length} to start from`
+                : mode === 'autofill'
+                  ? 'Reuse one as a starting point'
+                  : 'Use a previous workout as a template'}
+          </span>
+        </span>
+        <ChevronDown
+          aria-hidden="true"
+          className={`h-5 w-5 shrink-0 text-ink-muted transition-transform duration-smooth ${isExpanded ? 'rotate-180' : ''}`}
+        />
+      </button>
 
-        <IconButton
-          variant="ghost"
-          size="sm"
-          aria-label={isExpanded ? 'Collapse' : 'Expand'}
-          title={isExpanded ? 'Collapse' : 'Expand'}
-          onClick={() => setIsExpanded(!isExpanded)}
-        >
-          <svg
-            className={`w-4 h-4 transition-transform duration-smooth ${isExpanded ? 'rotate-180' : ''}`}
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-          </svg>
-        </IconButton>
-      </div>
-
-      {!isExpanded ? (
-        <div className="text-body-sm text-ink-muted">
-          {mode === 'autofill'
-            ? 'Click to view your saved workouts and use them as templates'
-            : 'Click to view your previous workouts and use them as templates'
-          }
-        </div>
-      ) : (
-        <div className="space-y-3">
+      {isExpanded && (
+        <div className="px-4 pb-2">
           {isLoading ? (
-            <div className="space-y-3" aria-busy="true">
+            <div className="space-y-2 pb-2" aria-busy="true">
               {Array.from({ length: 3 }).map((_, i) => (
-                <Skeleton key={i} className="h-20" />
+                <Skeleton key={i} className="h-14" />
               ))}
             </div>
           ) : allWorkouts.length === 0 ? (
-            <div className="text-center py-8 text-ink-muted">
-              <svg className="w-12 h-12 mx-auto mb-4 text-ink-subtle" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-              </svg>
-              <p className="text-body font-medium mb-2 text-ink">
-                {mode === 'autofill' ? 'No Saved Workouts' : 'No Past Workouts'}
+            <div className="pb-4 pt-1">
+              <p className="text-body font-semibold text-ink">
+                {mode === 'autofill' ? 'No saved workouts yet' : 'No past workouts yet'}
               </p>
-              <p className="text-body-sm">
+              <p className="mt-1 text-body-sm text-ink-muted">
                 {mode === 'autofill'
-                  ? 'Save some workouts to see them here'
-                  : 'Complete some workouts to see them here'
-                }
+                  ? 'Save a workout and it shows up here.'
+                  : 'Finish a workout and it shows up here.'}
               </p>
             </div>
           ) : (
-            <>
-              {allWorkouts.map((workout) => (
-                <button
-                  key={workout.id}
-                  type="button"
-                  onClick={() => handleWorkoutSelect(workout)}
-                  className="w-full p-4 bg-surface-subtle hover:bg-surface-raised rounded-md transition-colors duration-smooth text-left group"
-                >
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center gap-2">
-                      <h4 className="font-medium text-ink group-hover:text-accent transition-colors duration-snap">
-                        {workout.name}
-                      </h4>
-                      {workout.id.startsWith('saved-') && (
-                        <span className="text-caption bg-accent/15 text-accent px-2 py-1 rounded">
-                          Template
+            <ul className="divide-y divide-hairline border-t border-hairline">
+              {allWorkouts.map((workout) => {
+                const kind = workout.id.startsWith('saved-') ? 'Template' : 'Completed';
+                return (
+                  <li key={workout.id}>
+                    <button
+                      type="button"
+                      onClick={() => handleWorkoutSelect(workout)}
+                      aria-label={`${mode === 'autofill' ? 'Autofill' : 'Use'} ${workout.name}`}
+                      className="group flex w-full items-center gap-3 py-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                    >
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-body font-semibold text-ink group-hover:text-accent">
+                          {workout.name}
                         </span>
-                      )}
-                      {workout.id.startsWith('completed-') && (
-                        <span className="text-caption bg-success/15 text-success px-2 py-1 rounded">
-                          Completed
+                        <span className="block truncate text-body-sm text-ink-muted">
+                          <span className={kind === 'Completed' ? 'text-accent-2' : undefined}>{kind}</span>
+                          {' · '}
+                          <span className="font-tabular">{workout.exercises.length}</span> exercise{workout.exercises.length !== 1 ? 's' : ''}
+                          {' · '}
+                          <span className="font-tabular">{formatDate(workout.date)}</span>
                         </span>
-                      )}
-                    </div>
-                    <span className="text-caption text-ink-subtle">
-                      {formatDate(workout.date)}
-                    </span>
-                  </div>
-
-                  <div className="flex items-center gap-2 text-body-sm text-ink-muted mb-2">
-                    <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M3 3a1 1 0 000 2v8a2 2 0 002 2h2.586l-1.293 1.293a1 1 0 101.414 1.414L10 15.414l2.293 2.293a1 1 0 001.414-1.414L12.414 15H15a2 2 0 002-2V5a1 1 0 100-2H3zm11.707 4.707a1 1 0 00-1.414-1.414L10 9.586 8.707 8.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                    </svg>
-                    <span>{workout.exercises.length} exercises</span>
-                  </div>
-
-                  <div className="text-caption text-ink-subtle flex flex-wrap gap-1">
-                    {workout.exercises.slice(0, 3).map((exercise, index) => (
-                      <span
-                        key={index}
-                        className="bg-surface px-2 py-1 rounded"
-                      >
-                        {exercise}
+                        {workout.exercises.length > 0 && (
+                          <span className="mt-0.5 block truncate text-caption text-ink-subtle">
+                            {workout.exercises.slice(0, 3).join(', ')}
+                            {workout.exercises.length > 3 && ` +${workout.exercises.length - 3}`}
+                          </span>
+                        )}
                       </span>
-                    ))}
-                    {workout.exercises.length > 3 && (
-                      <span className="bg-surface px-2 py-1 rounded">
-                        +{workout.exercises.length - 3} more
-                      </span>
-                    )}
-                  </div>
-
-                  <div className="flex items-center gap-1 mt-2 text-caption text-accent opacity-0 group-hover:opacity-100 transition-opacity duration-smooth">
-                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                    </svg>
-                    {mode === 'autofill' ? 'Click to autofill workout' : 'Click to use as template'}
-                  </div>
-                </button>
-              ))}
-
-              {(savedWorkouts.length > 0 || completedWorkouts.length > 0) && (
-                <div className="mt-4 p-3 bg-surface-subtle border border-border rounded-md">
-                  <div className="flex items-center gap-2 text-ink-muted text-body-sm">
-                    <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                    </svg>
-                    <span className="font-medium">
-                      Showing {savedWorkouts.length} template{savedWorkouts.length !== 1 ? 's' : ''}
-                      {savedWorkouts.length > 0 && completedWorkouts.length > 0 ? ' and ' : ''}
-                      {completedWorkouts.length > 0 && `${completedWorkouts.length} completed workout${completedWorkouts.length !== 1 ? 's' : ''}`}
-                    </span>
-                  </div>
-                </div>
-              )}
-            </>
+                      <ChevronRight aria-hidden="true" className="h-4 w-4 shrink-0 text-ink-subtle" />
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
           )}
         </div>
       )}

@@ -26,47 +26,22 @@ export const ProgressionRecommendation: React.FC<ProgressionRecommendationProps>
   const [customReps, setCustomReps] = useState(recommendation.recommendedReps || 0);
   const [showCustomInput, setShowCustomInput] = useState(false);
 
+  // Informational: every direction speaks in ice; the words carry the meaning.
   const getActionIcon = () => {
     switch (recommendation.action) {
       case 'increase':
-        return <TrendingUp className="w-5 h-5 text-success" />;
+        return <TrendingUp size={20} className="shrink-0 text-accent-2" aria-hidden="true" />;
       case 'decrease':
       case 'deload':
-        return <TrendingDown className="w-5 h-5 text-warning" />;
+        return <TrendingDown size={20} className="shrink-0 text-accent-2" aria-hidden="true" />;
       case 'maintain':
-        return <Minus className="w-5 h-5 text-accent" />;
+        return <Minus size={20} className="shrink-0 text-accent-2" aria-hidden="true" />;
       default:
-        return <AlertCircle className="w-5 h-5 text-ink-subtle" />;
+        return <AlertCircle size={20} className="shrink-0 text-ink-muted" aria-hidden="true" />;
     }
   };
 
-  const getActionColor = () => {
-    switch (recommendation.action) {
-      case 'increase':
-        return 'border-success/30 bg-success/10';
-      case 'decrease':
-      case 'deload':
-        return 'border-warning/30 bg-warning/10';
-      case 'maintain':
-        return 'border-accent/30 bg-accent/10';
-      default:
-        return 'border-border bg-surface-subtle';
-    }
-  };
-
-  const getConfidenceBadge = () => {
-    const colors = {
-      high: 'bg-success/15 text-success',
-      medium: 'bg-warning/15 text-warning',
-      low: 'bg-danger/15 text-danger'
-    };
-
-    return (
-      <span className={`px-2 py-1 text-caption font-medium rounded-full ${colors[recommendation.confidence]}`}>
-        {recommendation.confidence} confidence
-      </span>
-    );
-  };
+  const confidenceLabel = `${recommendation.confidence.charAt(0).toUpperCase()}${recommendation.confidence.slice(1)} confidence`;
 
   const formatRecommendation = () => {
     if (recommendation.recommendedWeight) {
@@ -76,22 +51,27 @@ export const ProgressionRecommendation: React.FC<ProgressionRecommendationProps>
       const sign = weightChange > 0 ? '+' : '';
 
       return (
-        <div className="space-y-1">
-          <div className="text-title font-semibold text-ink">
-            {recommendation.recommendedWeight} lbs × {recommendation.recommendedReps} reps
+        <div>
+          <div className="flex flex-wrap items-baseline gap-x-2">
+            <span className="font-display font-tabular text-display text-ink">
+              {recommendation.recommendedWeight}
+              <span className="text-body-sm font-semibold text-ink-muted"> lb</span>
+              <span className="text-ink-muted"> × </span>
+              {recommendation.recommendedReps}
+            </span>
             {weightChange !== 0 && (
-              <span className={`ml-2 text-body-sm ${weightChange > 0 ? 'text-success' : 'text-warning'}`}>
-                ({sign}{weightChange} lbs)
+              <span className="font-tabular text-body-sm font-semibold text-accent-2">
+                {sign}{weightChange} lb
               </span>
             )}
           </div>
           {recommendation.previousWeight && (
-            <div className="text-body-sm text-ink-muted">
-              Previous: {recommendation.previousWeight} lbs × {recommendation.previousReps} reps
+            <p className="mt-1 text-body-sm text-ink-muted">
+              Last time <span className="font-tabular">{recommendation.previousWeight} lb × {recommendation.previousReps}</span>
               {recommendation.daysSinceLastWorkout && (
-                <span className="ml-2">({recommendation.daysSinceLastWorkout} days ago)</span>
+                <span>, <span className="font-tabular">{recommendation.daysSinceLastWorkout}</span> days ago</span>
               )}
-            </div>
+            </p>
           )}
         </div>
       );
@@ -99,17 +79,17 @@ export const ProgressionRecommendation: React.FC<ProgressionRecommendationProps>
 
     if (recommendation.recommendedTime) {
       return (
-        <div className="text-title font-semibold text-ink">
-          Hold for {recommendation.recommendedTime} seconds
-        </div>
+        <p className="text-title font-semibold text-ink">
+          Hold for <span className="font-display font-tabular">{recommendation.recommendedTime}</span> seconds
+        </p>
       );
     }
 
     if (recommendation.recommendedVariation) {
       return (
-        <div className="text-title font-semibold text-ink">
+        <p className="text-title font-semibold text-ink">
           {recommendation.recommendedVariation}
-        </div>
+        </p>
       );
     }
 
@@ -126,120 +106,112 @@ export const ProgressionRecommendation: React.FC<ProgressionRecommendationProps>
   }
 
   return (
-    <div className={`border rounded-lg p-4 mb-4 transition-colors duration-smooth ${getActionColor()}`}>
+    <Card className="mb-4 p-4">
       {/* Header */}
-      <div className="flex items-center justify-between mb-3">
-        <div className="flex items-center gap-2">
-          {getActionIcon()}
-          <h3 className="font-semibold text-ink">Progression Recommendation</h3>
-          {getConfidenceBadge()}
-        </div>
+      <div className="flex items-center gap-2">
+        {getActionIcon()}
+        <h3 className="text-body-sm font-semibold text-ink">Suggested next</h3>
+        <span className="text-caption text-ink-muted">{confidenceLabel}</span>
         {recommendation.deloadApplied && (
-          <span className="px-2 py-1 text-caption font-medium bg-warning/15 text-warning rounded-full">
-            Deload Applied
+          <span className="ml-auto rounded-full bg-surface-raised px-2.5 py-1 text-caption font-semibold text-ink">
+            Deload
           </span>
         )}
       </div>
 
-      {/* Main Recommendation */}
-      <div className="mb-3">
-        {formatRecommendation()}
-      </div>
+      {/* Main recommendation — the number does the talking. */}
+      <div className="mt-3">{formatRecommendation()}</div>
 
-      {/* Reasoning - Always visible */}
-      <p className="text-body-sm text-ink-muted mb-3">{recommendation.reasoning}</p>
+      <p className="mt-2 text-body-sm text-ink-muted">{recommendation.reasoning}</p>
 
-      {/* Action Buttons */}
-      <div className="flex flex-wrap gap-2 mb-3">
-        <Button variant="primary" size="sm" onClick={onAccept}>
-          <CheckCircle className="w-4 h-4" />
-          <span>Accept</span>
-        </Button>
+      {/* Actions — one amber, the rest quiet. */}
+      {!showCustomInput ? (
+        <div className="mt-4 flex flex-wrap gap-2">
+          <Button variant="primary" onClick={onAccept}>
+            <CheckCircle size={18} aria-hidden="true" />
+            <span>Accept</span>
+          </Button>
+          <Button variant="secondary" onClick={() => setShowCustomInput(true)}>
+            Modify
+          </Button>
+          <Button variant="ghost" onClick={onDismiss}>
+            Dismiss
+          </Button>
+        </div>
+      ) : (
+        <div className="mt-4 flex flex-wrap items-center gap-2">
+          {recommendation.recommendedWeight !== undefined && (
+            <Input
+              type="number"
+              inputMode="decimal"
+              value={customWeight}
+              onChange={(e) => setCustomWeight(Number(e.target.value))}
+              className="w-24"
+              placeholder="Weight"
+              aria-label="Weight"
+            />
+          )}
+          {recommendation.recommendedReps !== undefined && (
+            <Input
+              type="number"
+              inputMode="numeric"
+              value={customReps}
+              onChange={(e) => setCustomReps(Number(e.target.value))}
+              className="w-20"
+              placeholder="Reps"
+              aria-label="Reps"
+            />
+          )}
+          <Button
+            variant="primary"
+            onClick={() => {
+              onModify(customWeight, customReps);
+              setShowCustomInput(false);
+            }}
+          >
+            Apply
+          </Button>
+          <Button variant="ghost" onClick={() => setShowCustomInput(false)}>
+            Cancel
+          </Button>
+        </div>
+      )}
 
-        {!showCustomInput ? (
-          <>
-            <Button variant="secondary" size="sm" onClick={() => setShowCustomInput(true)}>
-              Modify
-            </Button>
-            <Button variant="ghost" size="sm" onClick={onDismiss}>
-              Dismiss
-            </Button>
-          </>
-        ) : (
-          <div className="flex items-center gap-2 flex-1">
-            {recommendation.recommendedWeight !== undefined && (
-              <Input
-                type="number"
-                size="sm"
-                value={customWeight}
-                onChange={(e) => setCustomWeight(Number(e.target.value))}
-                className="w-24"
-                placeholder="Weight"
-              />
-            )}
-            {recommendation.recommendedReps !== undefined && (
-              <Input
-                type="number"
-                size="sm"
-                value={customReps}
-                onChange={(e) => setCustomReps(Number(e.target.value))}
-                className="w-20"
-                placeholder="Reps"
-              />
-            )}
-            <Button
-              variant="primary"
-              size="sm"
-              onClick={() => {
-                onModify(customWeight, customReps);
-                setShowCustomInput(false);
-              }}
-            >
-              Apply
-            </Button>
-            <Button variant="ghost" size="sm" onClick={() => setShowCustomInput(false)}>
-              Cancel
-            </Button>
-          </div>
-        )}
-      </div>
-
-      {/* Expandable Alternatives Section */}
+      {/* Alternatives — disclosed on demand, rows split by hairlines. */}
       {recommendation.alternatives && recommendation.alternatives.length > 0 && (
-        <div className="border-t border-border pt-3">
+        <div className="mt-3">
           <button
             type="button"
             onClick={() => setIsExpanded(!isExpanded)}
-            className="flex items-center justify-between w-full text-left"
+            aria-expanded={isExpanded}
+            className="flex min-h-touch-min w-full items-center justify-between rounded-xl text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
           >
-            <span className="text-body-sm font-medium text-ink-muted">
-              Alternative Progressions ({recommendation.alternatives.length})
+            <span className="text-body-sm font-semibold text-ink-muted">
+              Other options <span className="font-tabular">({recommendation.alternatives.length})</span>
             </span>
             {isExpanded ? (
-              <ChevronUp className="w-4 h-4 text-ink-subtle" />
+              <ChevronUp size={18} className="text-ink-muted" aria-hidden="true" />
             ) : (
-              <ChevronDown className="w-4 h-4 text-ink-subtle" />
+              <ChevronDown size={18} className="text-ink-muted" aria-hidden="true" />
             )}
           </button>
 
           {isExpanded && (
-            <div className="mt-3 space-y-2">
+            <ul className="divide-y divide-hairline">
               {recommendation.alternatives.map((alt, index) => (
-                <Card key={index} elevation={0} className="p-3 bg-surface-raised/50">
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="text-body-sm font-medium text-ink capitalize">
-                      {alt.type.replace('-', ' ')}
-                    </span>
-                  </div>
-                  <p className="text-body-sm text-ink-muted mb-1">{alt.description}</p>
-                  <p className="text-body-sm text-ink font-medium">{alt.recommendation}</p>
-                </Card>
+                <li key={index} className="py-3">
+                  <p className="text-body-sm font-semibold text-ink first-letter:uppercase">
+                    {alt.type.replace('-', ' ')}
+                  </p>
+                  <p className="mt-0.5 text-body-sm text-ink-muted">{alt.description}</p>
+                  <p className="mt-0.5 text-body-sm font-medium text-ink">{alt.recommendation}</p>
+                </li>
               ))}
-            </div>
+            </ul>
           )}
         </div>
       )}
-    </div>
+    </Card>
   );
 };
 

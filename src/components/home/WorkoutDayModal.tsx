@@ -1,4 +1,3 @@
-import { Clock, Target, Zap, Play, BarChart3 } from 'lucide-react';
 import type { WorkoutCalendarDay } from '../../utils/statsCalculator';
 import { getWorkoutIntensity } from '../../utils/workoutColors';
 import { getMuscleGroupMeta } from './muscleGroup';
@@ -10,9 +9,6 @@ import {
   SheetTitle,
   SheetDescription,
 } from '../ui/sheet';
-import { Card, CardBody } from '../ui/card';
-import { IconButton } from '../ui/icon-button';
-import { Stack } from '../ui/stack';
 import { cn } from '../../lib/utils';
 
 interface WorkoutDayModalProps {
@@ -33,6 +29,12 @@ const formatNumber = (num: number): string => {
   return num.toLocaleString();
 };
 
+/**
+ * Day detail sheet (Tempo). A logged day reads as a muted context line, the
+ * date as a display title, the day's totals as display numbers with muted
+ * labels, then one hairline row per workout. Nothing to act on here, so there
+ * is no amber action; planned days hand off to PlannedDayCard, which has one.
+ */
 export function WorkoutDayModal({ day, isOpen, onClose }: WorkoutDayModalProps) {
   const { plannedByDate } = usePlannedSchedule();
   const hasWorkouts = !!day && day.workouts.length > 0;
@@ -47,18 +49,25 @@ export function WorkoutDayModal({ day, isOpen, onClose }: WorkoutDayModalProps) 
     return <PlannedDayCard day={day} planned={planned} isOpen={isOpen} onClose={onClose} />;
   }
 
-  const stateLabel = isToday ? 'Today' : isPast ? 'Past workout' : 'Future';
+  const stateLabel = hasWorkouts
+    ? isToday
+      ? 'Done today'
+      : 'Logged'
+    : isToday
+      ? 'Today'
+      : isPast
+        ? 'Nothing logged'
+        : 'Nothing planned';
 
   return (
     <Sheet open={isOpen} onOpenChange={(next) => !next && onClose()}>
       <SheetContent className="mx-auto max-w-md">
         {day && (
           <>
-            {/* Eyebrow + title */}
-            <p className="text-caption font-mono uppercase tracking-wide text-ink-subtle">
+            <p className={cn('text-body-sm', hasWorkouts ? 'text-accent-2' : 'text-ink-muted')}>
               {stateLabel}
             </p>
-            <SheetTitle className="text-display font-bold text-ink">
+            <SheetTitle className="mt-1 text-display">
               {day.date.toLocaleDateString('en-US', {
                 weekday: 'long',
                 month: 'long',
@@ -74,7 +83,7 @@ export function WorkoutDayModal({ day, isOpen, onClose }: WorkoutDayModalProps) 
               })}
             </SheetDescription>
 
-            <div className="mt-4">
+            <div className="mt-5">
               {hasWorkouts ? (
                 <WorkoutDayContent workouts={day.workouts} />
               ) : (
@@ -90,11 +99,10 @@ export function WorkoutDayModal({ day, isOpen, onClose }: WorkoutDayModalProps) 
 
 function RestDayContent() {
   return (
-    <div className="py-8 text-center">
-      <div className="mb-4 text-6xl">😴</div>
-      <h3 className="mb-2 text-title font-semibold text-ink">Rest Day</h3>
-      <p className="text-body-sm text-ink-muted">
-        Recovery is just as important as training. Your muscles grow during rest!
+    <div className="pb-2">
+      <p className="text-title text-ink">Rest day</p>
+      <p className="mt-2 max-w-[34ch] text-body text-ink-muted">
+        Recovery is part of training. Muscles grow on the days off.
       </p>
     </div>
   );
@@ -110,56 +118,45 @@ function WorkoutDayContent({ workouts }: WorkoutDayContentProps) {
   const totalSets = workouts.reduce((sum, w) => sum + w.totalSets, 0);
   const totalExercises = workouts.reduce((sum, w) => sum + w.exerciseCount, 0);
 
-  return (
-    <Stack gap={6}>
-      {/* Summary stats */}
-      <div className="grid grid-cols-2 gap-3">
-        <SummaryStat icon={<Clock size={16} />} label="Duration" value={formatDuration(totalDuration)} />
-        <SummaryStat icon={<Target size={16} />} label="Volume" value={`${formatNumber(totalVolume)} lbs`} />
-        <SummaryStat icon={<Zap size={16} />} label="Sets" value={`${totalSets}`} />
-        <SummaryStat icon={<BarChart3 size={16} />} label="Exercises" value={`${totalExercises}`} />
-      </div>
+  const stats = [
+    { value: formatDuration(totalDuration), label: 'duration' },
+    { value: formatNumber(totalVolume), label: 'lb moved' },
+    { value: String(totalSets), label: 'sets' },
+    { value: String(totalExercises), label: 'exercises' },
+  ];
 
-      {/* Individual workouts */}
-      <Stack gap={3}>
-        <h4 className="text-body-sm font-medium text-ink-muted">
-          {workouts.length === 1 ? 'Workout Details' : 'Workouts'}
-        </h4>
-        {workouts.map((workout, index) => (
-          <WorkoutCard key={`${workout.id}-${index}`} workout={workout} />
+  return (
+    <div className="flex flex-col gap-6">
+      <dl className="grid grid-cols-2 gap-x-3 gap-y-4">
+        {stats.map((s) => (
+          <div key={s.label}>
+            <dt className="sr-only">{s.label}</dt>
+            <dd className="font-display font-tabular text-display text-ink">{s.value}</dd>
+            <dd aria-hidden="true" className="text-body-sm text-ink-muted">{s.label}</dd>
+          </div>
         ))}
-      </Stack>
-    </Stack>
+      </dl>
+
+      <section aria-label={workouts.length === 1 ? 'Workout' : 'Workouts'}>
+        <h3 className="text-body-sm text-ink-muted">
+          {workouts.length === 1 ? 'Workout' : `${workouts.length} workouts`}
+        </h3>
+        <ul className="mt-1 divide-y divide-hairline">
+          {workouts.map((workout, index) => (
+            <WorkoutRow key={`${workout.id}-${index}`} workout={workout} />
+          ))}
+        </ul>
+      </section>
+    </div>
   );
 }
 
-interface SummaryStatProps {
-  icon: React.ReactNode;
-  label: string;
-  value: string;
-}
-
-function SummaryStat({ icon, label, value }: SummaryStatProps) {
-  return (
-    <Card elevation={0} className="bg-surface-subtle">
-      <CardBody className="p-4 pt-4">
-        <div className="mb-1 flex items-center gap-2 text-ink-muted">
-          {icon}
-          <span className="text-body-sm">{label}</span>
-        </div>
-        <div className="text-body font-semibold text-ink font-tabular">{value}</div>
-      </CardBody>
-    </Card>
-  );
-}
-
-interface WorkoutCardProps {
+interface WorkoutRowProps {
   workout: WorkoutCalendarDay['workouts'][number];
 }
 
-function WorkoutCard({ workout }: WorkoutCardProps) {
+function WorkoutRow({ workout }: WorkoutRowProps) {
   const meta = getMuscleGroupMeta(workout.name);
-  const Icon = meta.icon;
   const intensity = getWorkoutIntensity(
     workout.totalVolume,
     workout.duration,
@@ -167,58 +164,25 @@ function WorkoutCard({ workout }: WorkoutCardProps) {
   );
 
   const intensityLabel =
-    intensity === 'high'
-      ? 'High Intensity'
-      : intensity === 'medium'
-        ? 'Moderate'
-        : 'Light';
+    intensity === 'high' ? 'High intensity' : intensity === 'medium' ? 'Moderate' : 'Light';
 
   return (
-    <Card elevation={1}>
-      <CardBody className="p-4 pt-4">
-        <div className="mb-3 flex items-start justify-between">
-          <div className="flex items-center gap-3">
-            <div
-              className={cn(
-                'flex h-10 w-10 items-center justify-center rounded-md',
-                meta.bgClass,
-              )}
-            >
-              <Icon size={20} className="text-ink-inverse" aria-hidden="true" />
-            </div>
-            <div>
-              <h5 className="text-body font-medium text-ink">{workout.name}</h5>
-              <span className={cn('text-caption', meta.textClass)}>
-                {intensityLabel}
-              </span>
-            </div>
-          </div>
-
-          <IconButton variant="ghost" size="sm" aria-label={`Start ${workout.name}`}>
-            <Play size={16} />
-          </IconButton>
-        </div>
-
-        <div className="grid grid-cols-3 gap-3">
-          <MiniStat label="Duration" value={formatDuration(workout.duration)} />
-          <MiniStat label="Volume" value={`${formatNumber(workout.totalVolume)} lbs`} />
-          <MiniStat label="Sets" value={`${workout.totalSets}`} />
-        </div>
-      </CardBody>
-    </Card>
-  );
-}
-
-interface MiniStatProps {
-  label: string;
-  value: string;
-}
-
-function MiniStat({ label, value }: MiniStatProps) {
-  return (
-    <div>
-      <div className="text-caption text-ink-subtle">{label}</div>
-      <div className="text-body-sm font-medium text-ink font-tabular">{value}</div>
-    </div>
+    <li className="flex items-center gap-3 py-3">
+      <span aria-hidden="true" className={cn('h-2.5 w-2.5 shrink-0 rounded-full', meta.bgClass)} />
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-body font-semibold text-ink">{workout.name}</p>
+        <p className="text-body-sm text-ink-muted">
+          {intensityLabel}, {meta.label.toLowerCase()}
+        </p>
+      </div>
+      <div className="shrink-0 text-right">
+        <p className="font-num font-tabular text-body font-semibold text-ink">
+          {workout.totalSets} sets
+        </p>
+        <p className="font-num font-tabular text-body-sm text-ink-muted">
+          {formatDuration(workout.duration)}, {formatNumber(workout.totalVolume)} lb
+        </p>
+      </div>
+    </li>
   );
 }

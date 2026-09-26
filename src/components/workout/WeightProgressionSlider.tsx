@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { TrendingUp, Minus, TrendingDown } from 'lucide-react';
 import { Card } from '@/components/ui/card';
+import { cn } from '@/lib/utils';
 
 interface WeightProgressionSliderProps {
   previousWeight: number;
@@ -85,9 +86,9 @@ export const WeightProgressionSlider: React.FC<WeightProgressionSliderProps> = (
   };
 
   const getProgressionIcon = () => {
-    if (sliderValue < 40) return <TrendingDown className="w-4 h-4 text-warning" />;
-    if (sliderValue < 60) return <Minus className="w-4 h-4 text-ink-subtle" />;
-    return <TrendingUp className="w-4 h-4 text-success" />;
+    if (sliderValue < 40) return <TrendingDown size={16} className="text-ink-muted" aria-hidden="true" />;
+    if (sliderValue < 60) return <Minus size={16} className="text-ink-muted" aria-hidden="true" />;
+    return <TrendingUp size={16} className="text-accent-2" aria-hidden="true" />;
   };
 
   const weightDiff = recommendedWeight - previousWeight;
@@ -100,17 +101,17 @@ export const WeightProgressionSlider: React.FC<WeightProgressionSliderProps> = (
 
     if (weightDiff < 0) {
       if (deloadApplied || action === 'deload') {
-        return `Deload: ${weightDiff} lbs`;
+        return `Deload, ${weightDiff} lb`;
       } else if (reasoning && reasoning.toLowerCase().includes('fatigue')) {
-        return `Fatigue adjustment: ${weightDiff} lbs`;
+        return `Fatigue adjustment, ${weightDiff} lb`;
       } else {
-        return `Reduced: ${weightDiff} lbs`;
+        return `Reduced, ${weightDiff} lb`;
       }
     } else {
       if (action === 'increase') {
-        return `Progression: +${weightDiff} lbs`;
+        return `Progression, +${weightDiff} lb`;
       } else {
-        return `Increased: +${weightDiff} lbs`;
+        return `Increased, +${weightDiff} lb`;
       }
     }
   };
@@ -126,135 +127,106 @@ export const WeightProgressionSlider: React.FC<WeightProgressionSliderProps> = (
   };
 
   const stopPoints = [
-    { position: 0, label: `-${Math.round(previousWeight * 0.1)} lbs` },
+    { position: 0, label: `-${Math.round(previousWeight * 0.1)}` },
     { position: 50, label: '±0' },
     { position: calculateStopPoint(2.5), label: '+2.5' },
     { position: calculateStopPoint(5), label: '+5' },
     { position: 100, label: `+${maxIncrease}` }
   ];
 
-  // Token-driven fill color for the progress track.
-  const fillClass =
-    sliderValue < 50 ? 'bg-warning' :
-    sliderValue < 70 ? 'bg-muscle-core' :
-    'bg-success';
+  // Presets as pills. Selection is a surface step (ink pill), not a hue.
+  const presets = [
+    { label: 'Deload', value: 25, active: sliderValue < 40 },
+    { label: 'Beginner', value: 100, active: sliderValue >= 85 },
+    { label: 'Intermediate', value: calculateStopPoint(5), active: sliderValue >= 70 && sliderValue < 85 },
+    { label: 'Advanced', value: calculateStopPoint(2.5), active: sliderValue >= 50 && sliderValue < 70 },
+  ];
 
   return (
     <Card className="p-4">
-      <div className="flex items-center justify-between mb-3">
-        <div className="flex items-center gap-2">
-          <span className="text-body-sm text-ink-muted font-marker">Weight</span>
-          {getProgressionIcon()}
+      <div className="flex items-end justify-between gap-3">
+        <div>
+          <p className="flex items-center gap-1.5 text-body-sm text-ink-muted">
+            Weight {getProgressionIcon()}
+          </p>
+          <p className="mt-0.5 text-caption font-tabular text-ink-muted">{getWeightChangeDescription()}</p>
         </div>
-        <div className="text-right">
-          <div className="text-title font-bold text-ink font-num font-tabular">{recommendedWeight} lbs</div>
-          <div className={`text-caption font-num font-tabular ${
-            Math.abs(weightDiff) < 0.5 ? 'text-ink-subtle' :
-            weightDiff >= 0 ? 'text-success' :
-            (deloadApplied || (reasoning && reasoning.toLowerCase().includes('fatigue'))) ? 'text-warning' : 'text-warning'
-          }`}>
-            {getWeightChangeDescription()}
-          </div>
-        </div>
+        <p className="font-display font-tabular text-display text-ink">
+          {recommendedWeight}
+          <span className="ml-1 text-body-sm font-semibold text-ink-muted">lb</span>
+        </p>
       </div>
 
-      <div className="relative">
-        {/* Slider Track */}
-        <div className="relative h-2 bg-surface-subtle rounded-full">
-          {/* Progress Fill */}
+      <div className="relative mt-4 h-6">
+        {/* Track: raised, ice fill up to the thumb. */}
+        <div className="absolute inset-x-0 top-1/2 h-2 -translate-y-1/2 rounded-full bg-surface-raised">
           <div
-            className={`absolute left-0 top-0 h-2 rounded-full transition-all duration-snap ${fillClass}`}
+            className="absolute left-0 top-0 h-2 rounded-full bg-accent-2 transition-[width] duration-snap"
             style={{ width: `${sliderValue}%` }}
           />
 
-          {/* Stop Point Markers */}
+          {/* Stop point markers */}
           {stopPoints.map((point) => (
             <div
               key={point.position}
-              className="absolute top-1/2 -translate-y-1/2 w-1 h-4 bg-ink-subtle/40"
+              className="absolute top-1/2 h-3 w-0.5 -translate-y-1/2 rounded-full bg-ink/25"
               style={{ left: `${point.position}%` }}
             />
           ))}
         </div>
 
-        {/* Slider Input */}
+        {/* Native range input (invisible) drives the value and keyboard access. */}
         <input
           type="range"
           min="0"
           max="100"
           value={sliderValue}
           onChange={(e) => handleSliderChange(parseInt(e.target.value))}
-          className="absolute inset-0 w-full h-2 opacity-0 cursor-pointer"
+          aria-label="Weight change"
+          aria-valuetext={`${recommendedWeight} lb`}
+          className="peer absolute inset-0 h-6 w-full cursor-pointer opacity-0"
         />
 
-        {/* Slider Thumb */}
+        {/* Thumb */}
         <div
-          className="absolute top-1/2 -translate-y-1/2 w-5 h-5 bg-surface-raised rounded-full shadow-e1 border-2 border-border pointer-events-none"
-          style={{ left: `calc(${sliderValue}% - 10px)` }}
+          className="pointer-events-none absolute top-1/2 h-6 w-6 -translate-y-1/2 rounded-full bg-ink peer-focus-visible:ring-2 peer-focus-visible:ring-accent peer-focus-visible:ring-offset-2 peer-focus-visible:ring-offset-surface-subtle"
+          style={{ left: `calc(${sliderValue}% - 12px)` }}
         />
       </div>
 
-      {/* Weight Markers */}
-      <div className="relative mt-2">
-        {stopPoints.map((point, index) => (
+      {/* Increment markers */}
+      <div className="relative mt-1.5 h-4">
+        {stopPoints.map((point) => (
           <span
             key={point.position}
-            className={`absolute text-caption font-num font-tabular ${
-              index === 0 ? 'text-warning' :
-              index === 1 ? 'text-ink-subtle' :
-              index === 2 ? 'text-muscle-core' :
-              index === 3 ? 'text-accent' :
-              'text-success'
-            }`}
+            className="absolute text-caption font-tabular text-ink-muted"
             style={{
               left: `${point.position}%`,
-              transform: 'translateX(-50%)'
+              transform: 'translateX(-50%)',
             }}
           >
             {point.label}
           </span>
         ))}
-        <div className="h-4"></div>
       </div>
 
-      {/* Clickable Progression Labels */}
-      <div className="flex justify-between mt-3 pt-2 border-t border-border">
-        <button
-          type="button"
-          onClick={() => handleSliderChange(25)}
-          className={`text-caption px-2 py-1 rounded transition-colors duration-snap ${
-            sliderValue < 40 ? 'bg-warning/15 text-warning font-semibold' : 'text-ink-subtle hover:text-warning'
-          }`}
-        >
-          Deload
-        </button>
-        <button
-          type="button"
-          onClick={() => handleSliderChange(100)}
-          className={`text-caption px-2 py-1 rounded transition-colors duration-snap ${
-            sliderValue >= 85 ? 'bg-success/15 text-success font-semibold' : 'text-ink-subtle hover:text-success'
-          }`}
-        >
-          Beginner
-        </button>
-        <button
-          type="button"
-          onClick={() => handleSliderChange(calculateStopPoint(5))}
-          className={`text-caption px-2 py-1 rounded transition-colors duration-snap ${
-            sliderValue >= 70 && sliderValue < 85 ? 'bg-accent/15 text-accent font-semibold' : 'text-ink-subtle hover:text-accent'
-          }`}
-        >
-          Intermediate
-        </button>
-        <button
-          type="button"
-          onClick={() => handleSliderChange(calculateStopPoint(2.5))}
-          className={`text-caption px-2 py-1 rounded transition-colors duration-snap ${
-            sliderValue >= 50 && sliderValue < 70 ? 'bg-muscle-core/15 text-muscle-core font-semibold' : 'text-ink-subtle hover:text-muscle-core'
-          }`}
-        >
-          Advanced
-        </button>
+      {/* Presets */}
+      <div className="mt-4 flex flex-wrap gap-1.5">
+        {presets.map((preset) => (
+          <button
+            key={preset.label}
+            type="button"
+            aria-pressed={preset.active}
+            onClick={() => handleSliderChange(preset.value)}
+            className={cn(
+              'min-h-9 rounded-full px-3.5 text-body-sm font-semibold transition-colors duration-snap',
+              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface-subtle',
+              preset.active ? 'bg-ink text-ink-inverse' : 'bg-surface-raised text-ink-muted hover:text-ink',
+            )}
+          >
+            {preset.label}
+          </button>
+        ))}
       </div>
     </Card>
   );

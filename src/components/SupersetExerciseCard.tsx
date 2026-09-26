@@ -12,7 +12,7 @@ import { useAppDispatch } from '../store/hooks';
 import { updateExerciseNotesAndTitle } from '../store/slices/workoutSlice';
 import { Card } from './ui/card';
 import { cn } from '@/lib/utils';
-import { Link2 } from 'lucide-react';
+import { ChevronDown, Link2 } from 'lucide-react';
 
 interface SupersetExerciseCardProps {
   exercises: WorkoutExercise[];
@@ -39,16 +39,36 @@ export const SupersetExerciseCard: React.FC<SupersetExerciseCardProps> = ({
   const currentExercise = exercises[currentSupersetIndex];
   const otherExercises = exercises.filter((_, index) => index !== currentSupersetIndex);
 
+  const currentSet = currentExercise.sets[currentSetIndex];
+  const instructions = currentExercise.exercise.instructions;
+
   return (
-    <Card elevation={1} className="border-2 border-accent/30 p-6">
-      {/* Superset Header */}
-      <div className="mb-4">
-        <div className="mb-2 flex items-center gap-3">
-          <div className="flex items-center gap-2 rounded-full bg-accent px-3 py-1">
-            <Link2 className="h-4 w-4 text-accent-fg" />
-            <span className="text-body-sm font-medium text-accent-fg">
-              Superset (<span className="font-num font-tabular">{currentSupersetIndex + 1}/{exercises.length}</span>)
+    <Card elevation={1} className="p-5">
+      {/* Superset header: position in the round, then the exercise title/notes */}
+      <div className="mb-5">
+        <div className="mb-3 flex items-center gap-3">
+          <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-surface-raised px-3 py-1 text-body-sm font-semibold text-ink">
+            <Link2 className="h-4 w-4 text-accent-2" aria-hidden="true" />
+            Superset{' '}
+            <span className="font-num font-tabular">
+              {currentSupersetIndex + 1} of {exercises.length}
             </span>
+          </span>
+          {/* Round progress: ice = done, amber = now */}
+          <div className="flex flex-1 gap-1" aria-hidden="true">
+            {exercises.map((exercise, index) => (
+              <div
+                key={exercise.id}
+                className={cn(
+                  'h-1.5 flex-1 rounded-full',
+                  index === currentSupersetIndex
+                    ? 'bg-accent'
+                    : index < currentSupersetIndex
+                      ? 'bg-accent-2'
+                      : 'bg-surface-raised',
+                )}
+              />
+            ))}
           </div>
         </div>
         <ExerciseNotesEditor
@@ -66,7 +86,7 @@ export const SupersetExerciseCard: React.FC<SupersetExerciseCardProps> = ({
 
       {/* Current Exercise Video */}
       {currentExercise.exercise.videoLinks.length > 0 && (
-        <div className="mb-6">
+        <div className="mb-5 overflow-hidden rounded-2xl">
           {currentExercise.exercise.videoLinks.length >= 2 ? (
             <DualViewVideo
               key={`superset-dual-${currentExercise.exercise.id}-${currentSupersetIndex}`}
@@ -75,7 +95,7 @@ export const SupersetExerciseCard: React.FC<SupersetExerciseCardProps> = ({
               autoPlay={true}
               muted={true}
               compact={true}
-              instructions={currentExercise.exercise.instructions}
+              instructions={instructions}
             />
           ) : (
             <ExerciseVideo
@@ -86,7 +106,7 @@ export const SupersetExerciseCard: React.FC<SupersetExerciseCardProps> = ({
               muted={true}
               compact={true}
               fallbackVideoUrls={currentExercise.exercise.videoLinks.slice(1)}
-              instructions={currentExercise.exercise.instructions}
+              instructions={instructions}
             />
           )}
         </div>
@@ -100,46 +120,36 @@ export const SupersetExerciseCard: React.FC<SupersetExerciseCardProps> = ({
       />
 
       {/* Rest Timer - Mobile only */}
-      <div className="lg:hidden">
+      <div className="mb-5 lg:hidden">
         <RestTimer />
       </div>
 
-      {/* Current Set Information */}
-      <div className="mb-6 rounded-lg bg-surface-subtle p-4">
-        <h3 className="mb-2 text-title font-semibold text-ink font-marker">
-          Current Set: <span className="font-num font-tabular">{currentSetIndex + 1} / {currentExercise.sets.length}</span>
-        </h3>
-        <p className="mb-3 text-body-sm text-ink-subtle">
-          Complete this set, then switch to the next exercise in the superset
-        </p>
-
-        {/* Current Set Details */}
-        <div className="grid grid-cols-3 gap-4 text-center">
-          <div className="rounded-md bg-surface-raised p-2">
-            <p className="text-caption text-ink-subtle font-marker">Target Reps</p>
-            <p className="text-title font-bold text-ink font-num font-tabular">
-              {currentExercise.sets[currentSetIndex]?.reps || 0}
-            </p>
-          </div>
-          <div className="rounded-md bg-surface-raised p-2">
-            <p className="text-caption text-ink-subtle font-marker">Weight</p>
-            <p className="text-title font-bold text-ink">
-              <span className="font-num font-tabular">{currentExercise.sets[currentSetIndex]?.weight || 0}</span> lbs
-            </p>
-          </div>
-          <div className="rounded-md bg-surface-raised p-2">
-            <p className="text-caption text-ink-subtle font-marker">Exercise</p>
-            <p className="text-body-sm font-bold text-ink font-num font-tabular">
-              {currentSupersetIndex + 1}/{exercises.length}
-            </p>
-          </div>
-        </div>
-      </div>
-
-      {/* Set Input */}
+      {/* Current set: the target in numbers, then the input */}
       <div className="mb-6">
+        <div className="mb-3 flex items-end justify-between gap-3">
+          <div className="min-w-0">
+            <h3 className="text-body-sm font-semibold text-ink-muted">
+              Set{' '}
+              <span className="font-display font-tabular text-title text-ink">{currentSetIndex + 1}</span>{' '}
+              of <span className="font-num font-tabular text-ink">{currentExercise.sets.length}</span>
+            </h3>
+            <p className="text-caption text-ink-muted">
+              Do this set, then move to the next exercise in the superset.
+            </p>
+          </div>
+          <dl className="flex shrink-0 gap-4 text-right">
+            <div className="flex flex-col-reverse">
+              <dt className="text-caption text-ink-muted">target reps</dt>
+              <dd className="font-display font-tabular text-title text-ink">{currentSet?.reps || 0}</dd>
+            </div>
+            <div className="flex flex-col-reverse">
+              <dt className="text-caption text-ink-muted">lb</dt>
+              <dd className="font-display font-tabular text-title text-ink">{currentSet?.weight || 0}</dd>
+            </div>
+          </dl>
+        </div>
         <SetInput
-          set={currentExercise.sets[currentSetIndex]}
+          set={currentSet}
           onComplete={onCompleteSet}
           onUncomplete={onUncompleteSet}
           previousSet={currentSetIndex > 0 ? currentExercise.sets[currentSetIndex - 1] : null}
@@ -158,79 +168,51 @@ export const SupersetExerciseCard: React.FC<SupersetExerciseCardProps> = ({
         />
       </div>
 
-      {/* Other Exercises in Superset Preview */}
+      {/* Rest of the superset, as quiet rows */}
       {otherExercises.length > 0 && (
-        <div className="mb-4">
-          <h4 className="mb-3 flex items-center text-body font-semibold text-ink font-marker">
-            <span className="mr-2">Next in Superset:</span>
-            <div className="h-px flex-1 bg-border"></div>
-          </h4>
-          <div className="space-y-2">
+        <section aria-label="Next in superset" className="mb-2">
+          <h4 className="mb-1 text-body-sm font-semibold text-ink-muted">Next in superset</h4>
+          <ul className="divide-y divide-hairline">
             {otherExercises.map((exercise) => {
               const actualIndex = exercises.findIndex(ex => ex.id === exercise.id);
               return (
-                <div
-                  key={exercise.id}
-                  className="flex items-center justify-between rounded-lg bg-surface-subtle p-3 opacity-60"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-surface-raised">
-                      <span className="text-body-sm font-medium text-ink font-num font-tabular">{actualIndex + 1}</span>
-                    </div>
-                    <div>
-                      <p className="font-medium text-ink">{exercise.exercise.name}</p>
-                      <p className="text-body-sm text-ink-subtle">
-                        <span className="font-num font-tabular">{exercise.sets.length}</span> sets
-                      </p>
-                    </div>
+                <li key={exercise.id} className="flex min-h-touch-min items-center gap-3 py-2">
+                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-surface-raised font-num font-tabular text-body-sm font-semibold text-ink-muted">
+                    {actualIndex + 1}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-body font-semibold text-ink">{exercise.exercise.name}</p>
+                    <p className="text-caption text-ink-muted">
+                      <span className="font-num font-tabular">{exercise.sets.length}</span> sets
+                    </p>
                   </div>
-                  <div className="text-body-sm text-ink-subtle">
-                    Waiting...
-                  </div>
-                </div>
+                  <span className="text-caption text-ink-subtle">Waiting</span>
+                </li>
               );
             })}
-          </div>
-        </div>
+          </ul>
+        </section>
       )}
 
-      {/* Superset Progress */}
-      <div className="rounded-lg bg-surface-subtle p-3">
-        <div className="mb-2 flex items-center justify-between">
-          <span className="text-body-sm text-ink-subtle font-marker">Superset Progress</span>
-          <span className="text-body-sm font-medium text-accent">
-            Set <span className="font-num font-tabular">{currentSetIndex + 1}</span> of <span className="font-num font-tabular">{currentExercise.sets.length}</span>
-          </span>
-        </div>
-        <div className="flex gap-1">
-          {exercises.map((exercise, index) => (
-            <div
-              key={exercise.id}
-              className={cn(
-                'h-2 flex-1 rounded-full',
-                index === currentSupersetIndex
-                  ? 'bg-accent'
-                  : index < currentSupersetIndex
-                    ? 'bg-success'
-                    : 'bg-surface-raised',
-              )}
+      {/* Instructions, one tap away */}
+      {instructions.length > 0 && (
+        <details className="group mt-4 rounded-2xl bg-surface-raised/50">
+          <summary className="flex min-h-touch-min cursor-pointer list-none items-center justify-between rounded-2xl px-4 text-body-sm font-semibold text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent">
+            <span>How to do it</span>
+            <ChevronDown
+              className="h-4 w-4 text-ink-muted transition-transform duration-snap group-open:rotate-180"
+              aria-hidden="true"
             />
-          ))}
-        </div>
-      </div>
-
-      {/* Exercise Instructions */}
-      {currentExercise.exercise.instructions.length > 0 && (
-        <div className="mt-4 rounded-lg bg-surface-subtle p-4">
-          <h4 className="mb-2 text-body font-semibold text-ink font-marker">Instructions</h4>
-          <ol className="space-y-1">
-            {currentExercise.exercise.instructions.map((instruction, index) => (
-              <li key={index} className="text-body-sm text-ink-muted">
-                <span className="font-medium text-accent font-num font-tabular">{index + 1}.</span> {instruction}
+          </summary>
+          <ol className="space-y-2 px-4 pb-4">
+            {instructions.map((instruction, index) => (
+              <li key={index} className="flex gap-2 text-body-sm text-ink-muted">
+                <span className="font-num font-tabular font-semibold text-ink">{index + 1}</span>
+                <span>{instruction}</span>
               </li>
             ))}
           </ol>
-        </div>
+        </details>
       )}
     </Card>
   );

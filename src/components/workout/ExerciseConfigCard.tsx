@@ -5,7 +5,8 @@ import { Exercise } from '../../types/exercise';
 import { ExercisePreviewModal } from './ExercisePreviewModal';
 import { ExerciseSearchModal } from './ExerciseSearchModal';
 import { useAppSelector } from '../../store/hooks';
-import { Card } from '../ui/card';
+import { ChevronDown, GripVertical, Link2, Plus, Replace, Trash2, X } from 'lucide-react';
+import { cn } from '../../lib/utils';
 import { Button } from '../ui/button';
 import { IconButton } from '../ui/icon-button';
 import { Input } from '../ui/input';
@@ -20,17 +21,14 @@ import {
 // Tailwind JIT can't resolve class names built from runtime strings, so the
 // superset-group token keys (see ParsedWorkoutConfigurator.getSupersetColor)
 // map to fully-spelled static class sets here.
-const SUPERSET_COLORS: Record<
-  string,
-  { borderL: string; active: string }
-> = {
-  push: { borderL: 'border-l-muscle-push', active: 'text-muscle-push bg-muscle-push/15 border border-muscle-push/40' },
-  pull: { borderL: 'border-l-muscle-pull', active: 'text-muscle-pull bg-muscle-pull/15 border border-muscle-pull/40' },
-  legs: { borderL: 'border-l-muscle-legs', active: 'text-muscle-legs bg-muscle-legs/15 border border-muscle-legs/40' },
-  core: { borderL: 'border-l-muscle-core', active: 'text-muscle-core bg-muscle-core/15 border border-muscle-core/40' },
-  cardio: { borderL: 'border-l-muscle-cardio', active: 'text-muscle-cardio bg-muscle-cardio/15 border border-muscle-cardio/40' },
-  'full-body': { borderL: 'border-l-muscle-full-body', active: 'text-muscle-full-body bg-muscle-full-body/15 border border-muscle-full-body/40' },
-  mobility: { borderL: 'border-l-muscle-mobility', active: 'text-muscle-mobility bg-muscle-mobility/15 border border-muscle-mobility/40' },
+const SUPERSET_COLORS: Record<string, { bar: string; text: string }> = {
+  push: { bar: 'bg-muscle-push', text: 'text-muscle-push' },
+  pull: { bar: 'bg-muscle-pull', text: 'text-muscle-pull' },
+  legs: { bar: 'bg-muscle-legs', text: 'text-muscle-legs' },
+  core: { bar: 'bg-muscle-core', text: 'text-muscle-core' },
+  cardio: { bar: 'bg-muscle-cardio', text: 'text-muscle-cardio' },
+  'full-body': { bar: 'bg-muscle-full-body', text: 'text-muscle-full-body' },
+  mobility: { bar: 'bg-muscle-mobility', text: 'text-muscle-mobility' },
 };
 
 interface ExerciseConfigCardProps {
@@ -198,11 +196,11 @@ export const ExerciseConfigCard: React.FC<ExerciseConfigCardProps> = ({
   // Get superset tooltip text
   const getSupersetTooltip = (): string => {
     if (isInSupersetMode) {
-      return "Click another exercise to create a superset";
+      return "Tap another exercise to pair them as a superset";
     } else if (isInSuperset && supersetGroup) {
-      return `In superset group ${supersetGroup} - Click to remove`;
+      return `In superset ${supersetGroup}. Tap to remove`;
     } else {
-      return "Click to start creating a superset";
+      return "Start a superset";
     }
   };
 
@@ -216,102 +214,86 @@ export const ExerciseConfigCard: React.FC<ExerciseConfigCardProps> = ({
   };
 
   return (
-    <Card
+    <li
       ref={setNodeRef}
       style={style}
-      elevation={1}
-      className={`bg-surface-raised p-4 transition-all duration-snap ${
-        isDragging ? 'shadow-e3 rotate-1 z-50' : ''
-      } ${
-        isInSuperset
-          ? `border-l-4 ${ssColor.borderL}`
-          : isInSupersetMode
-            ? 'border-l-4 border-l-warning animate-pulse'
-            : ''
-      }`}
+      className={cn(
+        'relative list-none py-3 pl-4 pr-2 transition-colors duration-snap',
+        isDragging && 'z-50 rounded-2xl bg-surface-raised',
+      )}
     >
+      {/* Superset membership: a muscle-hue bar on the row's leading edge
+          (amber-free: amber is the page's one action). */}
+      {(isInSuperset || isInSupersetMode) && (
+        <span
+          aria-hidden="true"
+          className={cn(
+            'absolute bottom-3 left-0 top-3 w-1 rounded-full',
+            isInSuperset ? ssColor.bar : 'bg-ink-muted animate-pulse',
+          )}
+        />
+      )}
+
       {/* Header */}
-      <div className="flex items-center justify-between mb-3">
-        <div className="flex items-center gap-2 flex-1 min-w-0">
-          <div
-            {...attributes}
-            {...listeners}
-            className="cursor-grab active:cursor-grabbing p-1"
-          >
-            <svg className="w-4 h-4 text-ink-subtle" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v14a2 2 0 002 2z" />
-            </svg>
-          </div>
+      <div className="flex items-center gap-1">
+        <button
+          type="button"
+          {...attributes}
+          {...listeners}
+          aria-label={`Reorder ${exercise.name}`}
+          className="-ml-2 flex h-touch-min w-8 shrink-0 cursor-grab items-center justify-center rounded-full text-ink-subtle hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent active:cursor-grabbing"
+        >
+          <GripVertical className="h-4 w-4" aria-hidden="true" />
+        </button>
 
-          <div className="flex-1 min-w-0">
-            <button
-              onClick={() => setShowPreviewModal(true)}
-              className="font-semibold text-ink truncate hover:text-accent transition-colors duration-snap text-left"
-              title="Click to preview exercise details"
-            >
-              {exercise.name}
-            </button>
-            <p className="text-body-sm text-ink-subtle">
-              {exercise.sets.length} sets • Rest: {getRestTimeInMinutes()}min
-            </p>
-          </div>
+        <div className="min-w-0 flex-1">
+          <button
+            type="button"
+            onClick={() => setShowPreviewModal(true)}
+            className="block max-w-full truncate text-left text-body font-semibold text-ink transition-colors duration-snap hover:text-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+            title="Preview exercise details"
+          >
+            {exercise.name}
+          </button>
+          <p className="text-body-sm text-ink-muted">
+            <span className="font-tabular">{exercise.sets.length}</span> set{exercise.sets.length !== 1 ? 's' : ''}
+            {' · '}
+            <span className="font-tabular">{getRestTimeInMinutes()}</span> min rest
+            {isInSuperset && supersetGroup ? (
+              <span className={ssColor.text}>{` · Superset ${supersetGroup}`}</span>
+            ) : isInSupersetMode ? (
+              <span className="text-ink">{' · Pick a partner'}</span>
+            ) : null}
+          </p>
         </div>
 
-        <div className="flex gap-1 shrink-0">
-          <IconButton
-            variant="ghost"
-            size="sm"
-            onClick={() => setShowSearchModal(true)}
-            aria-label="Change Exercise"
-            title="Change Exercise"
-            className="text-ink-subtle hover:text-ink"
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-            </svg>
-          </IconButton>
-          <IconButton
-            variant="ghost"
-            size="sm"
-            onClick={handleSupersetClick}
-            aria-label="Toggle superset"
-            title={getSupersetTooltip()}
-            className={
-              isInSuperset
-                ? ssColor.active
-                : isInSupersetMode
-                  ? 'text-warning bg-warning/15 border border-warning/40 animate-pulse'
-                  : 'text-ink-subtle hover:text-ink'
-            }
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-            </svg>
-          </IconButton>
-          <IconButton
-            variant="ghost"
-            size="sm"
-            onClick={() => setIsExpanded(!isExpanded)}
-            aria-label={isExpanded ? 'Collapse' : 'Expand'}
-            className="text-ink-subtle hover:text-ink"
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={isExpanded ? "M5 15l7-7 7 7" : "M19 9l-7 7-7-7"} />
-            </svg>
-          </IconButton>
-          <IconButton
-            variant="ghost"
-            size="sm"
-            onClick={onDelete}
-            aria-label="Delete Exercise"
-            title="Delete Exercise"
-            className="text-danger hover:text-danger"
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-            </svg>
-          </IconButton>
-        </div>
+        <IconButton
+          variant="ghost"
+          onClick={handleSupersetClick}
+          aria-label="Toggle superset"
+          aria-pressed={isInSuperset || isInSupersetMode}
+          title={getSupersetTooltip()}
+          className={
+            isInSuperset
+              ? cn(ssColor.text, 'bg-surface-raised')
+              : isInSupersetMode
+                ? 'bg-surface-raised text-ink'
+                : undefined
+          }
+        >
+          <Link2 className="h-4 w-4" aria-hidden="true" />
+        </IconButton>
+        <IconButton
+          variant="ghost"
+          onClick={() => setIsExpanded(!isExpanded)}
+          aria-label={isExpanded ? 'Collapse' : 'Expand'}
+          aria-expanded={isExpanded}
+        >
+          <ChevronDown
+            className={cn('h-4 w-4 transition-transform duration-snap', isExpanded && 'rotate-180')}
+            aria-hidden="true"
+          />
+        </IconButton>
       </div>
 
       {/* Modals */}
@@ -329,103 +311,121 @@ export const ExerciseConfigCard: React.FC<ExerciseConfigCardProps> = ({
         currentExerciseName={exercise.name}
       />
 
-      {/* Expanded Content */}
+      {/* Expanded content: detail lives one tap away */}
       {isExpanded && (
-        <div className="space-y-4 border-t border-border pt-4">
+        <div className="mt-3 space-y-4 pr-2">
           {/* Rest Time Control */}
-          <div className="flex items-center gap-2">
-            <span className="text-ink-muted font-medium min-w-20 text-body-sm">
-              Rest Time:
-            </span>
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-body-sm text-ink-muted">Rest between sets</span>
             <Select
               value={String(exercise.sets[0]?.rest || 120)}
               onValueChange={(value) => handleRestTimeChange(value)}
             >
-              <SelectTrigger className="w-32">
+              <SelectTrigger className="w-32" aria-label="Rest between sets">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="30">30s</SelectItem>
-                <SelectItem value="60">1min</SelectItem>
-                <SelectItem value="90">1.5min</SelectItem>
-                <SelectItem value="120">2min</SelectItem>
-                <SelectItem value="180">3min</SelectItem>
-                <SelectItem value="240">4min</SelectItem>
-                <SelectItem value="300">5min</SelectItem>
+                <SelectItem value="30">30 s</SelectItem>
+                <SelectItem value="60">1 min</SelectItem>
+                <SelectItem value="90">1.5 min</SelectItem>
+                <SelectItem value="120">2 min</SelectItem>
+                <SelectItem value="180">3 min</SelectItem>
+                <SelectItem value="240">4 min</SelectItem>
+                <SelectItem value="300">5 min</SelectItem>
               </SelectContent>
             </Select>
           </div>
 
-          {/* Sets Configuration */}
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="text-ink-muted font-medium text-body-sm">
-                Sets:
-              </span>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={addSet}
-                className="text-success"
-              >
-                + Add Set
-              </Button>
+          {/* Sets: a compact grid, labels once above the columns */}
+          <div>
+            <div
+              aria-hidden="true"
+              className="grid grid-cols-[2rem_minmax(0,1fr)_minmax(0,1fr)_2.75rem_2.75rem] gap-2 pb-1 text-caption text-ink-subtle"
+            >
+              <span>Set</span>
+              <span>Reps</span>
+              <span>Weight</span>
+              <span className="col-span-2" />
             </div>
-
-            {exercise.sets.map((set: any, setIndex: number) => (
-              <div key={setIndex} className="flex items-center gap-2 p-2 bg-surface-subtle rounded">
-                <span className="text-ink-muted font-medium min-w-12 text-body-sm">
-                  Set {setIndex + 1}:
-                </span>
-
-                <Input
-                  type="text"
-                  placeholder="Reps"
-                  value={formatReps(set.reps)}
-                  onChange={(e) => handleRepsChange(setIndex, e.target.value)}
-                  size="sm"
-                  className="w-20"
-                />
-
-                <span className="text-ink-subtle text-body-sm">
-                  reps @
-                </span>
-
-                <Input
-                  type="number"
-                  placeholder="Weight"
-                  value={set.weight || ''}
-                  onChange={(e) => handleWeightChange(setIndex, e.target.value)}
-                  size="sm"
-                  className="w-20"
-                />
-
-                <button
-                  onClick={() => handleUnitToggle(setIndex)}
-                  className="text-accent hover:text-accent/80 text-body-sm font-medium px-1 transition-colors duration-snap"
-                  title="Click to toggle between lbs and kg"
+            <ul className="space-y-2">
+              {exercise.sets.map((set: any, setIndex: number) => (
+                <li
+                  key={setIndex}
+                  className="grid grid-cols-[2rem_minmax(0,1fr)_minmax(0,1fr)_2.75rem_2.75rem] items-center gap-2"
                 >
-                  {set.unit || weightUnit}
-                </button>
+                  <span className="font-display font-tabular text-body text-ink-muted">
+                    {setIndex + 1}
+                  </span>
 
-                {exercise.sets.length > 1 && (
-                  <IconButton
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => removeSet(setIndex)}
-                    aria-label={`Remove set ${setIndex + 1}`}
-                    className="text-danger hover:text-danger ml-auto"
+                  <Input
+                    type="text"
+                    placeholder="Reps"
+                    aria-label={`Set ${setIndex + 1} reps`}
+                    value={formatReps(set.reps)}
+                    onChange={(e) => handleRepsChange(setIndex, e.target.value)}
+                  />
+
+                  <Input
+                    type="number"
+                    inputMode="decimal"
+                    placeholder="0"
+                    aria-label={`Set ${setIndex + 1} weight`}
+                    value={set.weight || ''}
+                    onChange={(e) => handleWeightChange(setIndex, e.target.value)}
+                  />
+
+                  <button
+                    type="button"
+                    onClick={() => handleUnitToggle(setIndex)}
+                    className="h-touch-min rounded-full bg-surface-raised text-body-sm font-semibold text-ink-muted transition-colors duration-snap hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                    title="Switch between lbs and kg"
+                    aria-label={`Set ${setIndex + 1} unit: ${set.unit || weightUnit}. Switch unit`}
                   >
-                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                    </svg>
-                  </IconButton>
-                )}
-              </div>
-            ))}
+                    {set.unit || weightUnit}
+                  </button>
+
+                  {exercise.sets.length > 1 ? (
+                    <IconButton
+                      variant="ghost"
+                      onClick={() => removeSet(setIndex)}
+                      aria-label={`Remove set ${setIndex + 1}`}
+                    >
+                      <X className="h-4 w-4" aria-hidden="true" />
+                    </IconButton>
+                  ) : (
+                    <span />
+                  )}
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          {/* Row-level actions, quiet */}
+          <div className="flex flex-wrap items-center gap-1">
+            <Button variant="ghost" onClick={addSet}>
+              <Plus className="h-4 w-4" aria-hidden="true" />
+              Add set
+            </Button>
+            <Button
+              variant="ghost"
+              onClick={() => setShowSearchModal(true)}
+              aria-label="Change exercise"
+            >
+              <Replace className="h-4 w-4" aria-hidden="true" />
+              Change
+            </Button>
+            <Button
+              variant="ghost"
+              onClick={onDelete}
+              aria-label="Delete exercise"
+              className="ml-auto text-danger hover:text-danger"
+            >
+              <Trash2 className="h-4 w-4" aria-hidden="true" />
+              Remove
+            </Button>
           </div>
         </div>
       )}
-    </Card>
+    </li>
   );
 };

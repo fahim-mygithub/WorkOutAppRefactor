@@ -1,7 +1,8 @@
 import React from 'react';
-import { Play, Users, Clock, Target, User } from 'lucide-react';
+import { Play } from 'lucide-react';
 import { SharedWorkout } from '../services/sharedWorkoutService';
 import { useAuth } from '../contexts/AuthContext';
+import { Button } from './ui/button';
 
 interface SharedWorkoutStartPageProps {
   sharedWorkout: SharedWorkout;
@@ -14,7 +15,7 @@ export const SharedWorkoutStartPage: React.FC<SharedWorkoutStartPageProps> = ({
 }) => {
   const { user } = useAuth();
 
-  console.log('🏁 SharedWorkoutStartPage rendering:', {
+  console.log('SharedWorkoutStartPage rendering:', {
     workoutName: sharedWorkout.workoutData.name,
     user: user?.uid || 'anonymous',
     exerciseCount: sharedWorkout.workoutData.exercises.length
@@ -41,138 +42,85 @@ export const SharedWorkoutStartPage: React.FC<SharedWorkoutStartPageProps> = ({
 
   const stats = calculateWorkoutStats();
 
+  const summary = [
+    { value: String(stats.totalExercises), label: 'exercises' },
+    { value: String(stats.totalSets), label: 'sets' },
+    { value: `~${stats.estimatedMinutes}`, label: 'min' },
+  ];
+
   return (
-    <div className="min-h-full bg-surface p-4">
-      <div className="max-w-2xl mx-auto">
-        {/* Header */}
-        <div className="text-center mb-8">
-          <div className="w-20 h-20 bg-gradient-to-br from-muscle-core to-accent rounded-full flex items-center justify-center mx-auto mb-4">
-            <Play className="w-10 h-10 text-accent-fg" />
-          </div>
-          <h1 className="text-3xl font-bold text-ink mb-2">Ready to Start Workout?</h1>
-          <p className="text-ink-muted">
-            You're about to start a shared workout
+    <div className="min-h-full bg-surface px-4 pb-6 pt-6">
+      <div className="mx-auto flex max-w-xl flex-col">
+        {/* Hero: context line, display title, one sentence. */}
+        <p className="text-body-sm text-ink-muted">
+          Shared by <span className="text-ink">{sharedWorkout.creatorName}</span>
+          {' · '}
+          {formatCreatedDate(new Date(sharedWorkout.metadata.createdAt))}
+        </p>
+        <h1 className="mt-1 break-words font-display text-display-lg text-ink">
+          {sharedWorkout.workoutData.name}
+        </h1>
+        {sharedWorkout.workoutData.description && (
+          <p className="mt-3 max-w-[40ch] text-body text-ink-muted">
+            {sharedWorkout.workoutData.description}
           </p>
-        </div>
-
-        {/* Workout Info Card */}
-        <div className="bg-surface-raised rounded-lg p-6 mb-6">
-          <div className="text-center mb-6">
-            <h2 className="text-2xl font-bold text-ink mb-2">
-              {sharedWorkout.workoutData.name}
-            </h2>
-            {sharedWorkout.workoutData.description && (
-              <p className="text-ink-muted text-sm">
-                {sharedWorkout.workoutData.description}
-              </p>
-            )}
-          </div>
-
-          {/* Creator Info */}
-          <div className="flex items-center justify-center space-x-2 mb-6 text-ink-muted">
-            <User className="w-4 h-4" />
-            <span className="text-sm">Created by <span className="font-medium">{sharedWorkout.creatorName}</span></span>
-            <span className="text-ink-subtle">•</span>
-            <span className="text-sm">{formatCreatedDate(sharedWorkout.metadata.createdAt)}</span>
-          </div>
-
-          {/* Workout Stats */}
-          <div className="grid grid-cols-3 gap-4 mb-6">
-            <div className="bg-surface-subtle rounded-lg p-4 text-center">
-              <Target className="w-6 h-6 mx-auto mb-2 text-accent" />
-              <div className="text-lg font-bold text-ink">{stats.totalExercises}</div>
-              <div className="text-xs text-ink-muted">Exercises</div>
-            </div>
-
-            <div className="bg-surface-subtle rounded-lg p-4 text-center">
-              <div className="w-6 h-6 mx-auto mb-2 flex items-center justify-center">
-                <span className="text-success font-bold text-lg">×</span>
-              </div>
-              <div className="text-lg font-bold text-ink">{stats.totalSets}</div>
-              <div className="text-xs text-ink-muted">Total Sets</div>
-            </div>
-
-            <div className="bg-surface-subtle rounded-lg p-4 text-center">
-              <Clock className="w-6 h-6 mx-auto mb-2 text-muscle-core" />
-              <div className="text-lg font-bold text-ink">{stats.estimatedMinutes}m</div>
-              <div className="text-xs text-ink-muted">Estimated</div>
-            </div>
-          </div>
-
-          {/* Popularity Stats */}
-          <div className="flex items-center justify-center space-x-4 text-sm text-ink-muted mb-6">
-            <div className="flex items-center space-x-1">
-              <Users className="w-4 h-4" />
-              <span>{sharedWorkout.metadata.viewCount} views</span>
-            </div>
-            <span>•</span>
-            <div className="flex items-center space-x-1">
-              <Play className="w-4 h-4" />
-              <span>{sharedWorkout.metadata.useCount} uses</span>
-            </div>
-          </div>
-
-          {/* Exercise Preview */}
-          <div className="mb-6">
-            <h3 className="text-lg font-semibold text-ink mb-3">Exercises in this workout:</h3>
-            <div className="space-y-2 max-h-48 overflow-y-auto">
-              {sharedWorkout.workoutData.exercises.map((exercise, index) => (
-                <div key={exercise.id} className="flex items-center justify-between bg-surface-subtle rounded p-3">
-                  <div className="flex items-center space-x-3">
-                    <div className="w-8 h-8 bg-accent rounded-full flex items-center justify-center text-accent-fg text-sm font-medium">
-                      {index + 1}
-                    </div>
-                    <div>
-                      <div className="text-ink font-medium">{exercise.exercise.name}</div>
-                      {exercise.isSuperset && (
-                        <div className="text-xs text-muscle-core">Superset</div>
-                      )}
-                    </div>
-                  </div>
-                  <div className="text-ink-muted text-sm">
-                    {exercise.sets.length} set{exercise.sets.length !== 1 ? 's' : ''}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Anonymous User Notice */}
-          {!user && (
-            <div className="bg-warning/10 border border-warning rounded-lg p-4 mb-6">
-              <div className="flex items-start space-x-3">
-                <div className="w-5 h-5 bg-warning rounded-full flex-shrink-0 mt-0.5">
-                  <span className="block w-full h-full rounded-full bg-warning"></span>
-                </div>
-                <div className="text-sm">
-                  <p className="text-warning font-medium mb-1">Anonymous Session</p>
-                  <p className="text-warning">
-                    You can perform this workout, but your progress won't be saved.
-                    <span className="font-medium"> Sign up to track your workouts!</span>
-                  </p>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Start Button */}
-          <button
-            onClick={() => onStartWorkout(sharedWorkout)}
-            className="w-full bg-gradient-to-r from-muscle-core to-accent hover:opacity-90 text-accent-fg font-bold py-4 px-6 rounded-lg transition-all duration-200 flex items-center justify-center space-x-2 text-lg"
-          >
-            <Play className="w-6 h-6" />
-            <span>Start Workout</span>
-          </button>
-        </div>
-
-        {/* Note for authenticated users */}
-        {user && (
-          <div className="text-center">
-            <p className="text-ink-subtle text-sm">
-              Your progress will be tracked and can be saved to your profile when you finish.
-            </p>
-          </div>
         )}
+
+        <dl className="mt-6 grid grid-cols-3 gap-3">
+          {summary.map((s) => (
+            <div key={s.label}>
+              <dt className="sr-only">{s.label}</dt>
+              <dd className="font-display font-tabular text-display text-ink">{s.value}</dd>
+              <dd aria-hidden="true" className="text-body-sm text-ink-muted">{s.label}</dd>
+            </div>
+          ))}
+        </dl>
+        <p className="mt-3 text-body-sm text-accent-2">
+          <span className="font-num font-tabular">{sharedWorkout.metadata.viewCount}</span> views
+          {' · '}
+          <span className="font-num font-tabular">{sharedWorkout.metadata.useCount}</span> uses
+        </p>
+
+        {/* Exercise preview: rows on one subtle card, hairlines between. */}
+        <section aria-labelledby="shared-exercises-heading" className="mt-6 rounded-3xl bg-surface-subtle px-4 py-2">
+          <h2 id="shared-exercises-heading" className="pt-2 text-body-sm font-semibold text-ink-muted">
+            Exercises
+          </h2>
+          <ol className="max-h-64 overflow-y-auto">
+            {sharedWorkout.workoutData.exercises.map((exercise, index) => (
+              <li
+                key={exercise.id}
+                className="flex min-h-touch-min items-center justify-between gap-3 border-b border-hairline py-2 last:border-b-0"
+              >
+                <div className="flex min-w-0 items-center gap-3">
+                  <span className="w-5 shrink-0 text-right font-num font-tabular text-body-sm text-ink-subtle">
+                    {index + 1}
+                  </span>
+                  <div className="min-w-0">
+                    <div className="truncate text-body text-ink">{exercise.exercise.name}</div>
+                    {exercise.isSuperset && (
+                      <div className="text-caption text-accent-2">Superset</div>
+                    )}
+                  </div>
+                </div>
+                <span className="shrink-0 text-body-sm text-ink-muted">
+                  <span className="font-num font-tabular">{exercise.sets.length}</span> set{exercise.sets.length !== 1 ? 's' : ''}
+                </span>
+              </li>
+            ))}
+          </ol>
+        </section>
+
+        <p className="mt-6 text-body-sm text-ink-muted">
+          {user
+            ? 'Your sets are tracked, and you can save the session to your history when you finish.'
+            : "You can do this workout without an account, but it won't be saved. Sign up to keep your history."}
+        </p>
+
+        <Button size="xl" className="mt-4" onClick={() => onStartWorkout(sharedWorkout)}>
+          <Play size={20} fill="currentColor" aria-hidden="true" />
+          <span>Start workout</span>
+        </Button>
       </div>
     </div>
   );

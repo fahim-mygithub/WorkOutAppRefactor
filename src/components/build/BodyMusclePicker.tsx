@@ -78,11 +78,12 @@ export function BodyMusclePicker({
                   <button
                     type="button"
                     onClick={() => onToggle(term)}
-                    className="inline-flex items-center gap-1 rounded-full bg-accent px-2.5 py-1 font-marker text-caption text-accent-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface"
+                    className="inline-flex min-h-8 items-center gap-1 rounded-full bg-surface-raised py-1 pl-3 pr-2 text-body-sm font-semibold text-ink transition-colors duration-snap hover:bg-surface-raised/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface"
                     aria-label={`Remove ${term}`}
                   >
+                    <span className="h-1.5 w-1.5 rounded-full bg-accent" aria-hidden="true" />
                     {term}
-                    <X size={13} aria-hidden="true" />
+                    <X size={14} aria-hidden="true" className="text-ink-muted" />
                   </button>
                 </li>
               ))}
@@ -92,7 +93,7 @@ export function BodyMusclePicker({
 
         {hasBack && (
           <div
-            className="flex shrink-0 overflow-hidden rounded-md border border-border md:hidden"
+            className="flex shrink-0 gap-1 rounded-full bg-surface-subtle p-1 md:hidden"
             role="group"
             aria-label="Body view"
           >
@@ -103,9 +104,9 @@ export function BodyMusclePicker({
                 onClick={() => setView(v)}
                 aria-pressed={view === v}
                 className={cn(
-                  'px-3 py-1 font-marker text-caption uppercase tracking-wide transition-colors',
+                  'min-h-9 rounded-full px-4 text-body-sm font-semibold capitalize transition-colors duration-snap',
                   'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-inset',
-                  view === v ? 'bg-accent text-accent-fg' : 'text-ink-muted hover:bg-surface-subtle',
+                  view === v ? 'bg-surface-raised text-ink' : 'text-ink-muted hover:text-ink',
                 )}
               >
                 {v}
@@ -126,7 +127,7 @@ export function BodyMusclePicker({
             className="flex min-h-0 w-full flex-1 items-center justify-center"
             dangerouslySetInnerHTML={{ __html: frontSvg }}
           />
-          <figcaption className="mt-1 shrink-0 font-marker text-caption uppercase tracking-wide text-ink-subtle">
+          <figcaption className="mt-1 shrink-0 text-caption text-ink-subtle">
             Front
           </figcaption>
         </figure>
@@ -137,7 +138,7 @@ export function BodyMusclePicker({
               className="flex min-h-0 w-full flex-1 items-center justify-center"
               dangerouslySetInnerHTML={{ __html: backSvg }}
             />
-            <figcaption className="mt-1 shrink-0 font-marker text-caption uppercase tracking-wide text-ink-subtle">
+            <figcaption className="mt-1 shrink-0 text-caption text-ink-subtle">
               Back
             </figcaption>
           </figure>

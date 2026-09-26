@@ -7,8 +7,10 @@
 // This component is purely presentational: it owns no network and no app state.
 // It takes a proposal + onApply/onReject callbacks, tracks only its own
 // resolved/pending UI state, and renders with Card/Button primitives + tokens +
-// motion. Once a decision is made it locks (disables both buttons) so a proposal
-// cannot be double-applied.
+// motion. Tempo: a raised card (it sits inside the subtle chat sheet); the tool
+// name and raw input read in ice (informational), Apply is the amber pill,
+// Reject is ghost. Once a decision is made it locks (disables both buttons) so
+// a proposal cannot be double-applied.
 import * as React from 'react';
 import { motion as fmotion } from 'framer-motion';
 import {
@@ -99,31 +101,29 @@ export const ApplyRejectCard = React.forwardRef<
         data-decision={resolved ?? 'pending'}
       >
         <Card elevation={2} role="group" aria-label={`Proposed change: ${proposal.summary}`}>
-          <CardHeader>
-            <p className="text-body-sm font-medium uppercase tracking-wide text-ink-subtle">
-              {proposal.tool}
-            </p>
-            <CardTitle className="text-title">{proposal.summary}</CardTitle>
+          <CardHeader className="p-5 pb-2">
+            <p className="font-mono text-caption text-accent-2">{proposal.tool}</p>
+            <CardTitle className="mt-1 text-body font-semibold">{proposal.summary}</CardTitle>
           </CardHeader>
-          <CardBody>
+          <CardBody className="px-5 py-0">
             {proposal.detail ? (
-              <p className="text-body-sm text-ink-subtle">{proposal.detail}</p>
+              <p className="text-body-sm text-ink-muted">{proposal.detail}</p>
             ) : null}
             {proposal.input != null ? (
               <pre
                 data-testid="apply-reject-input"
-                className="mt-2 max-h-48 overflow-auto rounded-md bg-surface-subtle p-3 text-body-sm text-ink"
+                className="mt-3 max-h-48 overflow-auto rounded-xl bg-surface p-3 font-mono text-caption text-accent-2"
               >
                 {formatInput(proposal.input)}
               </pre>
             ) : null}
           </CardBody>
-          <CardFooter>
+          <CardFooter className="p-5 pt-4">
             {isResolved ? (
               <p
                 className={cn(
-                  'text-body-sm font-medium',
-                  resolved === 'applied' ? 'text-accent' : 'text-ink-subtle',
+                  'text-body-sm font-semibold',
+                  resolved === 'applied' ? 'text-accent-2' : 'text-ink-muted',
                 )}
                 role="status"
               >
@@ -133,7 +133,6 @@ export const ApplyRejectCard = React.forwardRef<
               <>
                 <Button
                   variant="primary"
-                  size="sm"
                   onClick={handleApply}
                   disabled={disabled}
                 >
@@ -141,7 +140,6 @@ export const ApplyRejectCard = React.forwardRef<
                 </Button>
                 <Button
                   variant="ghost"
-                  size="sm"
                   onClick={handleReject}
                   disabled={disabled}
                 >

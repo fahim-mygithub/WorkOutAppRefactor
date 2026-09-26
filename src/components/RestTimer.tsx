@@ -1,8 +1,11 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useAppDispatch, useAppSelector } from '../store/hooks';
-import { updateRestTimer, stopRestTimer, startRestTimer, nextSet, advanceToNextSupersetRound, setShowCompletionModal, updateExercise } from '../store/slices/workoutSlice';
+import { updateRestTimer, stopRestTimer, startRestTimer, adjustRestTimer, nextSet, advanceToNextSupersetRound, setShowCompletionModal, updateExercise } from '../store/slices/workoutSlice';
 import { remainingSeconds, isElapsed } from '../lib/restTimer';
-import { Play, Pause, RotateCcw, X, Plus, Minus, Edit3 } from 'lucide-react';
+import { Play, RotateCcw, X, Plus, Minus } from 'lucide-react';
+import { Button } from './ui/button';
+import { IconButton } from './ui/icon-button';
+import { cn } from '@/lib/utils';
 
 interface RestTimerProps {
   className?: string;
@@ -230,252 +233,177 @@ export const RestTimer: React.FC<RestTimerProps> = ({
     return currentExercise?.restTime === duration;
   };
 
-  const progress = restTimer.duration > 0 
-    ? ((restTimer.duration - restTimer.timeRemaining) / restTimer.duration) * 100 
-    : 0;
+  const remainingFraction = restTimer.duration > 0
+    ? Math.max(0, Math.min(1, restTimer.timeRemaining / restTimer.duration))
+    : 1;
+
+  const presetClass = (duration: number) => cn(
+    'min-h-touch-min rounded-full font-num font-tabular text-body-sm font-semibold transition-colors duration-snap',
+    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface-subtle',
+    isPresetActive(duration)
+      ? 'bg-accent-2 text-accent-2-fg'
+      : 'bg-surface-raised text-ink hover:bg-surface-raised/70',
+  );
 
   if (compact && !restTimer.isActive && restTimer.timeRemaining === 0) {
     return (
-      <div className={`grid grid-cols-4 gap-2 ${className}`}>
-        <button
-          onClick={() => handleSetDuration(30)}
-          className={`px-3 py-2 text-accent-fg text-sm rounded transition-colors ${
-            isPresetActive(30) ? 'bg-success hover:bg-success/90' : 'bg-accent hover:bg-accent/90'
-          }`}
-        >
-          30s
-        </button>
-        <button
-          onClick={() => handleSetDuration(60)}
-          className={`px-3 py-2 text-accent-fg text-sm rounded transition-colors ${
-            isPresetActive(60) ? 'bg-success hover:bg-success/90' : 'bg-accent hover:bg-accent/90'
-          }`}
-        >
-          1m
-        </button>
-        <button
-          onClick={() => handleSetDuration(120)}
-          className={`px-3 py-2 text-accent-fg text-sm rounded transition-colors ${
-            isPresetActive(120) ? 'bg-success hover:bg-success/90' : 'bg-accent hover:bg-accent/90'
-          }`}
-        >
-          2m
-        </button>
-        <button
-          onClick={() => handleSetDuration(180)}
-          className={`px-3 py-2 text-accent-fg text-sm rounded transition-colors ${
-            isPresetActive(180) ? 'bg-success hover:bg-success/90' : 'bg-accent hover:bg-accent/90'
-          }`}
-        >
-          3m
-        </button>
+      <div role="group" aria-label="Start rest" className={cn('grid grid-cols-4 gap-2', className)}>
+        {COMPACT_PRESETS.map((p) => (
+          <button
+            key={p.seconds}
+            type="button"
+            aria-pressed={isPresetActive(p.seconds)}
+            onClick={() => handleSetDuration(p.seconds)}
+            className={presetClass(p.seconds)}
+          >
+            {p.label}
+          </button>
+        ))}
       </div>
     );
   }
 
+  const ringSize = compact ? 160 : 220;
+  const ringR = ringSize / 2 - 10;
+  const ringC = 2 * Math.PI * ringR;
+
   return (
-    <div className={`board-card p-4 ${className}`}>
-      <div className="flex items-center justify-between mb-4">
-        <h3 className="font-marker text-title text-ink">Rest timer</h3>
+    <section aria-label="Rest timer" className={cn('rounded-3xl bg-surface-subtle p-5', className)}>
+      <div className="flex min-h-touch-min items-center justify-between">
+        <p className="text-body-sm font-semibold text-ink-muted">Rest</p>
         {restTimer.isActive && (
-          <button
-            onClick={handleStop}
-            className="p-2 text-ink-muted hover:text-ink transition-colors"
-            aria-label="Stop timer"
-          >
-            <X className="w-4 h-4" />
-          </button>
+          <IconButton variant="secondary" onClick={handleStop} aria-label="Stop timer">
+            <X size={18} />
+          </IconButton>
         )}
       </div>
 
-      {/* Timer Display */}
-      <div className="text-center mb-4">
-        <div className={`font-num font-tabular font-bold tracking-tight transition-all duration-200 ${
-          restTimer.timeRemaining <= 3 && restTimer.isActive
-            ? 'text-danger animate-bounce text-5xl'
-            : restTimer.timeRemaining <= 10 && restTimer.isActive
-            ? 'text-warning animate-pulse'
-            : 'text-ink'
-        } ${compact ? 'text-2xl' : 'text-5xl'}`}>
-          {formatTime(restTimer.timeRemaining)}
+      {/* Countdown ring: amber drains as the rest runs down. */}
+      <div className="relative mx-auto my-2 aspect-square" style={{ width: ringSize }}>
+        <svg viewBox={`0 0 ${ringSize} ${ringSize}`} className="h-full w-full" aria-hidden="true">
+          <circle cx={ringSize / 2} cy={ringSize / 2} r={ringR} fill="none" strokeWidth="12" className="stroke-surface-raised" />
+          <circle
+            cx={ringSize / 2}
+            cy={ringSize / 2}
+            r={ringR}
+            fill="none"
+            strokeWidth="12"
+            strokeLinecap="round"
+            strokeDasharray={ringC}
+            strokeDashoffset={ringC * (1 - remainingFraction)}
+            transform={`rotate(-90 ${ringSize / 2} ${ringSize / 2})`}
+            className="stroke-accent"
+            style={{ transition: 'stroke-dashoffset 1s linear' }}
+          />
+        </svg>
+        <div className="absolute inset-0 flex flex-col items-center justify-center">
+          <span
+            role="timer"
+            aria-label={`${formatTime(restTimer.timeRemaining)} of rest left`}
+            className={cn(
+              'font-display font-tabular leading-none text-ink',
+              compact ? 'text-display' : 'text-metric',
+            )}
+          >
+            {formatTime(restTimer.timeRemaining)}
+          </span>
+          {restTimer.duration > 0 && (
+            <span className="mt-2 text-body-sm text-ink-muted">
+              of {formatTime(restTimer.duration)}
+            </span>
+          )}
         </div>
-
-        {/* Countdown Visual Effect */}
-        {restTimer.timeRemaining <= 3 && restTimer.timeRemaining > 0 && restTimer.isActive && (
-          <div className="mt-2 font-marker text-danger text-title animate-pulse">
-            Get ready!
-          </div>
-        )}
-
-        {/* Progress Bar */}
-        {restTimer.duration > 0 && (
-          <div className="w-full bg-surface-subtle rounded-full h-2 mt-2">
-            <div
-              className={`h-2 rounded-full transition-all duration-1000 ${
-                restTimer.timeRemaining <= 3 && restTimer.isActive
-                  ? 'bg-danger animate-pulse'
-                  : restTimer.timeRemaining <= 10 && restTimer.isActive
-                  ? 'bg-warning'
-                  : 'bg-accent'
-              }`}
-              style={{ width: `${progress}%` }}
-            />
-          </div>
-        )}
       </div>
 
       {/* Controls */}
-      <div className="flex justify-center space-x-3">
-        {!restTimer.isActive ? (
-          <button
-            onClick={handleStart}
-            className="sketch-border flex items-center space-x-2 px-4 py-2 bg-success hover:bg-success/90 text-ink-inverse rounded-lg font-marker tracking-wide transition-colors"
-          >
-            <Play className="w-4 h-4" />
+      {restTimer.isActive ? (
+        <div className="mt-3 flex gap-2">
+          <Button variant="secondary" size="lg" className="flex-1 px-3" onClick={() => dispatch(adjustRestTimer(-15))}>
+            −15s
+          </Button>
+          <Button variant="secondary" size="lg" className="flex-1 px-3" onClick={() => dispatch(adjustRestTimer(15))}>
+            +15s
+          </Button>
+          <Button variant="primary" size="lg" className="flex-1 px-3" onClick={handleStop}>
+            Skip
+          </Button>
+        </div>
+      ) : (
+        <div className="mt-3 flex gap-2">
+          <Button variant="primary" size="lg" className="flex-1" onClick={handleStart}>
+            <Play size={18} fill="currentColor" aria-hidden="true" />
             <span>Start</span>
-          </button>
-        ) : (
-          <button
-            onClick={handleStop}
-            className="sketch-border flex items-center space-x-2 px-4 py-2 bg-danger hover:bg-danger/90 text-ink-inverse rounded-lg font-marker tracking-wide transition-colors"
-          >
-            <Pause className="w-4 h-4" />
-            <span>Stop</span>
-          </button>
-        )}
+          </Button>
+          <Button variant="secondary" size="lg" className="flex-1" onClick={handleReset}>
+            <RotateCcw size={18} aria-hidden="true" />
+            <span>Reset</span>
+          </Button>
+        </div>
+      )}
 
-        <button
-          onClick={handleReset}
-          className="sketch-border flex items-center space-x-2 px-4 py-2 bg-surface-subtle hover:bg-surface-subtle/80 text-ink rounded-lg font-marker tracking-wide transition-colors"
-        >
-          <RotateCcw className="w-4 h-4" />
-          <span>Reset</span>
-        </button>
-      </div>
-
-      {/* Duration Presets */}
+      {/* Duration presets */}
       {!compact && (
-        <div className="mt-4">
-          <div className="flex items-center justify-between mb-2">
-            <p className="text-sm text-ink-muted">Quick Start:</p>
+        <div className="mt-5">
+          <div className="mb-2 flex items-baseline justify-between">
+            <p className="text-body-sm text-ink-muted">Quick start</p>
             {currentExercise?.restTime && (
-              <p className="text-xs text-success">
-                Default: {Math.floor(currentExercise.restTime / 60)}:{(currentExercise.restTime % 60).toString().padStart(2, '0')}
+              <p className="text-caption text-accent-2">
+                Default{' '}
+                <span className="font-num font-tabular">{formatTime(currentExercise.restTime)}</span>
               </p>
             )}
           </div>
 
-          <div className="grid grid-cols-3 gap-2 mb-3">
-            <button
-              onClick={() => handleSetDuration(30)}
-              className={`px-3 py-2 text-sm rounded transition-colors ${
-                isPresetActive(30) ? 'bg-success hover:bg-success/90 text-accent-fg' : 'bg-surface-subtle hover:bg-surface-subtle/80 text-ink'
-              }`}
-            >
-              30s
-            </button>
-            <button
-              onClick={() => handleSetDuration(60)}
-              className={`px-3 py-2 text-sm rounded transition-colors ${
-                isPresetActive(60) ? 'bg-success hover:bg-success/90 text-accent-fg' : 'bg-surface-subtle hover:bg-surface-subtle/80 text-ink'
-              }`}
-            >
-              1m
-            </button>
-            <button
-              onClick={() => handleSetDuration(90)}
-              className={`px-3 py-2 text-sm rounded transition-colors ${
-                isPresetActive(90) ? 'bg-success hover:bg-success/90 text-accent-fg' : 'bg-surface-subtle hover:bg-surface-subtle/80 text-ink'
-              }`}
-            >
-              1.5m
-            </button>
-            <button
-              onClick={() => handleSetDuration(120)}
-              className={`px-3 py-2 text-sm rounded transition-colors ${
-                isPresetActive(120) ? 'bg-success hover:bg-success/90 text-accent-fg' : 'bg-surface-subtle hover:bg-surface-subtle/80 text-ink'
-              }`}
-            >
-              2m
-            </button>
-            <button
-              onClick={() => handleSetDuration(180)}
-              className={`px-3 py-2 text-sm rounded transition-colors ${
-                isPresetActive(180) ? 'bg-success hover:bg-success/90 text-accent-fg' : 'bg-surface-subtle hover:bg-surface-subtle/80 text-ink'
-              }`}
-            >
-              3m
-            </button>
-            <button
-              onClick={() => handleSetDuration(300)}
-              className={`px-3 py-2 text-sm rounded transition-colors ${
-                isPresetActive(300) ? 'bg-success hover:bg-success/90 text-accent-fg' : 'bg-surface-subtle hover:bg-surface-subtle/80 text-ink'
-              }`}
-            >
-              5m
-            </button>
+          <div className="grid grid-cols-3 gap-2">
+            {PRESETS.map((p) => (
+              <button
+                key={p.seconds}
+                type="button"
+                aria-pressed={isPresetActive(p.seconds)}
+                onClick={() => handleSetDuration(p.seconds)}
+                className={presetClass(p.seconds)}
+              >
+                {p.label}
+              </button>
+            ))}
           </div>
 
-          {/* Custom Timer Section */}
-          <div className="border-t-2 border-border pt-3">
+          {/* Custom length, one tap away */}
+          <div className="mt-4">
             {!showCustomInput ? (
-              <button
-                onClick={() => setShowCustomInput(true)}
-                className="flex items-center space-x-2 mx-auto px-3 py-1 bg-accent hover:bg-accent/90 text-accent-fg text-sm rounded transition-colors"
-              >
-                <Edit3 className="w-3 h-3" />
-                <span>Custom</span>
-              </button>
+              <Button variant="ghost" className="w-full" onClick={() => setShowCustomInput(true)}>
+                Custom length
+              </Button>
             ) : (
-              <div className="space-y-2">
-                <p className="text-xs text-ink-muted text-center">Custom Timer</p>
-                <div className="flex items-center justify-center space-x-2">
-                  <div className="flex items-center space-x-1">
-                    <button
-                      onClick={() => adjustCustomTime(-1, 0)}
-                      className="p-1 bg-surface-subtle hover:bg-surface-subtle/80 rounded text-ink"
-                    >
-                      <Minus className="w-3 h-3" />
-                    </button>
-                    <span className="w-8 text-center text-ink text-sm">{customMinutes}m</span>
-                    <button
-                      onClick={() => adjustCustomTime(1, 0)}
-                      className="p-1 bg-surface-subtle hover:bg-surface-subtle/80 rounded text-ink"
-                    >
-                      <Plus className="w-3 h-3" />
-                    </button>
+              <div className="rounded-2xl bg-surface-raised/50 p-4">
+                <p className="mb-3 text-body-sm font-semibold text-ink">Custom length</p>
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-1.5">
+                    <IconButton variant="secondary" onClick={() => adjustCustomTime(-1, 0)} aria-label="Minus one minute">
+                      <Minus size={16} />
+                    </IconButton>
+                    <span className="w-10 text-center font-num font-tabular text-body font-semibold text-ink">{customMinutes}m</span>
+                    <IconButton variant="secondary" onClick={() => adjustCustomTime(1, 0)} aria-label="Plus one minute">
+                      <Plus size={16} />
+                    </IconButton>
                   </div>
-
-                  <div className="flex items-center space-x-1">
-                    <button
-                      onClick={() => adjustCustomTime(0, -15)}
-                      className="p-1 bg-surface-subtle hover:bg-surface-subtle/80 rounded text-ink"
-                    >
-                      <Minus className="w-3 h-3" />
-                    </button>
-                    <span className="w-8 text-center text-ink text-sm">{customSeconds}s</span>
-                    <button
-                      onClick={() => adjustCustomTime(0, 15)}
-                      className="p-1 bg-surface-subtle hover:bg-surface-subtle/80 rounded text-ink"
-                    >
-                      <Plus className="w-3 h-3" />
-                    </button>
+                  <div className="flex items-center gap-1.5">
+                    <IconButton variant="secondary" onClick={() => adjustCustomTime(0, -15)} aria-label="Minus fifteen seconds">
+                      <Minus size={16} />
+                    </IconButton>
+                    <span className="w-10 text-center font-num font-tabular text-body font-semibold text-ink">{customSeconds}s</span>
+                    <IconButton variant="secondary" onClick={() => adjustCustomTime(0, 15)} aria-label="Plus fifteen seconds">
+                      <Plus size={16} />
+                    </IconButton>
                   </div>
                 </div>
-
-                <div className="flex justify-center space-x-2">
-                  <button
-                    onClick={handleCustomTimer}
-                    className="px-4 py-1 bg-success hover:bg-success/90 text-accent-fg text-sm rounded transition-colors"
-                  >
+                <div className="mt-4 flex gap-2">
+                  <Button variant="secondary" className="flex-1" onClick={handleCustomTimer}>
                     Start {customMinutes}:{customSeconds.toString().padStart(2, '0')}
-                  </button>
-                  <button
-                    onClick={() => setShowCustomInput(false)}
-                    className="px-3 py-1 bg-surface-subtle hover:bg-surface-subtle/80 text-ink text-sm rounded transition-colors"
-                  >
-                    <X className="w-3 h-3" />
-                  </button>
+                  </Button>
+                  <Button variant="ghost" onClick={() => setShowCustomInput(false)}>
+                    Cancel
+                  </Button>
                 </div>
               </div>
             )}
@@ -483,13 +411,28 @@ export const RestTimer: React.FC<RestTimerProps> = ({
         </div>
       )}
 
-      {/* Timer Complete Notification */}
+      {/* Rest complete */}
       {restTimer.timeRemaining === 0 && !restTimer.isActive && restTimer.duration > 0 && (
-        <div className="mt-4 p-3 bg-success text-ink-inverse text-center rounded-lg animate-pulse">
-          <p className="font-marker text-title">Rest complete!</p>
-          <p className="text-sm">Auto-advancing to next set...</p>
-        </div>
+        <p role="status" className="mt-4 text-center text-body-sm text-accent-2">
+          Rest complete. Moving to the next set.
+        </p>
       )}
-    </div>
+    </section>
   );
 };
+
+const PRESETS: Array<{ label: string; seconds: number }> = [
+  { label: '30s', seconds: 30 },
+  { label: '1m', seconds: 60 },
+  { label: '1.5m', seconds: 90 },
+  { label: '2m', seconds: 120 },
+  { label: '3m', seconds: 180 },
+  { label: '5m', seconds: 300 },
+];
+
+const COMPACT_PRESETS: Array<{ label: string; seconds: number }> = [
+  { label: '30s', seconds: 30 },
+  { label: '1m', seconds: 60 },
+  { label: '2m', seconds: 120 },
+  { label: '3m', seconds: 180 },
+];

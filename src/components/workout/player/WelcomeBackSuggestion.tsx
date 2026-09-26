@@ -6,7 +6,6 @@
 // ease in lighter or keep the full load. Bottom-sheet so it stays clear of the
 // no-scroll player flow.
 import React from 'react';
-import { Sparkles, TrendingDown } from 'lucide-react';
 import type { LayoffSuggestion } from '@/lib/progression';
 import { Sheet, SheetContent, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
@@ -38,64 +37,46 @@ export const WelcomeBackSuggestion: React.FC<WelcomeBackSuggestionProps> = ({
 
   return (
     <Sheet open onOpenChange={handleOpenChange}>
-      <SheetContent>
-        {/* Header */}
-        <p className="font-marker text-caption uppercase tracking-wide text-ink-subtle">
-          {exerciseName}
-        </p>
-        <div className="mb-2 mt-0.5 flex items-center gap-2">
-          <Sparkles className="h-5 w-5 shrink-0 text-accent" aria-hidden="true" />
-          <SheetTitle className="text-title font-marker">
-            <span className="marker-underline">Welcome back</span>
-          </SheetTitle>
-        </div>
-
-        <SheetDescription className="text-body-sm text-ink-muted">
+      <SheetContent className="mx-auto max-w-md">
+        <p className="text-body-sm text-ink-muted">{exerciseName}</p>
+        <SheetTitle className="mt-1 font-display text-display text-ink">Welcome back</SheetTitle>
+        <SheetDescription className="mt-2 text-body-sm text-ink-muted">
           {suggestion.message}
         </SheetDescription>
 
-        {/* Full load vs. the optional lighter load + the REAL reduction */}
-        <div className="mt-4 rounded-md bg-surface-subtle p-3">
-          <div className="flex items-center justify-between gap-3">
-            <div className="space-y-1">
-              <div className="flex items-center gap-2">
-                <span className="font-marker text-body-sm text-ink-subtle">Full load</span>
-                <span className="font-num font-tabular font-semibold text-ink">{previousWeight} lb</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <TrendingDown className="h-4 w-4 text-accent" aria-hidden="true" />
-                <span className="font-marker text-body-sm text-ink-subtle">Ease in</span>
-                <span className="font-num font-tabular font-semibold text-accent">
-                  {suggestion.suggestedWeight} lb
-                </span>
-              </div>
-            </div>
-
-            <div className="text-right">
-              <div className="text-display font-bold text-accent font-num font-tabular">
-                −{suggestion.reductionPct}%
-              </div>
-              <div className="text-caption text-ink-subtle font-marker">lighter</div>
-            </div>
+        {/* The lighter load is the hero; the full load and the REAL cut sit beside it. */}
+        <dl className="mt-6 grid grid-cols-3 items-end gap-3">
+          <div className="col-span-2 min-w-0">
+            <dt className="sr-only">Ease in</dt>
+            <dd className="font-display font-tabular text-display-lg text-ink">
+              {suggestion.suggestedWeight}
+              <span className="ml-1 text-title text-ink-muted">lb</span>
+            </dd>
+            <dd aria-hidden="true" className="mt-1 text-body-sm text-ink-muted">
+              ease in, from <span className="font-num font-tabular">{previousWeight} lb</span>
+            </dd>
           </div>
-        </div>
+          <div className="text-right">
+            <dt className="sr-only">Lighter by</dt>
+            <dd className="font-display font-tabular text-title text-accent-2">
+              −{suggestion.reductionPct}%
+            </dd>
+            <dd aria-hidden="true" className="mt-1 text-body-sm text-ink-muted">lighter</dd>
+          </div>
+        </dl>
 
-        {/* Actions — opt-in: nothing changes unless the lifter taps "Use …". */}
-        <div className="mt-4 flex gap-2">
-          <Button
-            variant="primary"
-            onClick={() => onApply(suggestion.suggestedWeight)}
-            className="flex-1"
-          >
+        {/* Opt-in: nothing changes unless the lifter taps "Use …". */}
+        <div className="mt-8 flex flex-col gap-2">
+          <Button size="xl" onClick={() => onApply(suggestion.suggestedWeight)}>
             Use {suggestion.suggestedWeight} lb
           </Button>
-          <Button variant="secondary" onClick={onDismiss} className="flex-1">
+          <Button variant="ghost" size="lg" onClick={onDismiss}>
             Keep full load
           </Button>
         </div>
 
-        <p className="mt-3 text-center text-caption text-ink-subtle">
-          Optional — you can always adjust the weight on your first set
+        <p className="mt-2 text-center text-caption text-ink-subtle">
+          Optional. You can change the weight on your first set.
         </p>
       </SheetContent>
     </Sheet>

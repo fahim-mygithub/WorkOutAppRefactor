@@ -30,7 +30,9 @@ import {
   SheetTitle,
   SheetDescription,
 } from '@/components/ui/sheet';
+import { ArrowUp } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardBody } from '@/components/ui/card';
 import {
@@ -247,35 +249,37 @@ export function AiChatSheet({
     [draft, pending, isAvailable, client, sendToBackend, runFallbackParse],
   );
 
+  const canSubmit = !pending && draft.trim().length > 0;
+
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
-        className={cn('flex h-[80vh] max-h-[90vh] flex-col', className)}
+        className={cn('mx-auto flex h-[80vh] max-h-[90vh] max-w-lg flex-col', className)}
       >
-        <SheetTitle>AI assistant</SheetTitle>
+        <SheetTitle className="text-title">AI assistant</SheetTitle>
         <SheetDescription>
           {isAvailable
             ? 'Ask about your training, or describe a workout to log.'
-            : 'Offline mode — deterministic parse only.'}
+            : 'Offline. Type a workout and it is parsed into sets.'}
         </SheetDescription>
 
         {/* Message transcript — the scroll region. */}
         <div
           data-testid="ai-chat-transcript"
-          className="mt-3 flex-1 space-y-3 overflow-y-auto"
+          className="mt-4 flex-1 space-y-4 overflow-y-auto"
         >
           {!isAvailable ? (
-            <Card elevation={1} role="note">
-              <CardBody>
-                <p className="text-body font-medium text-ink">
+            <Card elevation={2} role="note">
+              <CardBody className="p-4">
+                <p className="text-body font-semibold text-ink">
                   AI assistant unavailable
                 </p>
-                <p className="mt-1 text-body-sm text-ink-subtle">
+                <p className="mt-1 text-body-sm text-ink-muted">
                   {FALLBACK_HINT}.
                 </p>
-                <p className="mt-2 text-body-sm text-ink-subtle">
+                <p className="mt-2 text-body-sm text-ink-muted">
                   You can still type a workout in freeform (e.g.{' '}
-                  <span className="font-medium text-ink">
+                  <span className="font-num font-tabular text-accent-2">
                     3x10 Bench Press @135
                   </span>
                   ) and it will be parsed into sets below.
@@ -285,14 +289,14 @@ export function AiChatSheet({
           ) : null}
 
           {messages.map((msg) => (
-            <div key={msg.id} data-role={msg.role} className="space-y-2">
+            <div key={msg.id} data-role={msg.role} className="space-y-3">
               {msg.text ? (
                 <div
                   className={cn(
-                    'max-w-[85%] rounded-lg px-3 py-2 text-body',
+                    'text-body text-ink',
                     msg.role === 'user'
-                      ? 'ml-auto bg-accent text-accent-fg'
-                      : 'bg-surface-subtle text-ink',
+                      ? 'ml-auto w-fit max-w-[85%] rounded-2xl rounded-br-md bg-surface-raised px-4 py-2.5'
+                      : 'max-w-[92%] whitespace-pre-wrap',
                   )}
                 >
                   {msg.text}
@@ -314,12 +318,12 @@ export function AiChatSheet({
               {msg.visualizations?.map((viz) => (
                 <Card
                   key={viz.id}
-                  elevation={1}
+                  elevation={2}
                   data-testid="ai-visualization"
                   data-viz-kind={viz.kind}
                 >
-                  <CardBody>
-                    <p className="mb-2 text-body-sm font-medium text-ink-subtle">
+                  <CardBody className="p-4">
+                    <p className="mb-2 text-body-sm text-ink-muted">
                       {viz.title}
                     </p>
                     {renderVisualization ? (
@@ -338,7 +342,7 @@ export function AiChatSheet({
           {pending ? (
             <p
               data-testid="ai-pending"
-              className="text-body-sm text-ink-subtle"
+              className="text-body-sm text-ink-muted"
             >
               Thinking…
             </p>
@@ -355,27 +359,42 @@ export function AiChatSheet({
           </p>
         ) : null}
 
-        {/* Composer. */}
-        <form onSubmit={handleSubmit} className="mt-3 flex flex-col gap-2">
+        {/* Composer — raised field; the amber control is the one action. */}
+        <form
+          onSubmit={handleSubmit}
+          className={cn(
+            'mt-3 flex gap-2',
+            isAvailable ? 'items-end' : 'flex-col',
+          )}
+        >
           <Textarea
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             rows={2}
             placeholder={
               isAvailable
-                ? 'Ask the AI…'
+                ? 'Ask about your training'
                 : '3x10 Bench Press @135'
             }
             aria-label="Message"
             disabled={pending}
+            className="min-h-[3.25rem] flex-1 resize-none"
           />
-          <Button
-            type="submit"
-            variant="primary"
-            disabled={pending || draft.trim().length === 0}
-          >
-            {isAvailable ? 'Send' : 'Parse to sets'}
-          </Button>
+          {isAvailable ? (
+            <IconButton
+              type="submit"
+              variant="primary"
+              aria-label="Send"
+              disabled={!canSubmit}
+              className="mb-1"
+            >
+              <ArrowUp size={20} aria-hidden="true" />
+            </IconButton>
+          ) : (
+            <Button type="submit" variant="primary" size="lg" disabled={!canSubmit}>
+              Parse to sets
+            </Button>
+          )}
         </form>
       </SheetContent>
     </Sheet>

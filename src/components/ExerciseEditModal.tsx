@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Trash2, Save, RotateCcw } from 'lucide-react';
+import { Check, Copy, Minus, Plus, Trash2, RotateCcw } from 'lucide-react';
 import { WorkoutExercise, WorkoutSet } from '../types/exercise';
 import {
   Sheet,
@@ -11,14 +11,7 @@ import { Button } from '@/components/ui/button';
 import { IconButton } from '@/components/ui/icon-button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import { Stack } from '@/components/ui/stack';
+import { cn } from '@/lib/utils';
 
 interface ExerciseEditModalProps {
   isOpen: boolean;
@@ -128,12 +121,12 @@ export const ExerciseEditModal: React.FC<ExerciseEditModalProps> = ({
         if (!next) handleClose();
       }}
     >
-      <SheetContent className="max-w-3xl sm:mx-auto">
+      <SheetContent className="mx-auto max-w-lg">
         {/* Header */}
-        <Stack direction="row" align="start" justify="between" gap={3} className="mb-4">
+        <div className="mb-5 flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <SheetTitle className="text-title font-marker"><span className="marker-underline">Edit Exercise</span></SheetTitle>
-            <SheetDescription>{exercise.exercise.name}</SheetDescription>
+            <SheetTitle className="text-title">Edit exercise</SheetTitle>
+            <SheetDescription className="truncate">{exercise.exercise.name}</SheetDescription>
           </div>
           {hasChanges && (
             <IconButton
@@ -144,151 +137,143 @@ export const ExerciseEditModal: React.FC<ExerciseEditModalProps> = ({
               <RotateCcw className="h-5 w-5" aria-hidden="true" />
             </IconButton>
           )}
-        </Stack>
+        </div>
 
-        {/* Content */}
         <div className="space-y-6">
-          {/* Rest Time */}
+          {/* Rest time: a stepper, with the clock readout as the number */}
           <div>
-            <Label htmlFor="rest-time-input" className="font-marker">Rest Time (seconds)</Label>
-            <Input
-              id="rest-time-input"
-              type="number"
-              value={restTime}
-              onChange={(e) => setRestTime(parseInt(e.target.value) || 0)}
-              className="mt-2 w-32"
-              min="0"
-              step="15"
-            />
-            <p className="mt-1 text-caption text-ink-subtle">
-              <span className="font-num font-tabular">{Math.floor(restTime / 60)}:{(restTime % 60).toString().padStart(2, '0')}</span> minutes
-            </p>
+            <Label htmlFor="rest-time-input" className="text-ink-muted">Rest between sets (seconds)</Label>
+            <div className="mt-2 flex items-center gap-3">
+              <IconButton
+                variant="secondary"
+                aria-label="Fifteen seconds less rest"
+                onClick={() => setRestTime((t) => Math.max(0, t - 15))}
+              >
+                <Minus className="h-4 w-4" aria-hidden="true" />
+              </IconButton>
+              <Input
+                id="rest-time-input"
+                type="number"
+                inputMode="numeric"
+                value={restTime}
+                onChange={(e) => setRestTime(parseInt(e.target.value) || 0)}
+                className="w-24 text-center"
+                min="0"
+                step="15"
+                aria-describedby="rest-time-clock"
+              />
+              <IconButton
+                variant="secondary"
+                aria-label="Fifteen seconds more rest"
+                onClick={() => setRestTime((t) => t + 15)}
+              >
+                <Plus className="h-4 w-4" aria-hidden="true" />
+              </IconButton>
+              <span id="rest-time-clock" className="ml-auto text-right">
+                <span className="block font-display font-tabular text-title text-ink">
+                  {Math.floor(restTime / 60)}:{(restTime % 60).toString().padStart(2, '0')}
+                </span>
+                <span className="block text-caption text-ink-muted">minutes</span>
+              </span>
+            </div>
           </div>
 
-          {/* Sets */}
-          <div className="space-y-4">
-            <Stack direction="row" align="center" justify="between">
-              <h4 className="text-body font-semibold text-ink font-marker">Sets</h4>
-              <Button size="sm" onClick={addSet}>
+          {/* Sets: one row each. Tap the set number to mark it done. */}
+          <div>
+            <div className="mb-1 flex items-center justify-between">
+              <h4 className="text-body-sm font-semibold text-ink">Sets</h4>
+              <Button variant="ghost" size="sm" onClick={addSet}>
                 <Plus className="h-4 w-4" aria-hidden="true" />
-                <span>Add Set</span>
+                <span>Add set</span>
               </Button>
-            </Stack>
-
-            <div className="space-y-3">
-              {sets.map((set, index) => (
-                <div
-                  key={set.id}
-                  className="rounded-lg bg-surface-subtle p-4"
-                >
-                  <Stack direction="row" align="center" justify="between" className="mb-3">
-                    <h5 className="text-body-sm font-semibold text-ink font-marker">
-                      Set <span className="font-num font-tabular">{index + 1}</span>
-                    </h5>
-                    <Stack direction="row" align="center" gap={1}>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => duplicateSet(index)}
-                        title="Duplicate set"
-                      >
-                        Copy
-                      </Button>
-                      {sets.length > 1 && (
-                        <IconButton
-                          aria-label="Remove set"
-                          variant="ghost"
-                          size="sm"
-                          className="text-danger hover:text-danger"
-                          onClick={() => removeSet(index)}
-                        >
-                          <Trash2 className="h-4 w-4" aria-hidden="true" />
-                        </IconButton>
-                      )}
-                    </Stack>
-                  </Stack>
-
-                  <div className="grid grid-cols-3 gap-4">
-                    <div>
-                      <Label size="sm" htmlFor={`reps-${set.id}`} className="font-marker">
-                        Reps
-                      </Label>
-                      <Input
-                        id={`reps-${set.id}`}
-                        type="number"
-                        value={set.reps}
-                        onChange={(e) => updateSet(index, 'reps', parseInt(e.target.value) || 0)}
-                        className="mt-1"
-                        min="0"
-                      />
-                    </div>
-                    <div>
-                      <Label size="sm" htmlFor={`weight-${set.id}`} className="font-marker">
-                        Weight (lbs)
-                      </Label>
-                      <Input
-                        id={`weight-${set.id}`}
-                        type="number"
-                        value={set.weight || 0}
-                        onChange={(e) => updateSet(index, 'weight', parseFloat(e.target.value) || 0)}
-                        className="mt-1"
-                        min="0"
-                        step="0.5"
-                      />
-                    </div>
-                    <div>
-                      <Label size="sm" htmlFor={`status-${set.id}`} className="font-marker">
-                        Status
-                      </Label>
-                      <Select
-                        value={set.completed ? 'completed' : 'pending'}
-                        onValueChange={(value) =>
-                          updateSet(index, 'completed', value === 'completed')
-                        }
-                      >
-                        <SelectTrigger id={`status-${set.id}`} className="mt-1">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="pending">Pending</SelectItem>
-                          <SelectItem value="completed">Completed</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-
-                  {set.completed && (
-                    <div className="mt-2 flex items-center text-caption text-success">
-                      <span>✓ Completed: <span className="font-num font-tabular">{set.reps}</span> reps × <span className="font-num font-tabular">{set.weight || 0}</span> lbs</span>
-                    </div>
-                  )}
-                </div>
-              ))}
             </div>
+
+            <div
+              aria-hidden="true"
+              className="grid grid-cols-[2.75rem_1fr_1fr_2.75rem_2.75rem] gap-2 pb-1 text-caption text-ink-subtle"
+            >
+              <span className="text-center">Set</span>
+              <span>Reps</span>
+              <span>Weight (lb)</span>
+            </div>
+
+            <ul className="divide-y divide-hairline">
+              {sets.map((set, index) => (
+                <li
+                  key={set.id}
+                  className="grid grid-cols-[2.75rem_1fr_1fr_2.75rem_2.75rem] items-center gap-2 py-2"
+                >
+                  <button
+                    type="button"
+                    aria-pressed={!!set.completed}
+                    aria-label={`Set ${index + 1}, ${set.completed ? 'done' : 'not done'}. Toggle done`}
+                    onClick={() => updateSet(index, 'completed', !set.completed)}
+                    className={cn(
+                      'flex h-touch-min w-touch-min items-center justify-center rounded-full font-num font-tabular text-body-sm font-bold transition-colors duration-snap',
+                      'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface-subtle',
+                      set.completed
+                        ? 'bg-accent-2 text-accent-2-fg'
+                        : 'bg-surface-raised text-ink-muted hover:text-ink',
+                    )}
+                  >
+                    {set.completed ? <Check className="h-4 w-4" strokeWidth={3} aria-hidden="true" /> : index + 1}
+                  </button>
+                  <Input
+                    id={`reps-${set.id}`}
+                    aria-label={`Set ${index + 1} reps`}
+                    type="number"
+                    inputMode="numeric"
+                    value={set.reps}
+                    onChange={(e) => updateSet(index, 'reps', parseInt(e.target.value) || 0)}
+                    className="min-w-0 px-3"
+                    min="0"
+                  />
+                  <Input
+                    id={`weight-${set.id}`}
+                    aria-label={`Set ${index + 1} weight in pounds`}
+                    type="number"
+                    inputMode="decimal"
+                    value={set.weight || 0}
+                    onChange={(e) => updateSet(index, 'weight', parseFloat(e.target.value) || 0)}
+                    className="min-w-0 px-3"
+                    min="0"
+                    step="0.5"
+                  />
+                  <IconButton
+                    aria-label={`Duplicate set ${index + 1}`}
+                    title="Duplicate set"
+                    variant="ghost"
+                    onClick={() => duplicateSet(index)}
+                  >
+                    <Copy className="h-4 w-4" aria-hidden="true" />
+                  </IconButton>
+                  {sets.length > 1 ? (
+                    <IconButton
+                      aria-label={`Remove set ${index + 1}`}
+                      variant="ghost"
+                      className="hover:text-danger"
+                      onClick={() => removeSet(index)}
+                    >
+                      <Trash2 className="h-4 w-4" aria-hidden="true" />
+                    </IconButton>
+                  ) : (
+                    <span aria-hidden="true" />
+                  )}
+                </li>
+              ))}
+            </ul>
           </div>
         </div>
 
-        {/* Footer */}
-        <Stack
-          direction="row"
-          align="center"
-          justify="between"
-          gap={3}
-          className="mt-6 border-t border-border pt-4"
-        >
-          <p className="text-body-sm text-ink-subtle">
-            {hasChanges ? 'You have unsaved changes' : 'No changes made'}
-          </p>
-          <Stack direction="row" gap={3}>
-            <Button variant="secondary" onClick={handleClose}>
-              Cancel
-            </Button>
-            <Button onClick={handleSave} disabled={!hasChanges}>
-              <Save className="h-4 w-4" aria-hidden="true" />
-              <span>Save Changes</span>
-            </Button>
-          </Stack>
-        </Stack>
+        {/* Footer: one primary */}
+        <div className="mt-6 flex flex-col gap-2">
+          <Button size="xl" onClick={handleSave} disabled={!hasChanges}>
+            Save changes
+          </Button>
+          <Button variant="ghost" onClick={handleClose}>
+            {hasChanges ? 'Cancel' : 'Close'}
+          </Button>
+        </div>
       </SheetContent>
     </Sheet>
   );

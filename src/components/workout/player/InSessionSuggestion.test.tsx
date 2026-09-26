@@ -17,7 +17,7 @@ describe('InSessionSuggestion', () => {
   it('renders the message and the suggested weight as an Apply action', () => {
     render(<InSessionSuggestion decision={reduce} onApply={vi.fn()} onKeep={vi.fn()} />);
     expect(screen.getByText(/touch short of the range/i)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /use 85 lbs/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /use 85 lb/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /keep/i })).toBeInTheDocument();
   });
 
@@ -25,7 +25,7 @@ describe('InSessionSuggestion', () => {
     const user = userEvent.setup();
     const onApply = vi.fn();
     render(<InSessionSuggestion decision={reduce} onApply={onApply} onKeep={vi.fn()} />);
-    await user.click(screen.getByRole('button', { name: /use 85 lbs/i }));
+    await user.click(screen.getByRole('button', { name: /use 85 lb/i }));
     expect(onApply).toHaveBeenCalledWith(85);
   });
 

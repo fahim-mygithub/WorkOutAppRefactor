@@ -6,7 +6,7 @@
 // wires data + callbacks. All behavior is preserved 1:1; this is restyle +
 // recompose only.
 import React from 'react';
-import { Edit, SkipBack, SkipForward } from 'lucide-react';
+import { ChevronDown, Edit, SkipBack, SkipForward } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { IconButton } from '@/components/ui/icon-button';
 import { cn } from '@/lib/utils';
@@ -83,19 +83,19 @@ export const ActiveExerciseCard: React.FC<ActiveExerciseCardProps> = ({
   const isFallback = exercise.exercise.id?.startsWith('fallback-');
 
   return (
-    <Card elevation={1} className="p-6">
+    <Card elevation={1} className="p-5">
       {/* Header: notes/title editor + nav */}
-      <div className="mb-4 flex items-center justify-between">
-        <div className="flex-1">
+      <div className="mb-5 flex items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
           <ExerciseNotesEditor
             exercise={exercise}
             onUpdateTitle={onUpdateTitle}
             onUpdateNotes={onUpdateNotes}
           />
         </div>
-        <div className="ml-4 flex gap-2">
+        <div className="flex shrink-0 gap-1.5">
           <IconButton
-            variant="primary"
+            variant="secondary"
             aria-label="Edit sets"
             title="Edit sets"
             onClick={onEditSets}
@@ -123,7 +123,7 @@ export const ActiveExerciseCard: React.FC<ActiveExerciseCardProps> = ({
 
       {/* Exercise Video */}
       {videoLinks.length > 0 && (
-        <div className="mb-6">
+        <div className="mb-5 overflow-hidden rounded-2xl">
           {videoLinks.length >= 2 ? (
             <DualViewVideo
               key={`workout-dual-${exercise.exercise.id}-${exerciseIndex}`}
@@ -165,7 +165,7 @@ export const ActiveExerciseCard: React.FC<ActiveExerciseCardProps> = ({
       )}
 
       {/* Rest Timer — mobile only */}
-      <div className="lg:hidden">
+      <div className="mb-5 lg:hidden">
         <RestTimer />
       </div>
 
@@ -203,22 +203,22 @@ export const ActiveExerciseCard: React.FC<ActiveExerciseCardProps> = ({
       {/* Current Set */}
       <div className="mb-6">
         <div className="mb-3 flex items-center justify-between">
-          <h3 className="font-marker text-title text-ink">
-            Current set{' '}
-            <span className="font-num font-tabular text-accent">
+          <h3 className="text-body-sm font-semibold text-ink-muted">
+            Set{' '}
+            <span className="font-display font-tabular text-title text-ink">
               {currentSetIndex + 1}
-            </span>
-            <span className="text-ink-subtle"> / </span>
-            <span className="font-num font-tabular">
+            </span>{' '}
+            of{' '}
+            <span className="font-num font-tabular text-ink">
               {exercise.sets.length || 0}
             </span>
           </h3>
-          <div className="flex gap-2">
+          <div className="flex gap-1.5">
             <IconButton
               variant="secondary"
               size="sm"
               aria-label="Previous set"
-              title="Previous Set"
+              title="Previous set"
               onClick={() => onJumpToSet(Math.max(0, currentSetIndex - 1))}
               disabled={currentSetIndex === 0}
             >
@@ -228,7 +228,7 @@ export const ActiveExerciseCard: React.FC<ActiveExerciseCardProps> = ({
               variant="secondary"
               size="sm"
               aria-label="Next set"
-              title="Next Set"
+              title="Next set"
               onClick={() =>
                 onJumpToSet(
                   Math.min(exercise.sets.length - 1, currentSetIndex + 1),
@@ -264,23 +264,32 @@ export const ActiveExerciseCard: React.FC<ActiveExerciseCardProps> = ({
         onAddSet={onAddSet}
       />
 
-      {/* Instructions */}
+      {/* Instructions — one tap away */}
       {instructions.length > 0 && (
-        <div className={cn('mt-6 rounded-lg bg-surface-subtle p-6')}>
-          <h3 className="mb-3 font-marker text-title text-ink">
-            <span className="marker-underline">Instructions</span>
-          </h3>
-          <ol className="space-y-2">
+        <details className="group mt-6 rounded-2xl bg-surface-raised/50">
+          <summary
+            className={cn(
+              'flex min-h-touch-min cursor-pointer list-none items-center justify-between rounded-2xl px-4 text-body-sm font-semibold text-ink',
+              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent',
+            )}
+          >
+            <span>How to do it</span>
+            <ChevronDown
+              className="h-4 w-4 text-ink-muted transition-transform duration-snap group-open:rotate-180"
+              aria-hidden="true"
+            />
+          </summary>
+          <ol className="space-y-2 px-4 pb-4">
             {instructions.map((instruction, index) => (
-              <li key={index} className="text-body-sm text-ink-muted">
-                <span className="font-num font-bold text-accent">
-                  {index + 1}.
-                </span>{' '}
-                {instruction}
+              <li key={index} className="flex gap-2 text-body-sm text-ink-muted">
+                <span className="font-num font-tabular font-semibold text-ink">
+                  {index + 1}
+                </span>
+                <span>{instruction}</span>
               </li>
             ))}
           </ol>
-        </div>
+        </details>
       )}
     </Card>
   );

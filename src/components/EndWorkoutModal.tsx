@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import { Clock, Target, TrendingUp, Trophy, AlertTriangle, Save, X, ArrowLeft } from 'lucide-react';
 import { ActiveWorkout } from '../types/exercise';
 import {
   Sheet,
@@ -8,7 +7,6 @@ import {
   SheetDescription,
 } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
-import { Stack } from '@/components/ui/stack';
 
 interface EndWorkoutModalProps {
   isOpen: boolean;
@@ -20,6 +18,23 @@ interface EndWorkoutModalProps {
   isSharedWorkout?: boolean;
 }
 
+// Compact clock for the summary: 1:05:09 / 42:07.
+const formatTime = (seconds: number): string => {
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const remainingSeconds = seconds % 60;
+  const ss = String(remainingSeconds).padStart(2, '0');
+  if (hours > 0) {
+    return `${hours}:${String(minutes).padStart(2, '0')}:${ss}`;
+  }
+  return `${minutes}:${ss}`;
+};
+
+/**
+ * End-workout sheet (Tempo). Part of the live flow, so it stays calm and fast:
+ * the workout name, three quiet numbers, and one amber action. "End without
+ * saving" is the only destructive outcome and is the only thing in danger red.
+ */
 export const EndWorkoutModal: React.FC<EndWorkoutModalProps> = ({
   isOpen,
   activeWorkout,
@@ -27,20 +42,8 @@ export const EndWorkoutModal: React.FC<EndWorkoutModalProps> = ({
   onEndWithoutSaving,
   onSaveAndEnd,
   isAnonymousUser = false,
-  isSharedWorkout = false
 }) => {
   const [isEnding, setIsEnding] = useState(false);
-
-  const formatTime = (seconds: number): string => {
-    const hours = Math.floor(seconds / 3600);
-    const minutes = Math.floor((seconds % 3600) / 60);
-    const remainingSeconds = seconds % 60;
-
-    if (hours > 0) {
-      return `${hours}h ${minutes}m ${remainingSeconds}s`;
-    }
-    return `${minutes}m ${remainingSeconds}s`;
-  };
 
   const calculateStats = () => {
     if (!activeWorkout || !activeWorkout.exercises) {
@@ -85,6 +88,11 @@ export const EndWorkoutModal: React.FC<EndWorkoutModalProps> = ({
   };
 
   const stats = calculateStats();
+  const summary = [
+    { value: formatTime(activeWorkout.duration), label: 'time' },
+    { value: `${stats.completedSets}/${stats.totalSets}`, label: 'sets done' },
+    { value: stats.totalVolume.toLocaleString(), label: 'lb moved' },
+  ];
 
   return (
     <Sheet
@@ -94,135 +102,70 @@ export const EndWorkoutModal: React.FC<EndWorkoutModalProps> = ({
       }}
     >
       <SheetContent className="max-w-md sm:mx-auto">
-        {/* Header */}
-        <div className="mb-6">
-          <SheetTitle className="text-title font-marker"><span className="marker-underline">End Workout</span></SheetTitle>
-          <SheetDescription>
-            Choose how you'd like to finish your workout
-          </SheetDescription>
+        <p className="text-body-sm text-ink-muted">{activeWorkout.name}</p>
+        <SheetTitle className="mt-1 font-display text-display text-ink">End workout?</SheetTitle>
+        <SheetDescription className="sr-only">
+          Save this workout to your history or end it without saving.
+        </SheetDescription>
+
+        <dl className="mt-6 grid grid-cols-3 gap-3">
+          {summary.map((s) => (
+            <div key={s.label} className="min-w-0">
+              <dt className="sr-only">{s.label}</dt>
+              <dd className="truncate font-display font-tabular text-title text-ink">{s.value}</dd>
+              <dd aria-hidden="true" className="text-body-sm text-ink-muted">{s.label}</dd>
+            </div>
+          ))}
+        </dl>
+
+        <div
+          role="progressbar"
+          aria-label="Sets completed"
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={stats.completionPercentage}
+          className="mt-5 h-1.5 w-full overflow-hidden rounded-full bg-surface-raised"
+        >
+          <div
+            className="h-full rounded-full bg-accent-2 transition-[width] duration-smooth"
+            style={{ width: `${stats.completionPercentage}%` }}
+          />
         </div>
 
-        {/* Workout Summary */}
-        <h3 className="mb-4 text-body font-semibold text-ink font-marker">
-          {activeWorkout.name}
-        </h3>
-
-        <div className="mb-6 grid grid-cols-2 gap-3">
-          <div className="rounded-lg bg-surface-subtle p-3 text-center">
-            <Clock className="mx-auto mb-1 h-5 w-5 text-accent" aria-hidden="true" />
-            <div className="text-caption text-ink-subtle font-marker">Duration</div>
-            <div className="text-body-sm font-bold text-ink font-num font-tabular">{formatTime(activeWorkout.duration)}</div>
-          </div>
-
-          <div className="rounded-lg bg-surface-subtle p-3 text-center">
-            <Target className="mx-auto mb-1 h-5 w-5 text-success" aria-hidden="true" />
-            <div className="text-caption text-ink-subtle font-marker">Sets Complete</div>
-            <div className="text-body-sm font-bold text-ink font-num font-tabular">{stats.completedSets}/{stats.totalSets}</div>
-          </div>
-
-          <div className="rounded-lg bg-surface-subtle p-3 text-center">
-            <TrendingUp className="mx-auto mb-1 h-5 w-5 text-accent" aria-hidden="true" />
-            <div className="text-caption text-ink-subtle font-marker">Total Reps</div>
-            <div className="text-body-sm font-bold text-ink font-num font-tabular">{stats.totalReps.toLocaleString()}</div>
-          </div>
-
-          <div className="rounded-lg bg-surface-subtle p-3 text-center">
-            <Trophy className="mx-auto mb-1 h-5 w-5 text-warning" aria-hidden="true" />
-            <div className="text-caption text-ink-subtle font-marker">Volume</div>
-            <div className="text-body-sm font-bold text-ink"><span className="font-num font-tabular">{stats.totalVolume.toLocaleString()}</span> lbs</div>
-          </div>
-        </div>
-
-        {/* Progress Bar */}
-        <div className="mb-6">
-          <Stack direction="row" justify="between" className="mb-2">
-            <span className="text-body-sm text-ink-subtle font-marker">Workout Progress</span>
-            <span className="text-body-sm text-ink-subtle"><span className="font-num font-tabular">{stats.completionPercentage}</span>%</span>
-          </Stack>
-          <div className="h-2 w-full rounded-full bg-surface-subtle">
-            <div
-              className="h-2 rounded-full bg-accent transition-all duration-smooth"
-              style={{ width: `${stats.completionPercentage}%` }}
-            />
-          </div>
-        </div>
-
-        {/* Action Buttons */}
-        <div className="space-y-3">
+        <div className="mt-8 flex flex-col gap-2">
           {isAnonymousUser ? (
-            // Anonymous user buttons
             <>
-              {/* End Session (only option for anonymous users) */}
-              <Button
-                className="w-full"
-                onClick={handleEndWithoutSaving}
-                disabled={isEnding}
-              >
-                <X className="h-5 w-5" aria-hidden="true" />
-                <span>End Session</span>
+              <p className="mb-2 text-body-sm text-ink-muted">
+                Sign up to keep your workouts and see your progress over time.
+              </p>
+              <Button size="xl" onClick={handleEndWithoutSaving} disabled={isEnding}>
+                End workout
               </Button>
-
-              {/* Anonymous user notice */}
-              <div className="rounded-lg border border-warning bg-warning/10 p-3">
-                <p className="text-center text-caption text-ink-muted">
-                  💡 Sign up to save your workout progress and track your fitness journey!
-                </p>
-              </div>
-
-              {/* Continue Workout */}
-              <Button
-                variant="secondary"
-                className="w-full"
-                onClick={onClose}
-                disabled={isEnding}
-              >
-                <ArrowLeft className="h-5 w-5" aria-hidden="true" />
-                <span>Continue Workout</span>
+              <Button variant="ghost" size="lg" onClick={onClose} disabled={isEnding}>
+                Keep training
               </Button>
             </>
           ) : (
-            // Authenticated user buttons
             <>
-              {/* Save and End */}
-              <Button
-                className="w-full bg-success hover:bg-success/90 text-ink-inverse"
-                onClick={handleSaveAndEnd}
-                disabled={isEnding}
-              >
-                {isEnding ? (
-                  <span className="h-5 w-5 animate-spin rounded-full border-2 border-ink-inverse border-t-transparent" />
-                ) : (
-                  <Save className="h-5 w-5" aria-hidden="true" />
-                )}
-                <span>{isEnding ? 'Saving...' : 'Save to Profile'}</span>
+              <Button size="xl" onClick={handleSaveAndEnd} disabled={isEnding} aria-busy={isEnding}>
+                {isEnding ? 'Saving…' : 'Save and end'}
               </Button>
-
-              {/* End Without Saving */}
+              <Button variant="ghost" size="lg" onClick={onClose} disabled={isEnding}>
+                Keep training
+              </Button>
               <Button
-                variant="danger"
-                className="w-full"
+                variant="ghost"
+                size="lg"
+                className="text-danger hover:text-danger"
                 onClick={handleEndWithoutSaving}
                 disabled={isEnding}
+                aria-describedby="end-without-saving-hint"
               >
-                <AlertTriangle className="h-5 w-5" aria-hidden="true" />
-                <span>End Without Saving</span>
+                End without saving
               </Button>
-
-              {/* Warning text for end without saving */}
-              <p className="text-center text-caption text-ink-subtle">
-                ⚠️ Ending without saving will lose all workout progress
+              <p id="end-without-saving-hint" className="text-center text-caption text-ink-subtle">
+                Ending without saving discards this session.
               </p>
-
-              {/* Continue Workout */}
-              <Button
-                variant="secondary"
-                className="w-full"
-                onClick={onClose}
-                disabled={isEnding}
-              >
-                <ArrowLeft className="h-5 w-5" aria-hidden="true" />
-                <span>Continue Workout</span>
-              </Button>
             </>
           )}
         </div>
