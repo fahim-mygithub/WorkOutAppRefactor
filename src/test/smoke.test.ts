@@ -8,8 +8,11 @@ describe('alias', () => {
 });
 
 describe('framer-motion', () => {
+  // Cold-transforming framer-motion competes with the whole parallel suite and
+  // can exceed the 5s default on a loaded machine; this asserts resolution,
+  // not speed, so give it headroom.
   it('imports', async () => {
     const { motion } = await import('framer-motion');
     expect(motion.div).toBeDefined();
-  });
+  }, 20_000);
 });

@@ -92,9 +92,6 @@ const config: Config = {
         // expressive work — see `.font-display` / `.font-wide` in tempo.css.
         sans: ['Archivo', 'ui-sans-serif', 'system-ui', 'sans-serif'],
         display: ['Archivo', 'ui-sans-serif', 'system-ui', 'sans-serif'],
-        // Legacy heading voice (pre-Tempo); plain Archivo bold until each
-        // surface is redesigned to use `font-display` deliberately.
-        marker: ['Archivo', 'ui-sans-serif', 'system-ui', 'sans-serif'],
         // Live metrics — pair with `font-tabular` so digits don't jitter.
         num: ['Archivo', 'ui-sans-serif', 'system-ui', 'sans-serif'],
         mono: ['ui-monospace', 'SFMono-Regular', 'Menlo', 'monospace'],

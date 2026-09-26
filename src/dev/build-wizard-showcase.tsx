@@ -70,7 +70,7 @@ const newRowId = () => `row-${rowSeq++}`;
 
 const PhoneFrame: React.FC<{ label: string; children: React.ReactNode }> = ({ label, children }) => (
   <div>
-    <p className="mb-2 font-marker text-body-sm text-ink-muted">{label}</p>
+    <p className="mb-2 font-semibold text-body-sm text-ink-muted">{label}</p>
     <div className="h-[700px] w-[360px] overflow-hidden rounded-[1.75rem] border-2 border-ink/20 shadow-e2">
       {children}
     </div>
@@ -173,7 +173,7 @@ const ReviewScreen: React.FC = () => {
 const Column: React.FC<{ theme: 'light' | 'dark' }> = ({ theme }) => (
   <div className={theme}>
     <div className="min-h-screen bg-surface p-4 text-ink">
-      <p className="mb-4 font-marker text-caption uppercase tracking-widest text-ink-subtle">
+      <p className="mb-4 text-caption text-ink-muted">
         {theme === 'light' ? 'Whiteboard — light' : 'Chalkboard — dark'}
       </p>
       <div className="flex flex-wrap gap-6">

@@ -81,15 +81,15 @@ const emptyHistory: any[] = [];
 const Column: React.FC<{ theme: 'light' | 'dark' }> = ({ theme }) => (
   <div className={theme}>
     <div className="min-h-screen bg-surface p-4 space-y-6 text-ink">
-      <p className="font-marker text-caption uppercase tracking-widest text-ink-subtle">
+      <p className="text-caption text-ink-muted">
         {theme === 'light' ? 'Whiteboard — light' : 'Chalkboard — dark'}
       </p>
 
       <div>
-        <p className="mb-2 font-marker text-body-sm text-ink-muted">Merged module — collapsed (week)</p>
+        <p className="mb-2 font-semibold text-body-sm text-ink-muted">Merged module — collapsed (week)</p>
         <Card>
           <CardBody className="space-y-5 p-6 pt-6">
-            <h1 className="truncate font-marker text-title leading-snug text-ink">
+            <h1 className="truncate font-display text-title leading-snug text-ink">
               Welcome back, Fahim!
             </h1>
             <WorkoutCalendar
@@ -105,7 +105,7 @@ const Column: React.FC<{ theme: 'light' | 'dark' }> = ({ theme }) => (
       </div>
 
       <div>
-        <p className="mb-2 font-marker text-body-sm text-ink-muted">
+        <p className="mb-2 font-semibold text-body-sm text-ink-muted">
           Today section — three states
         </p>
         <Card>
@@ -118,10 +118,10 @@ const Column: React.FC<{ theme: 'light' | 'dark' }> = ({ theme }) => (
       </div>
 
       <div>
-        <p className="mb-2 font-marker text-body-sm text-ink-muted">Expanded (month)</p>
+        <p className="mb-2 font-semibold text-body-sm text-ink-muted">Expanded (month)</p>
         <Card>
           <CardBody className="space-y-5 p-6 pt-6">
-            <h1 className="truncate font-marker text-title leading-snug text-ink">
+            <h1 className="truncate font-display text-title leading-snug text-ink">
               Welcome back, Fahim!
             </h1>
             <WorkoutCalendar
@@ -137,7 +137,7 @@ const Column: React.FC<{ theme: 'light' | 'dark' }> = ({ theme }) => (
       </div>
 
       <div>
-        <p className="mb-2 font-marker text-body-sm text-ink-muted">
+        <p className="mb-2 font-semibold text-body-sm text-ink-muted">
           Muscle map (front + back; toggle shows below md)
         </p>
         <Card>
