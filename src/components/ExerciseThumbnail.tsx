@@ -2,6 +2,46 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Play, Dumbbell } from 'lucide-react';
 import { Exercise } from '../types/exercise';
 import { getVideoWithFallbacks } from '../utils/videoHelpers';
+import { MUSCLE_GROUP_META, type MuscleGroup } from './home/muscleGroup';
+import { cn } from '../lib/utils';
+
+// Catalog `muscleGroup` is a comma-joined list mixing muscles and equipment
+// ("Barbell, Glutes, Quads"). The first token that names a muscle decides the
+// exercise's hue; equipment tokens are skipped. Checked in order.
+const MUSCLE_HUES: Array<[RegExp, MuscleGroup]> = [
+  [/chest|shoulder|deltoid|tricep/i, 'push'],
+  [/bicep|lat|trap|lower back|forearm|wrist|neck/i, 'pull'],
+  [/glute|quad|hamstring|calve|calf|gastrocnemius|soleus|tibialis|groin|femoris|feet/i, 'legs'],
+  [/abdominal|oblique|\babs\b|core/i, 'core'],
+  [/cardio/i, 'cardio'],
+  [/yoga|stretch|mobility/i, 'mobility'],
+];
+
+/** Resolve an exercise's `muscleGroup` string to one of the 7 muscle hues. */
+export function exerciseHue(muscleGroup: string): MuscleGroup {
+  for (const token of muscleGroup.split(',')) {
+    const hit = MUSCLE_HUES.find(([re]) => re.test(token));
+    if (hit) return hit[1];
+  }
+  return 'full-body';
+}
+
+/**
+ * The Tempo exercise marker for list rows: a small muscle-hue dot. Decorative
+ * (the row's text already names the muscles), so it is hidden from AT.
+ */
+export function ExerciseHueDot({ muscleGroup, className }: { muscleGroup: string; className?: string }) {
+  return (
+    <span
+      aria-hidden="true"
+      className={cn(
+        'h-2.5 w-2.5 shrink-0 rounded-full',
+        MUSCLE_GROUP_META[exerciseHue(muscleGroup)].bgClass,
+        className,
+      )}
+    />
+  );
+}
 
 interface ExerciseThumbnailProps {
   exercise: Exercise;
@@ -11,6 +51,11 @@ interface ExerciseThumbnailProps {
   lazy?: boolean;
 }
 
+/**
+ * Video still for an exercise, lazy-loaded when it scrolls near view. Tempo:
+ * a rounded raised tile; while loading or without a clip it shows a quiet
+ * dumbbell glyph rather than a spinner.
+ */
 export const ExerciseThumbnail: React.FC<ExerciseThumbnailProps> = ({
   exercise,
   className = '',
@@ -69,65 +114,47 @@ export const ExerciseThumbnail: React.FC<ExerciseThumbnailProps> = ({
     ? getVideoWithFallbacks(exercise.videoLinks[0], []).primary
     : '';
 
+  const showVideo = isIntersecting && primaryVideoUrl && !videoError;
+
   return (
     <div
       ref={containerRef}
-      className={`relative bg-surface rounded-lg overflow-hidden cursor-pointer group aspect-video ${className}`}
+      className={cn(
+        'group relative aspect-video cursor-pointer overflow-hidden rounded-2xl bg-surface-raised',
+        className,
+      )}
       onClick={handleClick}
     >
-      {/* Video Thumbnail */}
-      {isIntersecting && primaryVideoUrl && !videoError ? (
-        <>
-          <video
-            ref={videoRef}
-            src={primaryVideoUrl}
-            className={`w-full h-full object-cover transition-opacity duration-300 ${
-              videoLoaded ? 'opacity-100' : 'opacity-0'
-            }`}
-            onLoadedData={handleVideoLoad}
-            onError={handleVideoError}
-            muted
-            playsInline
-            preload="metadata"
-            disablePictureInPicture
-            controlsList="nodownload nofullscreen"
-          />
-
-          {/* Loading state while video loads */}
-          {!videoLoaded && (
-            <div className="absolute inset-0 bg-surface-subtle flex items-center justify-center">
-              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-accent"></div>
-            </div>
+      {showVideo && (
+        <video
+          ref={videoRef}
+          src={primaryVideoUrl}
+          className={cn(
+            'h-full w-full object-cover transition-opacity duration-smooth',
+            videoLoaded ? 'opacity-100' : 'opacity-0',
           )}
-        </>
-      ) : (
-        /* Fallback when no video or error */
-        <div className="absolute inset-0 bg-surface-subtle flex items-center justify-center">
-          <Dumbbell className="w-8 h-8 text-ink-subtle" />
+          onLoadedData={handleVideoLoad}
+          onError={handleVideoError}
+          muted
+          playsInline
+          preload="metadata"
+          disablePictureInPicture
+          controlsList="nodownload nofullscreen"
+        />
+      )}
+
+      {/* Placeholder while lazy, loading, or when there is no clip. */}
+      {!(showVideo && videoLoaded) && (
+        <div className="absolute inset-0 flex items-center justify-center bg-surface-raised">
+          <Dumbbell className="h-7 w-7 text-ink-subtle" aria-hidden="true" />
         </div>
       )}
 
-      {/* Play Button Overlay */}
       {showPlayButton && (
         <div className="absolute inset-0 flex items-center justify-center">
-          <div className="bg-black bg-opacity-60 rounded-full p-3 group-hover:bg-opacity-80 transition-all duration-200 group-hover:scale-110">
-            <Play className="w-6 h-6 text-white" />
-          </div>
-        </div>
-      )}
-
-      {/* Gradient Overlay for Better Text Visibility */}
-      <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-200" />
-
-      {/* Exercise Name Overlay */}
-      <div className="absolute bottom-0 left-0 right-0 p-3 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-        <p className="text-white text-sm font-medium truncate">{exercise.name}</p>
-      </div>
-
-      {/* Loading placeholder when lazy loading */}
-      {!isIntersecting && lazy && (
-        <div className="absolute inset-0 bg-surface-subtle flex items-center justify-center">
-          <div className="w-6 h-6 bg-surface-raised rounded animate-pulse"></div>
+          <span className="flex h-11 w-11 items-center justify-center rounded-full bg-surface/80 text-ink transition-transform duration-snap group-hover:scale-105">
+            <Play className="ml-0.5 h-5 w-5" fill="currentColor" aria-hidden="true" />
+          </span>
         </div>
       )}
     </div>

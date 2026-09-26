@@ -1,5 +1,7 @@
 import React from 'react';
-import { PlayCircle, ExternalLink, RotateCcw } from 'lucide-react';
+import { ExternalLink, RotateCcw, VideoOff } from 'lucide-react';
+import { Button } from './ui/button';
+import { cn } from '../lib/utils';
 
 interface VideoFallbackProps {
   exerciseName: string;
@@ -12,6 +14,11 @@ interface VideoFallbackProps {
   onSearchYouTube?: () => void;
 }
 
+/**
+ * Shown in place of an exercise clip that won't load (Tempo): a quiet raised
+ * tile that says what happened, offers a retry when another source exists, and
+ * a way to watch elsewhere. The steps stay one tap away.
+ */
 export const VideoFallback: React.FC<VideoFallbackProps> = ({
   exerciseName,
   instructions = [],
@@ -29,103 +36,69 @@ export const VideoFallback: React.FC<VideoFallbackProps> = ({
     onSearchYouTube?.();
   };
 
-  const getPlaceholderIcon = () => {
-    // Different icons based on muscle group if we can infer it
-    const name = exerciseName.toLowerCase();
-    if (name.includes('bicep') || name.includes('curl')) return '💪';
-    if (name.includes('chest') || name.includes('bench') || name.includes('push')) return '🏋️';
-    if (name.includes('leg') || name.includes('squat') || name.includes('lunge')) return '🦵';
-    if (name.includes('back') || name.includes('row') || name.includes('pull')) return '🔙';
-    if (name.includes('shoulder') || name.includes('press')) return '🤲';
-    if (name.includes('tricep') || name.includes('dip')) return '💪';
-    if (name.includes('core') || name.includes('plank') || name.includes('crunch')) return '🔥';
-    if (name.includes('stretch') || name.includes('yoga')) return '🧘';
-    return '🎯'; // Default exercise icon
-  };
-
   return (
-    <div className={`bg-surface-raised rounded-lg flex flex-col ${compact ? 'h-32 p-3' : 'h-64 p-6'} ${className}`}>
-      {/* Header with icon and exercise name */}
-      <div className="flex items-center justify-center flex-1">
-        <div className="text-center">
-          <div className={`${compact ? 'text-2xl mb-1' : 'text-4xl mb-3'}`}>
-            {getPlaceholderIcon()}
-          </div>
-          
-          <h3 className={`font-semibold text-ink ${compact ? 'text-sm' : 'text-lg'} mb-2`}>
-            {exerciseName}
-          </h3>
-
-          {errorMessage && (
-            <p className={`text-ink-muted ${compact ? 'text-xs' : 'text-sm'} mb-2`}>
-              {errorMessage}
-            </p>
-          )}
-
-          {retryCount > 0 && (
-            <p className="text-ink-subtle text-xs mb-2">
-              Tried {retryCount + 1} source{retryCount > 0 ? 's' : ''}
-            </p>
-          )}
-
-          {/* Show first instruction if not compact */}
-          {!compact && instructions.length > 0 && (
-            <p className="text-ink-muted text-sm mb-3 line-clamp-2">
-              {instructions[0]}
-            </p>
-          )}
-        </div>
-      </div>
-
-      {/* Action buttons */}
-      <div className={`flex ${compact ? 'space-x-2' : 'space-x-3'} justify-center mt-2`}>
-        {onRetry && (
-          <button
-            onClick={onRetry}
-            className={`flex items-center space-x-1 bg-accent hover:bg-accent/90 text-accent-fg rounded transition-colors ${
-              compact ? 'px-2 py-1 text-xs' : 'px-3 py-2 text-sm'
-            }`}
-            title="Try loading video again"
-          >
-            <RotateCcw className={compact ? 'w-3 h-3' : 'w-4 h-4'} />
-            <span>Retry</span>
-          </button>
+    <div
+      className={cn(
+        'flex flex-col rounded-2xl bg-surface-raised',
+        compact ? 'min-h-32 p-3' : 'min-h-64 p-5',
+        className,
+      )}
+    >
+      <div className="flex flex-1 flex-col items-center justify-center text-center">
+        <VideoOff
+          aria-hidden="true"
+          className={cn('text-ink-subtle', compact ? 'mb-1 h-5 w-5' : 'mb-3 h-7 w-7')}
+        />
+        <p className={cn('font-semibold text-ink', compact ? 'text-body-sm' : 'text-body')}>
+          Video unavailable
+        </p>
+        {errorMessage && (
+          <p className={cn('mt-1 max-w-[34ch] text-ink-muted', compact ? 'text-caption' : 'text-body-sm')}>
+            {errorMessage}
+          </p>
         )}
-        
-        <button
-          onClick={handleSearchYouTube}
-          className={`flex items-center space-x-1 bg-surface-subtle hover:bg-surface-subtle/80 text-ink rounded transition-colors ${
-            compact ? 'px-2 py-1 text-xs' : 'px-3 py-2 text-sm'
-          }`}
-          title="Search for exercise tutorial on YouTube"
-        >
-          <ExternalLink className={compact ? 'w-3 h-3' : 'w-4 h-4'} />
-          <span>YouTube</span>
-        </button>
+        {retryCount > 0 && !compact && (
+          <p className="mt-1 text-caption text-ink-subtle">
+            Tried {retryCount + 1} sources
+          </p>
+        )}
       </div>
 
-      {/* Additional instructions for non-compact view */}
-      {!compact && instructions.length > 1 && (
-        <div className="mt-3 pt-3 border-t border-border">
-          <details className="text-xs text-ink-muted">
-            <summary className="cursor-pointer hover:text-ink transition-colors">
-              View Instructions
-            </summary>
-            <ol className="mt-2 space-y-1 ml-3">
-              {instructions.slice(0, 3).map((instruction, index) => (
-                <li key={index} className="flex">
-                  <span className="text-accent mr-2">{index + 1}.</span>
-                  <span>{instruction}</span>
-                </li>
-              ))}
-              {instructions.length > 3 && (
-                <li className="text-ink-subtle italic">
-                  +{instructions.length - 3} more steps...
-                </li>
-              )}
-            </ol>
-          </details>
-        </div>
+      <div className={cn('flex flex-wrap justify-center gap-2', compact ? 'mt-2' : 'mt-4')}>
+        {onRetry && (
+          <Button variant="secondary" size="sm" onClick={onRetry} title="Try loading the video again">
+            <RotateCcw size={14} aria-hidden="true" />
+            Try again
+          </Button>
+        )}
+        <Button variant="ghost" size="sm" onClick={handleSearchYouTube} title="Search for a tutorial on YouTube">
+          <ExternalLink size={14} aria-hidden="true" />
+          Watch on YouTube
+        </Button>
+      </div>
+
+      {/* The steps, one tap away, for when there is no clip to follow */}
+      {!compact && instructions.length > 0 && (
+        <details className="mt-4 text-body-sm text-ink-muted">
+          <summary className="flex min-h-touch-min cursor-pointer items-center justify-center rounded-full font-semibold text-ink transition-colors hover:text-accent">
+            Show steps
+          </summary>
+          <ol className="mt-2 space-y-2">
+            {instructions.slice(0, 3).map((instruction, index) => (
+              <li key={index} className="flex gap-3">
+                <span aria-hidden="true" className="w-4 shrink-0 text-right font-num font-tabular font-bold text-ink">
+                  {index + 1}
+                </span>
+                <span className="min-w-0">{instruction}</span>
+              </li>
+            ))}
+            {instructions.length > 3 && (
+              <li className="pl-7 text-ink-subtle">
+                {instructions.length - 3} more {instructions.length - 3 === 1 ? 'step' : 'steps'} in the exercise details
+              </li>
+            )}
+          </ol>
+        </details>
       )}
     </div>
   );

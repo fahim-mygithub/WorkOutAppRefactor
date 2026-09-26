@@ -1,12 +1,13 @@
 // InstallPrompt: surfaces PWA install affordances (design §3).
 //
-//  • Android / Chromium (canInstall): a dismissible bottom banner with an
-//    "Install" action that replays the captured `beforeinstallprompt` event.
+//  • Android / Chromium (canInstall): a dismissible banner with an "Install"
+//    action that replays the captured `beforeinstallprompt` event.
 //  • iOS (showIOSInstructions): a Sheet with manual "Share → Add to Home
 //    Screen" steps, since iOS exposes no programmatic prompt.
 //
-// Built from existing primitives (Button, IconButton, Sheet) and design tokens
-// only — no raw hex / gray-* (see src/styles/tokens.css). Dismissal is
+// Tempo: the banner is a subtle card (no border, no shadow) whose action is a
+// secondary pill — installing is never the screen's one amber action. Built
+// from primitives (Button, IconButton, Sheet) and tokens only. Dismissal is
 // persisted by the hook to localStorage.
 import * as React from 'react';
 import { Share, Plus, X } from 'lucide-react';
@@ -26,6 +27,20 @@ export interface InstallPromptProps {
   className?: string;
 }
 
+function Step({ n, children }: { n: number; children: React.ReactNode }) {
+  return (
+    <li className="flex items-center gap-4 py-3">
+      <span
+        aria-hidden="true"
+        className="w-5 shrink-0 text-right font-num font-tabular text-title font-bold text-ink"
+      >
+        {n}
+      </span>
+      <span className="flex min-w-0 flex-wrap items-center gap-1.5">{children}</span>
+    </li>
+  );
+}
+
 export const InstallPrompt: React.FC<InstallPromptProps> = ({ className }) => {
   const { canInstall, showIOSInstructions, promptInstall, dismiss } =
     useInstallPrompt();
@@ -41,45 +56,30 @@ export const InstallPrompt: React.FC<InstallPromptProps> = ({ className }) => {
         }}
       >
         <SheetContent>
-          <SheetTitle>Install this app</SheetTitle>
+          <SheetTitle className="text-title">Install this app</SheetTitle>
           <SheetDescription>
-            Add WorkoutApp to your home screen for a full-screen, app-like
-            experience.
+            Add WorkoutApp to your home screen to open it full screen, like
+            any other app.
           </SheetDescription>
-          <ol className="mt-4 space-y-3 text-body text-ink">
-            <li className="flex items-center gap-3">
-              <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-surface-subtle text-body-sm font-semibold text-ink-muted">
-                1
+          <ol className="mt-4 divide-y divide-hairline text-body text-ink">
+            <Step n={1}>
+              Tap the Share
+              <Share aria-hidden="true" className="size-5 text-accent-2" />
+              button in the toolbar.
+            </Step>
+            <Step n={2}>
+              Choose
+              <span className="inline-flex items-center gap-1 font-semibold">
+                Add to Home Screen
+                <Plus aria-hidden="true" className="size-5 text-accent-2" />
               </span>
-              <span className="flex items-center gap-1.5">
-                Tap the Share
-                <Share aria-hidden="true" className="size-5 text-accent" />
-                button in the toolbar.
-              </span>
-            </li>
-            <li className="flex items-center gap-3">
-              <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-surface-subtle text-body-sm font-semibold text-ink-muted">
-                2
-              </span>
-              <span className="flex items-center gap-1.5">
-                Choose
-                <span className="inline-flex items-center gap-1 font-medium">
-                  Add to Home Screen
-                  <Plus aria-hidden="true" className="size-5 text-accent" />
-                </span>
-                .
-              </span>
-            </li>
-            <li className="flex items-center gap-3">
-              <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-surface-subtle text-body-sm font-semibold text-ink-muted">
-                3
-              </span>
-              <span>Tap Add to finish.</span>
-            </li>
+            </Step>
+            <Step n={3}>Tap Add to finish.</Step>
           </ol>
           <Button
             variant="ghost"
-            className="mt-6 w-full"
+            size="lg"
+            className="mt-4 w-full"
             onClick={() => dismiss()}
           >
             Maybe later
@@ -96,23 +96,23 @@ export const InstallPrompt: React.FC<InstallPromptProps> = ({ className }) => {
         role="region"
         aria-label="Install app"
         className={cn(
-          'flex items-center gap-3 rounded-xl bg-surface-raised p-4 shadow-e2',
+          'flex items-center gap-3 rounded-[20px] bg-surface-subtle py-3 pl-4 pr-2',
           className,
         )}
       >
         <div className="min-w-0 flex-1">
           <p className="text-body font-semibold text-ink">Install WorkoutApp</p>
           <p className="text-body-sm text-ink-muted">
-            Add to your home screen for a faster, full-screen experience.
+            Opens faster and full screen from your home screen.
           </p>
         </div>
-        <Button size="sm" onClick={() => void promptInstall()}>
+        <Button variant="secondary" size="sm" onClick={() => void promptInstall()}>
           Install
         </Button>
         <IconButton
           aria-label="Dismiss"
           variant="ghost"
-          size="sm"
+          size="md"
           onClick={() => dismiss()}
         >
           <X aria-hidden="true" className="size-5" />

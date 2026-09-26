@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Check, X, AlertTriangle, Info } from 'lucide-react';
+import { cn } from '../lib/utils';
 
 export interface Toast {
   id: string;
@@ -12,6 +13,15 @@ interface ToastProps {
   toast: Toast;
   onRemove: (id: string) => void;
 }
+
+// Tempo: a floating raised card. Only the glyph carries the state hue (ice for
+// info, the semantic tokens for real outcomes); the card itself stays quiet.
+const TOAST_ICON: Record<Toast['type'], React.ReactNode> = {
+  success: <Check className="h-5 w-5 text-success" aria-hidden="true" />,
+  error: <X className="h-5 w-5 text-danger" aria-hidden="true" />,
+  warning: <AlertTriangle className="h-5 w-5 text-warning" aria-hidden="true" />,
+  info: <Info className="h-5 w-5 text-accent-2" aria-hidden="true" />,
+};
 
 export const ToastComponent: React.FC<ToastProps> = ({ toast, onRemove }) => {
   const [isVisible, setIsVisible] = useState(false);
@@ -30,56 +40,29 @@ export const ToastComponent: React.FC<ToastProps> = ({ toast, onRemove }) => {
     return () => clearTimeout(timer);
   }, [toast.id, toast.duration, onRemove]);
 
-  const getIcon = () => {
-    switch (toast.type) {
-      case 'success':
-        return <Check className="w-5 h-5 text-success" />;
-      case 'error':
-        return <X className="w-5 h-5 text-danger" />;
-      case 'warning':
-        return <AlertTriangle className="w-5 h-5 text-warning" />;
-      case 'info':
-        return <Info className="w-5 h-5 text-accent" />;
-    }
-  };
-
-  const getBgColor = () => {
-    switch (toast.type) {
-      case 'success':
-        return 'bg-surface-raised border-success/40';
-      case 'error':
-        return 'bg-surface-raised border-danger/40';
-      case 'warning':
-        return 'bg-surface-raised border-warning/40';
-      case 'info':
-        return 'bg-surface-raised border-accent/40';
-    }
-  };
+  const isUrgent = toast.type === 'error' || toast.type === 'warning';
 
   return (
     <div
-      className={`
-        fixed top-20 left-1/2 transform -translate-x-1/2 z-50
-        flex items-center gap-3 px-4 py-3 rounded-lg shadow-lg border
-        min-w-[300px] max-w-[400px]
-        transition-all duration-300 ease-in-out
-        ${getBgColor()}
-        ${isVisible && !isExiting
-          ? 'translate-y-0 opacity-100 scale-100'
-          : 'translate-y-[-20px] opacity-0 scale-95'
-        }
-      `}
+      role={isUrgent ? 'alert' : 'status'}
+      className={cn(
+        'fixed left-1/2 top-20 z-50 flex w-[calc(100%-2rem)] max-w-sm -translate-x-1/2 items-center gap-3 rounded-2xl bg-surface-raised py-2 pl-4 pr-1 shadow-e3',
+        'transition-[opacity,transform] duration-smooth ease-spring-soft motion-reduce:transition-none',
+        isVisible && !isExiting ? 'translate-y-0 opacity-100' : '-translate-y-3 opacity-0',
+      )}
     >
-      {getIcon()}
-      <span className="text-ink text-sm font-medium flex-1">{toast.message}</span>
+      {TOAST_ICON[toast.type]}
+      <span className="flex-1 text-body-sm font-medium text-ink">{toast.message}</span>
       <button
+        type="button"
+        aria-label="Dismiss"
         onClick={() => {
           setIsExiting(true);
           setTimeout(() => onRemove(toast.id), 300);
         }}
-        className="text-ink-muted hover:text-ink p-1 rounded"
+        className="flex h-touch-min w-touch-min shrink-0 items-center justify-center rounded-full text-ink-muted transition-colors duration-snap hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
       >
-        <X className="w-4 h-4" />
+        <X className="h-4 w-4" aria-hidden="true" />
       </button>
     </div>
   );

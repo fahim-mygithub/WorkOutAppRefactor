@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Search } from 'lucide-react';
+import { ChevronRight, Search, X } from 'lucide-react';
 import { Exercise } from '../../types/exercise';
 import { useParseValidation } from '../../hooks/useParseValidation';
 import { Sheet, SheetContent, SheetTitle, SheetDescription } from '../ui/sheet';
 import { IconButton } from '../ui/icon-button';
-import { Input } from '../ui/input';
+import { ExerciseHueDot } from '../ExerciseThumbnail';
+import { cn } from '../../lib/utils';
 
 interface ExerciseSelectionModalProps {
   isOpen: boolean;
@@ -21,7 +22,7 @@ export const ExerciseSelectionModal: React.FC<ExerciseSelectionModalProps> = ({
   onSelect,
   originalExerciseName,
   exerciseDatabase,
-  title = 'Select Exercise'
+  title = 'Select exercise'
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -146,118 +147,79 @@ export const ExerciseSelectionModal: React.FC<ExerciseSelectionModalProps> = ({
   return (
     <Sheet open={isOpen} onOpenChange={handleOpenChange}>
       <SheetContent
-        className="max-w-2xl mx-auto flex max-h-[85vh] flex-col p-0 pt-3"
+        className="mx-auto flex max-h-[85vh] max-w-2xl flex-col pb-0"
         onKeyDown={handleKeyDown}
       >
         {/* Header */}
-        <div className="flex items-start justify-between px-6 pt-3 pb-4 border-b border-border">
-          <div>
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
             <SheetTitle className="text-title">{title}</SheetTitle>
-            <SheetDescription>
-              Replace "{originalExerciseName}" with:
+            <SheetDescription className="truncate">
+              Replacing {originalExerciseName}
             </SheetDescription>
           </div>
-          <IconButton
-            variant="ghost"
-            size="sm"
-            onClick={onClose}
-            aria-label="Close"
-            className="text-ink-subtle hover:text-ink"
-          >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
+          <IconButton variant="ghost" onClick={onClose} aria-label="Close">
+            <X size={20} aria-hidden="true" />
           </IconButton>
         </div>
 
-        {/* Search Input */}
-        <div className="p-6 border-b border-border">
-          <div className="relative">
-            <Search className="h-5 w-5 absolute left-3 top-1/2 -translate-y-1/2 text-ink-subtle pointer-events-none" />
-            <Input
-              ref={searchInputRef}
-              type="text"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="Search exercises by name, muscle group, or equipment..."
-              className="pl-10"
-            />
-          </div>
+        {/* Search pill */}
+        <div className="relative mt-4">
+          <Search
+            size={18}
+            aria-hidden="true"
+            className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-ink-subtle"
+          />
+          <input
+            ref={searchInputRef}
+            type="text"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            placeholder="Name, muscle, or equipment"
+            aria-label="Search exercises"
+            className="h-touch-lg w-full rounded-full bg-surface-raised pl-11 pr-4 text-body text-ink placeholder:text-ink-subtle focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+          />
         </div>
 
-        {/* Results List */}
-        <div className="flex-1 overflow-y-auto">
+        {/* Results */}
+        <div className="-mx-6 mt-3 flex-1 overflow-y-auto pb-[calc(1.5rem+env(safe-area-inset-bottom))]">
           {suggestions.length > 0 ? (
-            <div className="p-2">
+            <ul>
               {suggestions.map((exercise, index) => (
-                <button
-                  key={exercise.id}
-                  onClick={() => onSelect(exercise)}
-                  className={`w-full text-left p-4 rounded-lg transition-colors duration-snap ${
-                    index === selectedIndex
-                      ? 'bg-accent text-accent-fg'
-                      : 'hover:bg-surface-subtle text-ink-muted'
-                  }`}
-                >
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1 min-w-0">
-                      <h3 className="font-medium truncate">
-                        {exercise.name}
-                      </h3>
-                      <div className="flex items-center gap-4 mt-1 text-body-sm opacity-75">
-                        <span>{exercise.muscleGroup}</span>
-                        <span>•</span>
-                        <span>{exercise.equipment}</span>
-                      </div>
-                      {exercise.instructions.length > 0 && (
-                        <p className="text-caption mt-2 opacity-60 line-clamp-2">
-                          {exercise.instructions[0]}
-                        </p>
-                      )}
-                    </div>
-
-                    {index === selectedIndex && (
-                      <div className="ml-3 flex items-center">
-                        <kbd className="px-2 py-1 text-caption bg-surface rounded border border-border text-ink">
-                          Enter
-                        </kbd>
-                      </div>
+                <li key={exercise.id} className={index > 0 ? 'border-t border-hairline' : undefined}>
+                  <button
+                    type="button"
+                    onClick={() => onSelect(exercise)}
+                    className={cn(
+                      'flex min-h-[64px] w-full items-center gap-4 px-6 py-3 text-left transition-colors duration-snap hover:bg-surface-raised/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent',
+                      index === selectedIndex && 'bg-surface-raised/60',
                     )}
-                  </div>
-                </button>
+                  >
+                    <ExerciseHueDot muscleGroup={exercise.muscleGroup} />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-body font-semibold text-ink">
+                        {exercise.name}
+                      </span>
+                      <span className="mt-0.5 block truncate text-body-sm text-ink-muted">
+                        {exercise.muscleGroup}
+                        {exercise.equipment ? ` · ${exercise.equipment}` : ''}
+                      </span>
+                    </span>
+                    <ChevronRight size={18} aria-hidden="true" className="shrink-0 text-ink-subtle" />
+                  </button>
+                </li>
               ))}
-            </div>
+            </ul>
           ) : searchTerm ? (
-            <div className="p-8 text-center text-ink-subtle">
-              <svg className="w-12 h-12 mx-auto mb-4 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.172 16.172a4 4 0 015.656 0M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-              </svg>
-              <p>No exercises found matching "{searchTerm}"</p>
-              <p className="text-body-sm mt-1">Try a different search term</p>
+            <div className="px-6 py-10 text-center">
+              <p className="text-body text-ink">No exercises match "{searchTerm}"</p>
+              <p className="mt-1 text-body-sm text-ink-muted">Try a shorter name or a muscle, like "chest".</p>
             </div>
           ) : (
-            <div className="p-8 text-center text-ink-subtle">
-              <p>Start typing to search exercises</p>
-            </div>
+            <p className="px-6 py-10 text-center text-body-sm text-ink-muted">
+              Start typing to search exercises.
+            </p>
           )}
-        </div>
-
-        {/* Footer with keyboard shortcuts */}
-        <div className="border-t border-border p-4">
-          <div className="flex items-center justify-between text-caption text-ink-subtle">
-            <div className="flex items-center gap-4">
-              <span>
-                <kbd className="px-1.5 py-0.5 bg-surface-subtle rounded border border-border">↑↓</kbd> Navigate
-              </span>
-              <span>
-                <kbd className="px-1.5 py-0.5 bg-surface-subtle rounded border border-border">Enter</kbd> Select
-              </span>
-              <span>
-                <kbd className="px-1.5 py-0.5 bg-surface-subtle rounded border border-border">Esc</kbd> Cancel
-              </span>
-            </div>
-            <span>{suggestions.length} results</span>
-          </div>
         </div>
       </SheetContent>
     </Sheet>

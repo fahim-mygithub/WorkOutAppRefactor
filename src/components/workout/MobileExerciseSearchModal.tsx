@@ -1,24 +1,18 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Exercise } from '../../types/exercise';
-import { ExerciseThumbnail } from '../ExerciseThumbnail';
+import { ExerciseHueDot } from '../ExerciseThumbnail';
 import { useSmartSearch } from '../../hooks/useSmartSearch';
 import { useKeyboardDetection } from '../../hooks/useKeyboardDetection';
 import { highlightText } from '../../utils/searchUtils';
-import { X, Search, Filter, Plus } from 'lucide-react';
+import { ALL_MUSCLE_TERMS } from '../../lib/muscleTerms';
+import { cn } from '../../lib/utils';
+import { X, Search, Plus } from 'lucide-react';
 import {
   Sheet,
   SheetContent,
   SheetTitle,
 } from '../ui/sheet';
-import { Input } from '../ui/input';
 import { IconButton } from '../ui/icon-button';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '../ui/select';
 
 interface MobileExerciseSearchModalProps {
   exercises: Exercise[];
@@ -28,19 +22,11 @@ interface MobileExerciseSearchModalProps {
   className?: string;
 }
 
-const getDifficultyColor = (difficulty: string): string => {
-  switch (difficulty.toLowerCase()) {
-    case 'beginner':
-      return 'bg-success/15 text-success border-success/40';
-    case 'intermediate':
-      return 'bg-warning/15 text-warning border-warning/40';
-    case 'advanced':
-      return 'bg-danger/15 text-danger border-danger/40';
-    default:
-      return 'bg-surface-subtle text-ink-subtle border-border';
-  }
-};
-
+/**
+ * Full-screen "Add exercise" picker for phones (Tempo): search pill, one row
+ * of muscle chips, and results as hairline rows with a hue dot. Tapping a row
+ * adds the exercise and closes. Swipe down to dismiss.
+ */
 export const MobileExerciseSearchModal: React.FC<MobileExerciseSearchModalProps> = ({
   exercises,
   isOpen,
@@ -50,7 +36,6 @@ export const MobileExerciseSearchModal: React.FC<MobileExerciseSearchModalProps>
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedMuscleGroup, setSelectedMuscleGroup] = useState('all');
-  const [showFilters, setShowFilters] = useState(false);
   const [touchStartY, setTouchStartY] = useState(0);
   const [touchStartTime, setTouchStartTime] = useState(0);
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -61,25 +46,17 @@ export const MobileExerciseSearchModal: React.FC<MobileExerciseSearchModalProps>
   const {
     results: searchResults,
     isSearching,
-    hasResults,
     setSearchQuery,
     clearSearch,
-    searchStats,
   } = useSmartSearch(exercises, {
     debounceMs: 150,
-    maxResults: 24, // More results for grid view
+    maxResults: 24,
     minScore: 25,
     enableAbbreviations: true,
     enableSynonyms: true,
   });
 
-  // Get unique muscle groups for filter
-  const muscleGroups = useMemo(() => {
-    const groups = Array.from(new Set(exercises.map(e => e.muscleGroup)));
-    return ['all', ...groups.sort()];
-  }, [exercises]);
-
-  // Filter results by muscle group
+  // Filter results by muscle
   const filteredResults = useMemo(() => {
     let results = searchTerm.trim() ? searchResults :
       exercises.slice(0, 24).map(exercise => ({
@@ -90,9 +67,12 @@ export const MobileExerciseSearchModal: React.FC<MobileExerciseSearchModalProps>
         highlightRanges: [],
       }));
 
+    // Muscle chips share the body map's vocabulary: a substring match against
+    // the comma-joined muscleGroup field (same as the Library's filter).
     if (selectedMuscleGroup !== 'all') {
+      const term = selectedMuscleGroup.toLowerCase();
       results = results.filter(result =>
-        result.exercise.muscleGroup === selectedMuscleGroup
+        result.exercise.muscleGroup.toLowerCase().includes(term)
       );
     }
 
@@ -119,7 +99,6 @@ export const MobileExerciseSearchModal: React.FC<MobileExerciseSearchModalProps>
     } else {
       setSearchTerm('');
       setSelectedMuscleGroup('all');
-      setShowFilters(false);
     }
   }, [isOpen]);
 
@@ -189,182 +168,119 @@ export const MobileExerciseSearchModal: React.FC<MobileExerciseSearchModalProps>
     <Sheet open={isOpen} onOpenChange={(next) => !next && onClose()}>
       <SheetContent
         ref={modalRef}
-        className={`inset-0 flex max-h-none w-full flex-col rounded-none bg-surface p-0 touch-pan-y ${className}`}
+        className={cn('inset-0 flex max-h-none w-full flex-col rounded-none bg-surface p-0 pt-3 touch-pan-y', className)}
         style={{ height: calculateModalHeight() }}
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
       >
-        {/* Header */}
-        <div className="flex-shrink-0 bg-surface-raised border-b border-border">
-          <div className="flex items-center justify-between p-4 pt-2">
-            <SheetTitle className="text-title font-semibold text-ink">Add Exercise</SheetTitle>
-            <IconButton
-              variant="ghost"
-              size="sm"
-              onClick={onClose}
-              aria-label="Close exercise search"
-            >
-              <X className="w-5 h-5" />
+        {/* Header, search and filters stay put above the scrolling results */}
+        <div className="flex-shrink-0 px-4">
+          <div className="flex items-center justify-between gap-3">
+            <SheetTitle className="text-title">Add exercise</SheetTitle>
+            <IconButton variant="ghost" onClick={onClose} aria-label="Close exercise search">
+              <X size={20} aria-hidden="true" />
             </IconButton>
           </div>
-        </div>
 
-        {/* Search Input */}
-        <div className="flex-shrink-0 bg-surface-raised border-b border-border p-4 space-y-3">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-ink-subtle z-10" />
-            <Input
+          <div className="relative mt-3">
+            <Search
+              size={18}
+              aria-hidden="true"
+              className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-ink-subtle"
+            />
+            <input
               ref={searchInputRef}
               type="text"
-              placeholder="Search exercises..."
+              placeholder="Search exercises"
+              aria-label="Search exercises"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-10 pr-12"
+              className="h-touch-lg w-full rounded-full bg-surface-raised pl-11 pr-4 text-body text-ink placeholder:text-ink-subtle focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
             />
-            <button
-              type="button"
-              onClick={() => setShowFilters(!showFilters)}
-              className={`absolute right-3 top-1/2 transform -translate-y-1/2 p-1 rounded transition-colors ${
-                selectedMuscleGroup !== 'all' || showFilters
-                  ? 'text-accent bg-accent/15'
-                  : 'text-ink-subtle hover:text-ink'
-              }`}
-            >
-              <Filter className="w-4 h-4" />
-            </button>
           </div>
 
-          {/* Filters */}
-          {showFilters && (
-            <Select
-              value={selectedMuscleGroup}
-              onValueChange={setSelectedMuscleGroup}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="All Muscle Groups" />
-              </SelectTrigger>
-              <SelectContent>
-                {muscleGroups.map(group => (
-                  <SelectItem key={group} value={group}>
-                    {group === 'all' ? 'All Muscle Groups' : group}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          )}
-
-          {/* Search Stats */}
-          <div className="flex items-center justify-between text-caption text-ink-subtle">
-            <div className="flex items-center gap-2">
-              {isSearching ? (
-                <>
-                  <div className="w-3 h-3 border border-accent border-t-transparent rounded-full animate-spin"></div>
-                  <span>Searching...</span>
-                </>
-              ) : (
-                <span>
-                  {filteredResults.length} exercise{filteredResults.length !== 1 ? 's' : ''} found
-                </span>
-              )}
-            </div>
-            {searchStats && searchStats.searchTime > 0 && (
-              <span className="text-ink-subtle">
-                {searchStats.searchTime.toFixed(1)}ms
-              </span>
-            )}
+          <div
+            role="group"
+            aria-label="Filter by muscle"
+            className="-mx-4 mt-3 flex gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          >
+            {['all', ...ALL_MUSCLE_TERMS].map((term) => {
+              const selected = selectedMuscleGroup === term;
+              return (
+                <button
+                  key={term}
+                  type="button"
+                  aria-pressed={selected}
+                  onClick={() => setSelectedMuscleGroup(selected && term !== 'all' ? 'all' : term)}
+                  className={cn(
+                    'min-h-touch-min shrink-0 whitespace-nowrap rounded-full px-4 text-body-sm font-semibold transition-colors duration-snap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent',
+                    selected ? 'bg-accent-2 text-accent-2-fg' : 'bg-surface-raised text-ink-muted hover:text-ink',
+                  )}
+                >
+                  {term === 'all' ? 'All' : term}
+                </button>
+              );
+            })}
           </div>
+
+          <p className="mt-2 px-1 text-body-sm text-ink-muted" aria-live="polite">
+            {isSearching
+              ? 'Searching'
+              : `${filteredResults.length} ${filteredResults.length === 1 ? 'exercise' : 'exercises'}`}
+          </p>
         </div>
 
-        {/* Results Grid */}
-        <div className="flex-1 overflow-y-auto">
+        {/* Results */}
+        <div className="flex-1 overflow-y-auto px-4 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-2">
           {filteredResults.length === 0 && !isSearching ? (
-            <div className="flex flex-col items-center justify-center h-full text-center p-8">
-              <Search className="w-12 h-12 text-ink-subtle mb-4" />
-              <h3 className="text-body font-medium text-ink mb-2">No exercises found</h3>
-              <p className="text-body-sm text-ink-subtle">
-                Try adjusting your search or filter settings
+            <div className="px-4 py-12 text-center">
+              <p className="text-body text-ink">No exercises found</p>
+              <p className="mt-1 text-body-sm text-ink-muted">
+                Try a shorter search, or tap All to clear the muscle filter.
               </p>
             </div>
           ) : isSearching && filteredResults.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-full text-center p-8">
-              <div className="w-8 h-8 border-2 border-accent border-t-transparent rounded-full animate-spin mb-4"></div>
-              <p className="text-body-sm text-ink-subtle">Searching exercises...</p>
-            </div>
+            <p className="py-12 text-center text-body-sm text-ink-muted">Searching exercises</p>
           ) : (
-            <div className="grid grid-cols-2 gap-3 p-4">
-              {filteredResults.map((result) => {
+            <ul className="overflow-hidden rounded-[20px] bg-surface-subtle">
+              {filteredResults.map((result, index) => {
                 const { exercise, highlightRanges } = result;
                 return (
-                  <div
-                    key={exercise.id}
-                    className="bg-surface-raised rounded-lg border border-border overflow-hidden"
-                  >
-                    {/* Exercise Thumbnail */}
-                    <div className="aspect-video bg-surface-subtle relative">
-                      <ExerciseThumbnail
-                        exercise={exercise}
-                        className="w-full h-full"
-                        showPlayButton={exercise.videoLinks.length > 0}
-                        onClick={() => handleSelectExercise(exercise)}
-                        lazy={true}
-                      />
-                      {/* Add button overlay */}
-                      <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                        <div className="w-8 h-8 bg-accent rounded-full flex items-center justify-center opacity-90 shadow-e2">
-                          <Plus className="w-4 h-4 text-accent-fg" />
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Exercise Info */}
-                    <div className="p-3 space-y-2">
-                      <h3 className="font-medium text-ink text-body-sm leading-tight">
+                  <li key={exercise.id} className={index > 0 ? 'border-t border-hairline' : undefined}>
+                    <button
+                      type="button"
+                      onClick={() => handleSelectExercise(exercise)}
+                      aria-label={`Add ${exercise.name}`}
+                      className="flex min-h-[64px] w-full items-center gap-4 px-4 py-3 text-left transition-colors duration-snap hover:bg-surface-raised/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent"
+                    >
+                      <ExerciseHueDot muscleGroup={exercise.muscleGroup} />
+                      <span className="min-w-0 flex-1">
                         <span
+                          className="block truncate text-body font-semibold text-ink [&_mark]:bg-transparent [&_mark]:px-0 [&_mark]:text-accent"
                           dangerouslySetInnerHTML={{
                             __html: highlightRanges.length > 0
                               ? highlightText(exercise.name, highlightRanges)
                               : exercise.name
                           }}
                         />
-                      </h3>
-
-                      <div className="flex items-center gap-2 text-caption text-ink-subtle">
-                        <span className="truncate">{exercise.muscleGroup}</span>
-                        <span>•</span>
-                        <span className="truncate">{exercise.equipment}</span>
-                      </div>
-
-                      <div className="flex items-center justify-between">
-                        <span className={`px-2 py-1 rounded text-caption font-medium border ${getDifficultyColor(exercise.difficulty)}`}>
-                          {exercise.difficulty}
+                        <span className="mt-0.5 block truncate text-body-sm text-ink-muted">
+                          {exercise.muscleGroup}
+                          {exercise.equipment ? ` · ${exercise.equipment}` : ''}
                         </span>
-
-                        {!exercise.videoLinks.length && (
-                          <IconButton
-                            variant="primary"
-                            size="sm"
-                            onClick={() => handleSelectExercise(exercise)}
-                            aria-label={`Add ${exercise.name}`}
-                            className="h-7 w-7"
-                          >
-                            <Plus className="w-3 h-3" />
-                          </IconButton>
-                        )}
-                      </div>
-                    </div>
-                  </div>
+                      </span>
+                      <span
+                        aria-hidden="true"
+                        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-surface-raised text-ink"
+                      >
+                        <Plus size={18} />
+                      </span>
+                    </button>
+                  </li>
                 );
               })}
-            </div>
+            </ul>
           )}
-        </div>
-
-        {/* Bottom hint */}
-        <div className="flex-shrink-0 bg-surface-raised border-t border-border p-3">
-          <p className="text-caption text-ink-subtle text-center">
-            Tap exercises to add them to your workout
-          </p>
         </div>
       </SheetContent>
     </Sheet>

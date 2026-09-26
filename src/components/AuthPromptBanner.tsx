@@ -1,15 +1,21 @@
 import React, { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { X, User, UserPlus, ArrowRight } from 'lucide-react';
+import { X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 
 interface AuthPromptBannerProps {
   message?: string;
   showDismiss?: boolean;
 }
 
+/**
+ * Sign-up nudge for guests on shared workouts (Tempo): a quiet strip on the
+ * subtle surface. It never takes the amber primary away from the page below,
+ * so "Create account" is a secondary pill and "Sign in" is plain amber text.
+ */
 export const AuthPromptBanner: React.FC<AuthPromptBannerProps> = ({
-  message = "Sign up to save your workout progress and track your fitness journey!",
+  message = "Create an account to save this workout and track your progress.",
   showDismiss = true
 }) => {
   const [isDismissed, setIsDismissed] = useState(false);
@@ -45,59 +51,28 @@ export const AuthPromptBanner: React.FC<AuthPromptBannerProps> = ({
   };
 
   return (
-    <div className="sticky top-0 z-50 bg-accent border-b border-border">
-      <div className="max-w-4xl mx-auto px-4 py-3">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-3 flex-1">
-            {/* Icon */}
-            <div className="flex-shrink-0">
-              <div className="w-8 h-8 bg-accent-fg/20 rounded-full flex items-center justify-center">
-                <UserPlus className="w-4 h-4 text-accent-fg" />
-              </div>
-            </div>
+    <div role="region" aria-label="Create an account" className="sticky top-0 z-50 bg-surface-subtle">
+      <div className="mx-auto flex max-w-4xl flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3">
+        <p className="min-w-0 flex-1 basis-56 text-body-sm text-ink">{message}</p>
 
-            {/* Message */}
-            <div className="flex-1">
-              <p className="text-accent-fg text-body-sm font-medium">
-                {message}
-              </p>
-            </div>
-
-            {/* Action Buttons */}
-            <div className="flex items-center space-x-2">
-              <Button
-                type="button"
-                size="sm"
-                onClick={handleLogin}
-                className="bg-accent-fg/20 text-accent-fg hover:bg-accent-fg/30"
-              >
-                <User className="w-4 h-4" />
-                <span>Login</span>
-              </Button>
-
-              <Button
-                type="button"
-                size="sm"
-                onClick={handleSignUp}
-                className="bg-surface-raised text-accent hover:bg-surface-raised/90"
-              >
-                <UserPlus className="w-4 h-4" />
-                <span>Sign Up</span>
-                <ArrowRight className="w-3 h-3" />
-              </Button>
-            </div>
-          </div>
-
-          {/* Dismiss Button */}
+        <div className="flex items-center gap-1">
+          <Button type="button" variant="ghost" size="sm" onClick={handleLogin} className="text-accent hover:text-accent">
+            Sign in
+          </Button>
+          <Button type="button" variant="secondary" size="sm" onClick={handleSignUp}>
+            Create account
+          </Button>
           {showDismiss && (
-            <button
+            <IconButton
               type="button"
+              variant="ghost"
+              size="sm"
               onClick={handleDismiss}
-              className="flex-shrink-0 ml-3 text-accent-fg hover:text-accent-fg/80 transition-colors duration-snap"
+              aria-label="Dismiss"
               title="Dismiss"
             >
-              <X className="w-5 h-5" />
-            </button>
+              <X size={18} aria-hidden="true" />
+            </IconButton>
           )}
         </div>
       </div>

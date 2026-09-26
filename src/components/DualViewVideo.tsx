@@ -1,7 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Play, Pause, Volume2, VolumeX, Eye, EyeOff } from 'lucide-react';
+import { Dumbbell, Play, Pause, Volume2, VolumeX, Eye, EyeOff } from 'lucide-react';
 import { VideoFallback } from './VideoFallback';
 import { getVideoWithFallbacks, getFriendlyErrorMessage } from '../utils/videoHelpers';
+import { cn } from '../lib/utils';
 
 interface DualViewVideoProps {
   videoUrls: string[];
@@ -184,7 +185,7 @@ export const DualViewVideo: React.FC<DualViewVideoProps> = ({
       <VideoFallback
         exerciseName={exerciseName}
         instructions={instructions}
-        errorMessage="All video sources failed to load"
+        errorMessage="None of the video sources loaded."
         compact={compact}
         className={className}
       />
@@ -193,112 +194,119 @@ export const DualViewVideo: React.FC<DualViewVideoProps> = ({
 
   const videoHeight = compact ? 'h-32' : 'h-64';
   const isLoading = frontVideoState.isLoading || sideVideoState.isLoading;
+  const canSplit = Boolean(sideVideoUrl) && !sideVideoState.hasError;
 
+  // Tempo: raised tile, views separated by a hairline gap, clips fade in once
+  // loaded, and controls are always-visible round buttons (no hover-only UI).
   return (
-    <div className={`relative bg-surface rounded-lg overflow-hidden group ${className}`}>
+    <div className={cn('relative overflow-hidden rounded-2xl bg-surface-raised', className)}>
       {/* Video Container */}
-      <div className={`flex ${showBothViews ? 'space-x-1' : ''} ${videoHeight}`}>
+      <div className={cn('flex', showBothViews && 'gap-px bg-hairline', videoHeight)}>
         {/* Front View Video */}
         {(showBothViews || !sideVideoUrl) && frontVideoUrl && !frontVideoState.hasError && (
-          <div className={`relative ${showBothViews && sideVideoUrl ? 'w-1/2' : 'w-full'}`}>
+          <div className={cn('relative bg-surface-raised', showBothViews && sideVideoUrl ? 'w-1/2' : 'w-full')}>
             <video
               ref={frontVideoRef}
               muted={isMuted}
               loop
               playsInline
               preload="auto"
-              className={`w-full ${videoHeight} object-cover`}
+              className={cn(
+                'w-full object-cover transition-opacity duration-smooth',
+                videoHeight,
+                frontVideoState.isLoading ? 'opacity-0' : 'opacity-100',
+              )}
             />
-            {!compact && (
-              <div className="absolute top-2 left-2">
-                <span className="bg-black bg-opacity-60 text-white text-xs px-2 py-1 rounded">
-                  Front View
-                </span>
-              </div>
-            )}
+            {!compact && <ViewLabel>Front</ViewLabel>}
           </div>
         )}
 
         {/* Side View Video */}
         {showBothViews && sideVideoUrl && !sideVideoState.hasError && (
-          <div className="relative w-1/2">
+          <div className="relative w-1/2 bg-surface-raised">
             <video
               ref={sideVideoRef}
               muted={isMuted}
               loop
               playsInline
               preload="auto"
-              className={`w-full ${videoHeight} object-cover`}
+              className={cn(
+                'w-full object-cover transition-opacity duration-smooth',
+                videoHeight,
+                sideVideoState.isLoading ? 'opacity-0' : 'opacity-100',
+              )}
             />
-            {!compact && (
-              <div className="absolute top-2 left-2">
-                <span className="bg-black bg-opacity-60 text-white text-xs px-2 py-1 rounded">
-                  Side View
-                </span>
-              </div>
-            )}
+            {!compact && <ViewLabel>Side</ViewLabel>}
           </div>
         )}
       </div>
 
-      {/* Loading Overlay */}
+      {/* Loading placeholder */}
       {isLoading && (
-        <div className={`absolute inset-0 bg-surface-subtle flex flex-col items-center justify-center ${videoHeight}`}>
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-accent mb-2"></div>
-          <p className="text-ink text-xs">Loading videos...</p>
+        <div className={cn('absolute inset-0 flex items-center justify-center bg-surface-raised', videoHeight)}>
+          <Dumbbell className="h-7 w-7 animate-pulse text-ink-subtle" aria-hidden="true" />
+          <span className="sr-only">Loading videos</span>
         </div>
       )}
 
-      {/* Video Controls Overlay */}
-      <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-30 transition-all duration-200 flex items-center justify-center">
-        <div className="opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex items-center space-x-4">
-          <button
+      {/* Controls */}
+      {!isLoading && (
+        <div className="absolute bottom-2 right-2 flex items-center gap-1">
+          <ControlButton
             onClick={togglePlay}
-            className="bg-black bg-opacity-50 hover:bg-opacity-70 text-white rounded-full p-3 transition-all duration-200"
-            aria-label={isGlobalPlaying ? 'Pause videos' : 'Play videos'}
+            label={isGlobalPlaying ? 'Pause videos' : 'Play videos'}
           >
-            {isGlobalPlaying ? <Pause className="w-6 h-6" /> : <Play className="w-6 h-6" />}
-          </button>
+            {isGlobalPlaying ? (
+              <Pause className="h-4 w-4" fill="currentColor" aria-hidden="true" />
+            ) : (
+              <Play className="ml-0.5 h-4 w-4" fill="currentColor" aria-hidden="true" />
+            )}
+          </ControlButton>
 
-          <button
-            onClick={toggleMute}
-            className="bg-black bg-opacity-50 hover:bg-opacity-70 text-white rounded-full p-3 transition-all duration-200"
-            aria-label={isMuted ? 'Unmute videos' : 'Mute videos'}
-          >
-            {isMuted ? <VolumeX className="w-6 h-6" /> : <Volume2 className="w-6 h-6" />}
-          </button>
+          <ControlButton onClick={toggleMute} label={isMuted ? 'Unmute videos' : 'Mute videos'}>
+            {isMuted ? <VolumeX className="h-4 w-4" aria-hidden="true" /> : <Volume2 className="h-4 w-4" aria-hidden="true" />}
+          </ControlButton>
 
-          {/* View Toggle Button - only show if we have both videos */}
-          {sideVideoUrl && !sideVideoState.hasError && (
-            <button
+          {/* View toggle — only when there is a second angle */}
+          {canSplit && (
+            <ControlButton
               onClick={toggleViewMode}
-              className="bg-black bg-opacity-50 hover:bg-opacity-70 text-white rounded-full p-3 transition-all duration-200"
-              aria-label={showBothViews ? 'Show single view' : 'Show both views'}
+              label={showBothViews ? 'Show single view' : 'Show both views'}
             >
-              {showBothViews ? <EyeOff className="w-6 h-6" /> : <Eye className="w-6 h-6" />}
-            </button>
+              {showBothViews ? <EyeOff className="h-4 w-4" aria-hidden="true" /> : <Eye className="h-4 w-4" aria-hidden="true" />}
+            </ControlButton>
           )}
-        </div>
-      </div>
-
-      {/* Video Title Overlay */}
-      {!compact && (
-        <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black to-transparent p-4">
-          <p className="text-white text-sm font-medium">{exerciseName}</p>
-          {showBothViews && sideVideoUrl && (
-            <p className="text-white text-xs opacity-75">Front & Side Views</p>
-          )}
-        </div>
-      )}
-
-      {/* Loading Indicator */}
-      {isLoading && (
-        <div className="absolute top-2 right-2">
-          <div className="bg-black bg-opacity-50 rounded-full p-2">
-            <div className="w-4 h-4 border-2 border-accent border-t-transparent rounded-full animate-spin"></div>
-          </div>
         </div>
       )}
     </div>
   );
 };
+
+function ViewLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <span className="absolute left-2 top-2 rounded-full bg-surface/80 px-2.5 py-0.5 text-caption text-ink">
+      {children}
+    </span>
+  );
+}
+
+function ControlButton({
+  onClick,
+  label,
+  children,
+}: {
+  onClick: () => void;
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={label}
+      className="flex h-touch-min w-touch-min items-center justify-center rounded-full bg-surface/80 text-ink transition-colors duration-snap hover:bg-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+    >
+      {children}
+    </button>
+  );
+}

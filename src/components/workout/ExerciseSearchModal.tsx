@@ -9,9 +9,10 @@ import {
   SheetTitle,
   SheetDescription,
 } from '../ui/sheet';
-import { Input } from '../ui/input';
-import { Button } from '../ui/button';
 import { IconButton } from '../ui/icon-button';
+import { ExerciseHueDot } from '../ExerciseThumbnail';
+import { ChevronRight, Search, X } from 'lucide-react';
+import { cn } from '../../lib/utils';
 
 interface ExerciseSearchModalProps {
   exercises: Exercise[];
@@ -37,10 +38,8 @@ export const ExerciseSearchModal: React.FC<ExerciseSearchModalProps> = ({
   const {
     results: searchResults,
     isSearching,
-    hasResults,
     setSearchQuery,
     clearSearch,
-    searchStats,
   } = useSmartSearch(exercises, {
     debounceMs: 200, // Slightly longer for modal
     maxResults: 20, // More results in modal
@@ -148,218 +147,103 @@ export const ExerciseSearchModal: React.FC<ExerciseSearchModalProps> = ({
     onClose();
   };
 
-  const getDifficultyColor = (difficulty: string) => {
-    switch (difficulty.toLowerCase()) {
-      case 'beginner':
-        return 'bg-success/15 text-success border-success/40';
-      case 'intermediate':
-        return 'bg-warning/15 text-warning border-warning/40';
-      case 'advanced':
-        return 'bg-danger/15 text-danger border-danger/40';
-      default:
-        return 'bg-surface-subtle text-ink-subtle border-border';
-    }
-  };
-
   return (
     <Sheet open={isOpen} onOpenChange={(next) => !next && onClose()}>
-      <SheetContent className="mx-auto flex max-h-[85vh] max-w-2xl flex-col p-0">
+      <SheetContent className="mx-auto flex max-h-[85vh] max-w-2xl flex-col pb-0">
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-border p-6">
-          <div>
-            <SheetTitle className="text-title font-semibold text-ink">
-              Replace Exercise
-            </SheetTitle>
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <SheetTitle className="text-title">Replace exercise</SheetTitle>
             {currentExerciseName && (
-              <SheetDescription className="mt-1 text-body-sm text-ink-subtle">
-                Currently: {currentExerciseName}
+              <SheetDescription className="truncate">
+                Swapping out {currentExerciseName}
               </SheetDescription>
             )}
           </div>
-
-          <IconButton
-            variant="ghost"
-            size="sm"
-            onClick={onClose}
-            aria-label="Close exercise search"
-          >
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
+          <IconButton variant="ghost" onClick={onClose} aria-label="Close exercise search">
+            <X size={20} aria-hidden="true" />
           </IconButton>
         </div>
 
-        {/* Search Input */}
-        <div className="border-b border-border p-6">
-          <div className="relative">
-            <div className="absolute left-3 top-1/2 z-10 -translate-y-1/2 transform">
-              <svg className="w-5 h-5 text-ink-subtle" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-              </svg>
-            </div>
-            <Input
-              ref={searchInputRef}
-              type="text"
-              placeholder="Search exercises by name, muscle group, or equipment..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-10"
-            />
-          </div>
-
-          <div className="mt-2 flex items-center justify-between text-caption text-ink-subtle">
-            <div className="flex items-center gap-2">
-              {isSearching ? (
-                <>
-                  <div className="w-3 h-3 border border-accent border-t-transparent rounded-full animate-spin"></div>
-                  <span>Searching...</span>
-                </>
-              ) : (
-                <span>
-                  {filteredResults.length} result{filteredResults.length !== 1 ? 's' : ''} found
-                </span>
-              )}
-              {searchStats && searchStats.searchTime > 0 && (
-                <span className="text-ink-subtle">
-                  ({searchStats.searchTime.toFixed(1)}ms{searchStats.cacheHit ? ', cached' : ''})
-                </span>
-              )}
-            </div>
-            <span>
-              Use ↑↓ to navigate, Enter to select, Esc to close
-            </span>
-          </div>
+        {/* Search pill */}
+        <div className="relative mt-4">
+          <Search
+            size={18}
+            aria-hidden="true"
+            className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-ink-subtle"
+          />
+          <input
+            ref={searchInputRef}
+            type="text"
+            placeholder="Name, muscle, or equipment"
+            aria-label="Search exercises"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="h-touch-lg w-full rounded-full bg-surface-raised pl-11 pr-4 text-body text-ink placeholder:text-ink-subtle focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+          />
         </div>
+
+        <p className="mt-3 px-1 text-body-sm text-ink-muted" aria-live="polite">
+          {isSearching
+            ? 'Searching'
+            : `${filteredResults.length} ${filteredResults.length === 1 ? 'result' : 'results'}`}
+        </p>
 
         {/* Results */}
-        <div className="flex-1 overflow-y-auto">
+        <div className="-mx-6 mt-2 flex-1 overflow-y-auto pb-[calc(1.5rem+env(safe-area-inset-bottom))]">
           {filteredResults.length === 0 && !isSearching ? (
-            <div className="p-6 text-center text-ink-subtle">
-              <svg className="w-12 h-12 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-              </svg>
-              <p className="text-body font-medium mb-2">No exercises found</p>
-              <p className="text-body-sm">Try "ohp" for overhead press or "bp" for bench press</p>
+            <div className="px-6 py-10 text-center">
+              <p className="text-body text-ink">No exercises found</p>
+              <p className="mt-1 text-body-sm text-ink-muted">
+                Try a shorter name, or shorthand like "ohp" or "bp".
+              </p>
             </div>
           ) : isSearching && filteredResults.length === 0 ? (
-            <div className="p-6 text-center text-ink-subtle">
-              <div className="w-8 h-8 border-2 border-accent border-t-transparent rounded-full animate-spin mx-auto mb-3"></div>
-              <p className="text-body-sm">Searching exercises...</p>
-            </div>
+            <p className="px-6 py-10 text-center text-body-sm text-ink-muted">Searching exercises</p>
           ) : (
-            <div className="divide-y divide-border">
+            <ul>
               {filteredResults.map((result, index) => {
-                const { exercise, score, matchType, highlightRanges } = result;
+                const { exercise, highlightRanges } = result;
                 return (
-                  <button
-                    key={exercise.id}
-                    ref={el => { resultRefs.current[index] = el; }}
-                    onClick={() => handleSelectExercise(exercise)}
-                    className={`w-full px-6 py-4 text-left hover:bg-surface-subtle focus:bg-surface-subtle focus:outline-none transition-colors ${
-                      index === selectedIndex ? 'bg-surface-subtle ring-2 ring-accent ring-inset' : ''
-                    }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-3 mb-2">
-                          <div className="flex-shrink-0 w-10 h-10 bg-surface-subtle rounded-full flex items-center justify-center relative">
-                            <svg className="w-5 h-5 text-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                            </svg>
-                            {index < 3 && score > 0 && (
-                              <div className="absolute -top-1 -right-1 w-4 h-4 bg-accent text-accent-fg text-caption rounded-full flex items-center justify-center font-bold">
-                                {index + 1}
-                              </div>
-                            )}
-                          </div>
-
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2">
-                              <h4 className="font-medium text-ink truncate flex-1">
-                                <span
-                                  dangerouslySetInnerHTML={{
-                                    __html: highlightRanges.length > 0
-                                      ? highlightText(exercise.name, highlightRanges)
-                                      : exercise.name
-                                  }}
-                                />
-                              </h4>
-                              {exercise.id?.startsWith('custom-') && (
-                                <CustomExerciseBadge size="sm" showText={false} />
-                              )}
-                            </div>
-                            <div className="flex items-center gap-2 text-body-sm text-ink-subtle mt-1">
-                              <span className="flex items-center gap-1">
-                                <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
-                                  <path fillRule="evenodd" d="M3 3a1 1 0 000 2v8a2 2 0 002 2h2.586l-1.293 1.293a1 1 0 101.414 1.414L10 15.414l2.293 2.293a1 1 0 001.414-1.414L12.414 15H15a2 2 0 002-2V5a1 1 0 100-2H3zm11.707 4.707a1 1 0 00-1.414-1.414L10 9.586 8.707 8.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                                </svg>
-                                <span className="truncate">
-                                  {exercise.muscleGroups && exercise.muscleGroups.length > 1
-                                    ? exercise.muscleGroups.slice(0, 2).join(', ') + (exercise.muscleGroups.length > 2 ? '...' : '')
-                                    : exercise.muscleGroup
-                                  }
-                                </span>
-                              </span>
-                              <span>•</span>
-                              <span className="flex items-center gap-1">
-                                <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
-                                  <path d="M3 4a1 1 0 011-1h12a1 1 0 011 1v2a1 1 0 01-1 1H4a1 1 0 01-1-1V4zM3 10a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H4a1 1 0 01-1-1v-6zM14 9a1 1 0 00-1 1v6a1 1 0 001 1h2a1 1 0 001-1v-6a1 1 0 00-1-1h-2z" />
-                                </svg>
-                                {exercise.equipment}
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Tags */}
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className={`px-2 py-1 rounded text-caption font-medium border ${getDifficultyColor(exercise.difficulty)}`}>
-                            {exercise.difficulty}
-                          </span>
-
-                          {score > 0 && (
-                            <span className="px-2 py-1 rounded text-caption font-medium bg-accent/15 text-accent border border-accent/40">
-                              {matchType} ({score}pts)
-                            </span>
+                  <li key={exercise.id} className={index > 0 ? 'border-t border-hairline' : undefined}>
+                    <button
+                      type="button"
+                      ref={el => { resultRefs.current[index] = el; }}
+                      onClick={() => handleSelectExercise(exercise)}
+                      className={cn(
+                        'flex min-h-[64px] w-full items-center gap-4 px-6 py-3 text-left transition-colors duration-snap hover:bg-surface-raised/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent',
+                        index === selectedIndex && 'bg-surface-raised/60',
+                      )}
+                    >
+                      <ExerciseHueDot muscleGroup={exercise.muscleGroup} />
+                      <span className="min-w-0 flex-1">
+                        <span className="flex items-center gap-2">
+                          <span
+                            className="truncate text-body font-semibold text-ink [&_mark]:bg-transparent [&_mark]:px-0 [&_mark]:text-accent"
+                            dangerouslySetInnerHTML={{
+                              __html: highlightRanges.length > 0
+                                ? highlightText(exercise.name, highlightRanges)
+                                : exercise.name
+                            }}
+                          />
+                          {exercise.id?.startsWith('custom-') && (
+                            <CustomExerciseBadge size="sm" showText={false} className="shrink-0" />
                           )}
-
-                          {exercise.mechanic && (
-                            <span className="px-2 py-1 rounded text-caption font-medium bg-surface-subtle text-ink-subtle border border-border">
-                              {exercise.mechanic}
-                            </span>
-                          )}
-
-                          {exercise.force && (
-                            <span className="px-2 py-1 rounded text-caption font-medium bg-surface-subtle text-ink-subtle border border-border">
-                              {exercise.force}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-
-                      <div className="flex-shrink-0 ml-4">
-                        <svg className="w-5 h-5 text-ink-subtle group-hover:text-success" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                        </svg>
-                      </div>
-                    </div>
-                  </button>
+                        </span>
+                        <span className="mt-0.5 block truncate text-body-sm text-ink-muted">
+                          {exercise.muscleGroups && exercise.muscleGroups.length > 1
+                            ? exercise.muscleGroups.slice(0, 2).join(', ') + (exercise.muscleGroups.length > 2 ? '…' : '')
+                            : exercise.muscleGroup}
+                          {exercise.equipment ? ` · ${exercise.equipment}` : ''}
+                        </span>
+                      </span>
+                      <ChevronRight size={18} aria-hidden="true" className="shrink-0 text-ink-subtle" />
+                    </button>
+                  </li>
                 );
               })}
-            </div>
+            </ul>
           )}
-        </div>
-
-        {/* Footer */}
-        <div className="border-t border-border px-6 py-4">
-          <div className="flex justify-between items-center">
-            <p className="text-body-sm text-ink-subtle">
-              Select an exercise to replace "{currentExerciseName}"
-            </p>
-            <Button variant="secondary" onClick={onClose}>
-              Cancel
-            </Button>
-          </div>
         </div>
       </SheetContent>
     </Sheet>

@@ -1,8 +1,9 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Play, Pause, Volume2, VolumeX } from 'lucide-react';
+import { Dumbbell, Play, Pause, Volume2, VolumeX } from 'lucide-react';
 import { VideoFallback } from './VideoFallback';
 import { getVideoWithFallbacks, getFriendlyErrorMessage } from '../utils/videoHelpers';
 import { useIsMobile } from '../hooks/useIsMobile';
+import { cn } from '../lib/utils';
 
 interface ExerciseVideoProps {
   videoUrl: string;
@@ -67,7 +68,7 @@ export const ExerciseVideo: React.FC<ExerciseVideoProps> = ({
     } else {
       setHasError(true);
       setIsLoading(false);
-      setErrorMessage('All video sources failed to load');
+      setErrorMessage('None of the video sources loaded.');
     }
   };
 
@@ -98,7 +99,7 @@ export const ExerciseVideo: React.FC<ExerciseVideoProps> = ({
 
     // Validate current video URL
     if (!isValidVideoUrl(currentVideoUrl)) {
-      setErrorMessage('Invalid video URL format');
+      setErrorMessage('This video link is not a playable file.');
       tryFallbackVideo();
       return;
     }
@@ -193,21 +194,28 @@ export const ExerciseVideo: React.FC<ExerciseVideoProps> = ({
     );
   }
 
+  const heightClass = compact
+    ? isMobile
+      ? 'aspect-video' // Use aspect-video for mobile grid
+      : 'h-32'
+    : 'h-64';
+
+  // Tempo: the clip sits on a raised tile and fades in once it has a frame;
+  // until then a quiet glyph holds the space (no spinner). Controls are always
+  // visible small round buttons, since touch screens have no hover.
   return (
-    <div className={`relative bg-surface rounded-lg overflow-hidden group ${className}`}>
+    <div className={cn('relative overflow-hidden rounded-2xl bg-surface-raised', className)}>
       <video
         ref={videoRef}
         muted={isMuted}
         loop
         playsInline
         preload={isMobile && compact ? "metadata" : "auto"}
-        className={`w-full object-cover ${
-          compact
-            ? isMobile
-              ? 'aspect-video' // Use aspect-video for mobile grid
-              : 'h-32'
-            : 'h-64'
-        }`}
+        className={cn(
+          'w-full object-cover transition-opacity duration-smooth',
+          heightClass,
+          isLoading ? 'opacity-0' : 'opacity-100',
+        )}
         poster=""
         // Mobile optimizations
         controlsList="nodownload nofullscreen"
@@ -215,68 +223,49 @@ export const ExerciseVideo: React.FC<ExerciseVideoProps> = ({
       />
 
       {isLoading && (
-        <div className={`absolute inset-0 bg-surface-subtle flex flex-col items-center justify-center ${
-          compact
-            ? isMobile
-              ? 'aspect-video' // Match video aspect ratio on mobile
-              : 'h-32'
-            : 'h-64'
-        }`}>
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-accent mb-2"></div>
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-surface-raised">
+          <Dumbbell className="h-7 w-7 animate-pulse text-ink-subtle" aria-hidden="true" />
           {retryCount > 0 && (
-            <p className="text-ink text-xs">Trying source {retryCount + 1}...</p>
+            <p className="text-caption text-ink-muted">Trying another source</p>
           )}
         </div>
       )}
 
-      {/* Video Controls Overlay - Hide on compact mobile to avoid conflicts */}
-      {!(isMobile && compact) && (
-        <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-30 transition-all duration-200 flex items-center justify-center">
-          <div className="opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex items-center space-x-4">
-            <button
-              onClick={togglePlay}
-              className={`bg-black bg-opacity-50 hover:bg-opacity-70 text-white rounded-full transition-all duration-200 ${
-                isMobile ? 'p-2' : 'p-3'
-              }`}
-              aria-label={isPlaying ? 'Pause video' : 'Play video'}
-            >
-              {isPlaying ? (
-                <Pause className={isMobile ? "w-4 h-4" : "w-6 h-6"} />
-              ) : (
-                <Play className={isMobile ? "w-4 h-4" : "w-6 h-6"} />
-              )}
-            </button>
-
-            <button
-              onClick={toggleMute}
-              className={`bg-black bg-opacity-50 hover:bg-opacity-70 text-white rounded-full transition-all duration-200 ${
-                isMobile ? 'p-2' : 'p-3'
-              }`}
-              aria-label={isMuted ? 'Unmute video' : 'Mute video'}
-            >
-              {isMuted ? (
-                <VolumeX className={isMobile ? "w-4 h-4" : "w-6 h-6"} />
-              ) : (
-                <Volume2 className={isMobile ? "w-4 h-4" : "w-6 h-6"} />
-              )}
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Video Title Overlay */}
+      {/* Title chip */}
       {!compact && (
-        <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black to-transparent p-4">
-          <p className="text-white text-sm font-medium">{exerciseName}</p>
-        </div>
+        <p className="absolute bottom-3 left-3 max-w-[60%] truncate rounded-full bg-surface/80 px-3 py-1 text-caption text-ink">
+          {exerciseName}
+        </p>
       )}
 
-      {/* Loading Indicator */}
-      {isLoading && (
-        <div className="absolute top-2 right-2">
-          <div className="bg-black bg-opacity-50 rounded-full p-2">
-            <div className="w-4 h-4 border-2 border-accent border-t-transparent rounded-full animate-spin"></div>
-          </div>
+      {/* Controls — hidden on compact mobile tiles to avoid tap conflicts */}
+      {!(isMobile && compact) && !isLoading && (
+        <div className="absolute bottom-2 right-2 flex items-center gap-1">
+          <button
+            type="button"
+            onClick={togglePlay}
+            className="flex h-touch-min w-touch-min items-center justify-center rounded-full bg-surface/80 text-ink transition-colors duration-snap hover:bg-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+            aria-label={isPlaying ? 'Pause video' : 'Play video'}
+          >
+            {isPlaying ? (
+              <Pause className="h-4 w-4" fill="currentColor" aria-hidden="true" />
+            ) : (
+              <Play className="ml-0.5 h-4 w-4" fill="currentColor" aria-hidden="true" />
+            )}
+          </button>
+
+          <button
+            type="button"
+            onClick={toggleMute}
+            className="flex h-touch-min w-touch-min items-center justify-center rounded-full bg-surface/80 text-ink transition-colors duration-snap hover:bg-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+            aria-label={isMuted ? 'Unmute video' : 'Mute video'}
+          >
+            {isMuted ? (
+              <VolumeX className="h-4 w-4" aria-hidden="true" />
+            ) : (
+              <Volume2 className="h-4 w-4" aria-hidden="true" />
+            )}
+          </button>
         </div>
       )}
     </div>

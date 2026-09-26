@@ -1,43 +1,46 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useEffect, type ReactNode } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { ChevronLeft, ChevronRight, X } from 'lucide-react';
+import { ChevronRight, Search, X } from 'lucide-react';
 import { useAppSelector, useAppDispatch } from '../store/hooks';
 import { searchExercises, filterByMuscleGroup, filterByMuscle, setSelectedExercise } from '../store/slices/exerciseSlice';
 import { ExerciseVideo } from '../components/ExerciseVideo';
 import { CustomExerciseBadge } from '../components/workout/CustomExerciseBadge';
 import { Exercise } from '../types/exercise';
 import { selectCustomExercises } from '../store/slices/customExerciseSlice';
-import { scrollAppToTop } from '../lib/scroll';
 import { useExercises } from '../hooks/useExercises';
-import { Input } from '../components/ui/input';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '../components/ui/select';
-import { Card, CardBody } from '../components/ui/card';
+import { ALL_MUSCLE_TERMS } from '../lib/muscleTerms';
+import { ExerciseHueDot } from '../components/ExerciseThumbnail';
 import { Skeleton } from '../components/ui/skeleton';
 import { IconButton } from '../components/ui/icon-button';
 import { Button } from '../components/ui/button';
-import { Stack } from '../components/ui/stack';
-import { Sheet, SheetContent, SheetTitle } from '../components/ui/sheet';
+import { Sheet, SheetContent, SheetTitle, SheetDescription } from '../components/ui/sheet';
+import { cn } from '../lib/utils';
 
-// Difficulty labels map onto semantic state tokens so the same hue language is
-// reused everywhere (no raw red/yellow/green scales).
-const difficultyToneClass = (difficulty: Exercise['difficulty']): string => {
-  switch (difficulty) {
-    case 'Beginner':
-    case 'Novice':
-      return 'text-success';
-    case 'Intermediate':
-      return 'text-warning';
-    default:
-      return 'text-danger';
-  }
-};
+// Rows render in pages of this size; "Show more" appends the next page so the
+// list stays scannable without page-number chrome.
+const PAGE_SIZE = 40;
 
+function ExerciseRowSkeleton() {
+  return (
+    <div className="flex items-center gap-4 px-4 py-3">
+      <Skeleton className="h-2.5 w-2.5 rounded-full" />
+      <div className="flex-1 space-y-2">
+        <Skeleton className="h-4 w-3/5" />
+        <Skeleton className="h-3 w-2/5" />
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Library (Tempo): a raised search pill, one scrolling row of muscle filter
+ * chips, and the catalog as hairline-separated rows on a subtle card. Each row
+ * is a hue dot, the name, and a muted muscles/equipment line; tapping opens the
+ * detail (video + instructions) in a sheet.
+ *
+ * Muscle chips share the Home body map's vocabulary and drive the same
+ * `?muscle=` deep link, so arriving from the map and tapping a chip are one path.
+ */
 export default function ExercisesPage() {
   const dispatch = useAppDispatch();
   // Trigger the lazy exercise-database load for this route. Previously the
@@ -49,15 +52,13 @@ export default function ExercisesPage() {
   const customExercises = useAppSelector(selectCustomExercises);
   const [searchParams, setSearchParams] = useSearchParams();
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedMuscleGroup, setSelectedMuscleGroup] = useState('all');
   const [activeMuscle, setActiveMuscle] = useState(() => searchParams.get('muscle') ?? '');
-  const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage] = useState(12);
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
 
-  // Deep-link support: the Home body map navigates here with ?muscle=<name>.
-  // Apply the substring muscle filter once the exercise database has loaded
-  // (and whenever the param changes). Other params/states are reset so the
-  // muscle filter is the sole active criterion on arrival.
+  // Deep-link support: the Home body map (and the chips below) navigate here
+  // with ?muscle=<name>. Apply the substring muscle filter once the exercise
+  // database has loaded (and whenever the param changes). The search term is
+  // reset so the muscle filter is the sole active criterion on arrival.
   useEffect(() => {
     const muscle = searchParams.get('muscle') ?? '';
     setActiveMuscle(muscle);
@@ -66,14 +67,13 @@ export default function ExercisesPage() {
     // than a one-shot flag ensures the filter lands once the data arrives).
     if (muscle && exercises.length > 0) {
       setSearchTerm('');
-      setSelectedMuscleGroup('all');
-      setCurrentPage(1);
+      setVisibleCount(PAGE_SIZE);
       dispatch(filterByMuscle(muscle));
     }
   }, [searchParams, exercises, dispatch]);
 
-  // Dropping the muscle deep-link when the user picks another filter keeps the
-  // active-filter chip honest.
+  // Dropping the muscle deep-link when the user searches keeps the selected
+  // chip honest (search and muscle filter are separate criteria in the store).
   const clearMuscleParam = () => {
     if (!activeMuscle) return;
     setActiveMuscle('');
@@ -82,9 +82,17 @@ export default function ExercisesPage() {
 
   const clearMuscleFilter = () => {
     clearMuscleParam();
-    setSelectedMuscleGroup('all');
-    setCurrentPage(1);
+    setSearchTerm('');
+    setVisibleCount(PAGE_SIZE);
     dispatch(filterByMuscleGroup('all'));
+  };
+
+  const selectMuscle = (term: string) => {
+    if (term.toLowerCase() === activeMuscle.toLowerCase()) {
+      clearMuscleFilter();
+      return;
+    }
+    setSearchParams({ muscle: term }, { replace: true });
   };
 
   // Helper to check if an exercise is custom
@@ -92,328 +100,205 @@ export default function ExercisesPage() {
     return customExercises.some(custom => custom.id === exerciseId || exerciseId.startsWith('custom-'));
   };
 
-  const muscleGroups = useMemo(() => {
-    const groups = Array.from(new Set(exercises.map(e => e.muscleGroup)));
-    return ['all', ...groups.sort()];
-  }, [exercises]);
-
   const handleSearch = (term: string) => {
     clearMuscleParam();
     setSearchTerm(term);
-    setCurrentPage(1); // Reset to first page on search
+    setVisibleCount(PAGE_SIZE);
     dispatch(searchExercises(term));
-  };
-
-  const handleMuscleGroupFilter = (group: string) => {
-    clearMuscleParam();
-    setSelectedMuscleGroup(group);
-    setCurrentPage(1); // Reset to first page on filter
-    dispatch(filterByMuscleGroup(group));
-  };
-
-  // Pagination logic
-  const totalPages = Math.ceil(filteredExercises.length / itemsPerPage);
-  const startIndex = (currentPage - 1) * itemsPerPage;
-  const endIndex = startIndex + itemsPerPage;
-  const currentExercises = filteredExercises.slice(startIndex, endIndex);
-
-  const handlePageChange = (page: number) => {
-    setCurrentPage(page);
-    // Scroll to top when page changes
-    scrollAppToTop();
   };
 
   const handleExerciseClick = (exercise: Exercise) => {
     dispatch(setSelectedExercise(exercise));
   };
 
-  if (isLoading) {
-    return (
-      <div className="min-h-full bg-surface p-4" aria-busy="true">
-        <div className="max-w-6xl mx-auto">
-          <div className="mb-8">
-            <Skeleton className="h-9 w-64 mb-2" />
-            <Skeleton className="h-5 w-80" />
-          </div>
+  // A deep-linked muscle outside the chip vocabulary still gets a chip, first.
+  const chipTerms =
+    activeMuscle && !ALL_MUSCLE_TERMS.some((t) => t.toLowerCase() === activeMuscle.toLowerCase())
+      ? [activeMuscle, ...ALL_MUSCLE_TERMS]
+      : ALL_MUSCLE_TERMS;
 
-          <div className="mb-6 space-y-4 md:space-y-0 md:flex md:gap-4">
-            <Skeleton className="h-touch-min flex-1" />
-            <Skeleton className="h-touch-min w-full md:w-48" />
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {Array.from({ length: 6 }, (_, i) => (
-              <Card key={i} elevation={1}>
-                <CardBody className="space-y-4">
-                  <Skeleton className="aspect-video w-full" />
-                  <Skeleton className="h-6 w-3/4" />
-                  <div className="space-y-2">
-                    <Skeleton className="h-4 w-full" />
-                    <Skeleton className="h-4 w-2/3" />
-                  </div>
-                </CardBody>
-              </Card>
-            ))}
-          </div>
-        </div>
-      </div>
-    );
-  }
+  const visibleExercises = filteredExercises.slice(0, visibleCount);
+  const remaining = filteredExercises.length - visibleExercises.length;
 
   if (error) {
     return (
-      <div className="min-h-full bg-surface p-4 flex items-center justify-center">
-        <p className="text-danger text-body">{error}</p>
+      <div className="min-h-full bg-surface px-4 pb-8 pt-6">
+        <h1 className="font-display text-display text-ink">Library</h1>
+        <p className="mt-3 max-w-[34ch] text-body text-ink-muted">
+          The exercise list didn't load. Check your connection and reopen this tab.
+        </p>
+        <p className="mt-2 text-body-sm text-ink-subtle">{error}</p>
       </div>
     );
   }
 
   return (
-    <div className="min-h-full bg-surface p-4">
-      <div className="max-w-6xl mx-auto">
-        <div className="mb-8">
-          <h1 className="text-display font-bold text-ink mb-2">Exercise Database</h1>
-          <p className="text-ink-muted text-body">Browse {exercises.length} exercises with video demonstrations</p>
-        </div>
+    <div className="min-h-full bg-surface px-4 pb-8 pt-6">
+      <div className="mx-auto max-w-2xl">
+        <header>
+          <p className="text-body-sm text-ink-muted">
+            {isLoading ? 'Loading exercises' : `${exercises.length.toLocaleString()} exercises`}
+          </p>
+          <h1 className="mt-1 font-display text-display text-ink">Library</h1>
+        </header>
 
-        <div className="mb-6 space-y-4 md:space-y-0 md:flex md:gap-4">
-          <Input
-            type="text"
-            placeholder="Search exercises..."
+        <div className="relative mt-5">
+          <Search
+            size={18}
+            aria-hidden="true"
+            className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-ink-subtle"
+          />
+          <input
+            type="search"
+            placeholder="Search exercises"
             value={searchTerm}
             onChange={(e) => handleSearch(e.target.value)}
-            className="flex-1"
             aria-label="Search exercises"
+            className="h-touch-lg w-full rounded-full bg-surface-raised pl-11 pr-12 text-body text-ink placeholder:text-ink-subtle focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface [&::-webkit-search-cancel-button]:hidden"
           />
-
-          <div className="w-full md:w-48">
-            <Select value={selectedMuscleGroup} onValueChange={handleMuscleGroupFilter}>
-              <SelectTrigger aria-label="Filter by muscle group">
-                <SelectValue placeholder="All Muscle Groups" />
-              </SelectTrigger>
-              <SelectContent>
-                {muscleGroups.map(group => (
-                  <SelectItem key={group} value={group}>
-                    {group === 'all' ? 'All Muscle Groups' : group}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+          {searchTerm && (
+            <IconButton
+              variant="ghost"
+              size="sm"
+              aria-label="Clear search"
+              onClick={() => handleSearch('')}
+              className="absolute right-2 top-1/2 -translate-y-1/2"
+            >
+              <X size={16} aria-hidden="true" />
+            </IconButton>
+          )}
         </div>
 
-        {activeMuscle && (
-          <div className="mb-4 flex items-center gap-2">
-            <span className="text-body-sm text-ink-muted">Filtered by muscle:</span>
-            <button
-              type="button"
-              onClick={clearMuscleFilter}
-              className="inline-flex items-center gap-1 rounded-full bg-accent/10 px-3 py-1 text-body-sm font-medium text-accent transition-colors hover:bg-accent/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface"
-              aria-label={`Clear ${activeMuscle} filter`}
+        {/* Muscle filter chips: one horizontally scrolling row, bled to the
+            screen edge so the row reads as scrollable. */}
+        <div
+          role="group"
+          aria-label="Filter by muscle"
+          className="-mx-4 mt-3 flex gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        >
+          <FilterChip selected={!activeMuscle} onClick={clearMuscleFilter}>
+            All
+          </FilterChip>
+          {chipTerms.map((term) => (
+            <FilterChip
+              key={term}
+              selected={term.toLowerCase() === activeMuscle.toLowerCase()}
+              onClick={() => selectMuscle(term)}
             >
-              <span className="capitalize">{activeMuscle}</span>
-              <X size={14} aria-hidden="true" />
-            </button>
-          </div>
-        )}
+              {term}
+            </FilterChip>
+          ))}
+        </div>
 
-        {filteredExercises.length === 0 ? (
-          <div className="text-center py-12">
-            <p className="text-ink-muted text-body">No exercises found matching your criteria</p>
+        {isLoading ? (
+          <div aria-busy="true" className="mt-4 overflow-hidden rounded-[20px] bg-surface-subtle">
+            {Array.from({ length: 8 }, (_, i) => (
+              <div key={i} className={i > 0 ? 'border-t border-hairline' : undefined}>
+                <ExerciseRowSkeleton />
+              </div>
+            ))}
+          </div>
+        ) : filteredExercises.length === 0 ? (
+          <div className="mt-10 text-center">
+            <p className="text-body text-ink">No exercises match</p>
+            <p className="mt-1 text-body-sm text-ink-muted">Try a shorter search or another muscle.</p>
+            {(searchTerm || activeMuscle) && (
+              <Button variant="secondary" size="md" className="mt-4" onClick={clearMuscleFilter}>
+                Show all exercises
+              </Button>
+            )}
           </div>
         ) : (
           <>
-            {/* Results info */}
-            <div className="flex justify-between items-center mb-4 text-ink-subtle text-body-sm">
-              <p>
-                Showing {startIndex + 1}-{Math.min(endIndex, filteredExercises.length)} of {filteredExercises.length} exercises
-              </p>
-              <p>Page {currentPage} of {totalPages}</p>
-            </div>
+            <p className="mb-2 mt-4 px-1 text-body-sm text-ink-muted" aria-live="polite">
+              {activeMuscle || searchTerm
+                ? `${filteredExercises.length.toLocaleString()} ${filteredExercises.length === 1 ? 'match' : 'matches'}`
+                : 'All exercises'}
+            </p>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {currentExercises.map(exercise => (
-                <Card
-                  key={exercise.id}
-                  elevation={1}
-                  role="button"
-                  tabIndex={0}
-                  onClick={() => handleExerciseClick(exercise)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' || e.key === ' ') {
-                      e.preventDefault();
-                      handleExerciseClick(exercise);
-                    }
-                  }}
-                  className="cursor-pointer transition-shadow duration-snap hover:shadow-e2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface"
-                >
-                  <CardBody className="pt-4">
-                    {exercise.videoLinks.length > 0 && (
-                      <div className="mb-4">
-                        <ExerciseVideo
-                          key={`${exercise.id}-${exercise.videoLinks[0]}`}
-                          videoUrl={exercise.videoLinks[0]}
-                          exerciseName={exercise.name}
-                          autoPlay={false}
-                          muted={true}
-                          compact={true}
-                          fallbackVideoUrls={exercise.videoLinks.slice(1)}
-                          instructions={exercise.instructions}
-                        />
-                      </div>
-                    )}
-
-                    <div className="flex items-start justify-between gap-2 mb-2">
-                      <h3 className="text-title font-semibold text-ink">{exercise.name}</h3>
-                      {isCustomExercise(exercise.id) && (
-                        <CustomExerciseBadge size="sm" />
-                      )}
-                    </div>
-
-                    <div className="space-y-2 text-body-sm">
-                      <div className="flex justify-between">
-                        <span className="text-ink-muted">Muscle Group:</span>
-                        <span className="text-accent font-medium">{exercise.muscleGroup}</span>
-                      </div>
-
-                      <div className="flex justify-between">
-                        <span className="text-ink-muted">Equipment:</span>
-                        <span className="text-ink">{exercise.equipment}</span>
-                      </div>
-
-                      <div className="flex justify-between">
-                        <span className="text-ink-muted">Difficulty:</span>
-                        <span className={`font-medium ${difficultyToneClass(exercise.difficulty)}`}>
-                          {exercise.difficulty}
+            <ul className="overflow-hidden rounded-[20px] bg-surface-subtle">
+              {visibleExercises.map((exercise, i) => {
+                return (
+                  <li key={exercise.id} className={i > 0 ? 'border-t border-hairline' : undefined}>
+                    <button
+                      type="button"
+                      onClick={() => handleExerciseClick(exercise)}
+                      className="flex min-h-[64px] w-full items-center gap-4 px-4 py-3 text-left transition-colors duration-snap hover:bg-surface-raised/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent"
+                    >
+                      <ExerciseHueDot muscleGroup={exercise.muscleGroup} />
+                      <span className="min-w-0 flex-1">
+                        <span className="flex items-center gap-2">
+                          <span className="truncate text-body font-semibold text-ink">{exercise.name}</span>
+                          {isCustomExercise(exercise.id) && <CustomExerciseBadge size="sm" className="shrink-0" />}
                         </span>
-                      </div>
-                    </div>
+                        <span className="mt-0.5 block truncate text-body-sm text-ink-muted">
+                          {exercise.muscleGroup}
+                          {exercise.equipment ? ` · ${exercise.equipment}` : ''}
+                        </span>
+                      </span>
+                      <ChevronRight size={18} aria-hidden="true" className="shrink-0 text-ink-subtle" />
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
 
-                    {exercise.instructions.length > 0 && (
-                      <div className="mt-4 pt-4 border-t border-border">
-                        <p className="text-ink-muted text-body-sm line-clamp-2">
-                          {exercise.instructions[0]}
-                        </p>
-                      </div>
-                    )}
-                  </CardBody>
-                </Card>
-              ))}
-            </div>
-
-            {/* Pagination Controls */}
-            {totalPages > 1 && (
-              <Stack
-                direction="row"
-                align="center"
-                justify="center"
-                gap={2}
-                className="mt-8"
-              >
-                <IconButton
+            {remaining > 0 && (
+              <div className="mt-4 flex flex-col items-center gap-2">
+                <Button
                   variant="secondary"
-                  aria-label="Previous page"
-                  onClick={() => handlePageChange(currentPage - 1)}
-                  disabled={currentPage === 1}
+                  size="md"
+                  onClick={() => setVisibleCount((c) => c + PAGE_SIZE)}
                 >
-                  <ChevronLeft className="h-5 w-5" aria-hidden />
-                </IconButton>
-
-                {/* Page numbers */}
-                <div className="flex gap-1">
-                  {/* First page */}
-                  {currentPage > 3 && (
-                    <>
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        className="w-10"
-                        onClick={() => handlePageChange(1)}
-                      >
-                        1
-                      </Button>
-                      {currentPage > 4 && <span className="px-2 py-2 text-ink-subtle">...</span>}
-                    </>
-                  )}
-
-                  {/* Current page and surrounding */}
-                  {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-                    const page = Math.max(1, Math.min(totalPages - 4, currentPage - 2)) + i;
-                    if (page <= totalPages) {
-                      return (
-                        <Button
-                          key={page}
-                          variant={page === currentPage ? 'primary' : 'secondary'}
-                          size="sm"
-                          className="w-10"
-                          onClick={() => handlePageChange(page)}
-                          aria-current={page === currentPage ? 'page' : undefined}
-                        >
-                          {page}
-                        </Button>
-                      );
-                    }
-                    return null;
-                  })}
-
-                  {/* Last page */}
-                  {currentPage < totalPages - 2 && (
-                    <>
-                      {currentPage < totalPages - 3 && <span className="px-2 py-2 text-ink-subtle">...</span>}
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        className="w-10"
-                        onClick={() => handlePageChange(totalPages)}
-                      >
-                        {totalPages}
-                      </Button>
-                    </>
-                  )}
-                </div>
-
-                <IconButton
-                  variant="secondary"
-                  aria-label="Next page"
-                  onClick={() => handlePageChange(currentPage + 1)}
-                  disabled={currentPage === totalPages}
-                >
-                  <ChevronRight className="h-5 w-5" aria-hidden />
-                </IconButton>
-              </Stack>
+                  Show more
+                </Button>
+                <p className="text-body-sm text-ink-subtle">
+                  <span className="font-num font-tabular">{visibleExercises.length.toLocaleString()}</span> of{' '}
+                  <span className="font-num font-tabular">{filteredExercises.length.toLocaleString()}</span>
+                </p>
+              </div>
             )}
           </>
         )}
 
-        {/* Exercise Detail Sheet */}
+        {/* Exercise detail sheet */}
         <Sheet
           open={!!selectedExercise}
           onOpenChange={(open) => {
             if (!open) dispatch(setSelectedExercise(null));
           }}
         >
-          <SheetContent className="max-w-4xl mx-auto">
+          <SheetContent className="mx-auto max-w-2xl">
             {selectedExercise && (
               <div className="space-y-6">
-                <div className="flex items-center gap-3">
-                  <SheetTitle className="text-display">{selectedExercise.name}</SheetTitle>
-                  {isCustomExercise(selectedExercise.id) && (
-                    <CustomExerciseBadge size="md" />
-                  )}
+                <div>
+                  <div className="flex items-start gap-3">
+                    <SheetTitle className="min-w-0 flex-1 break-words text-title font-display">
+                      {selectedExercise.name}
+                    </SheetTitle>
+                    {isCustomExercise(selectedExercise.id) && (
+                      <CustomExerciseBadge size="md" className="mt-1 shrink-0" />
+                    )}
+                  </div>
+                  <SheetDescription className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1">
+                    <ExerciseHueDot muscleGroup={selectedExercise.muscleGroup} />
+                    <span>{selectedExercise.muscleGroup}</span>
+                  </SheetDescription>
                 </div>
 
-                <div className="flex flex-wrap gap-3 text-body-sm">
-                  <span className="text-accent">{selectedExercise.muscleGroup}</span>
-                  <span className="text-ink-subtle">•</span>
-                  <span className="text-ink">{selectedExercise.equipment}</span>
-                  <span className="text-ink-subtle">•</span>
-                  <span className={difficultyToneClass(selectedExercise.difficulty)}>
-                    {selectedExercise.difficulty}
-                  </span>
-                </div>
+                <dl className="grid grid-cols-2 gap-3">
+                  <div className="rounded-2xl bg-surface-raised px-4 py-3">
+                    <dt className="text-body-sm text-ink-muted">Equipment</dt>
+                    <dd className="mt-0.5 text-body font-semibold text-ink">{selectedExercise.equipment || 'None'}</dd>
+                  </div>
+                  <div className="rounded-2xl bg-surface-raised px-4 py-3">
+                    <dt className="text-body-sm text-ink-muted">Difficulty</dt>
+                    <dd className="mt-0.5 text-body font-semibold text-ink">{selectedExercise.difficulty}</dd>
+                  </div>
+                </dl>
 
                 {selectedExercise.videoLinks.length > 0 && (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                     {selectedExercise.videoLinks.slice(0, 2).map((videoUrl, index) => (
                       <ExerciseVideo
                         key={index}
@@ -429,16 +314,24 @@ export default function ExercisesPage() {
                 )}
 
                 {selectedExercise.instructions.length > 0 && (
-                  <div>
-                    <h3 className="text-title font-semibold text-ink mb-3">Instructions</h3>
-                    <ol className="list-decimal list-inside space-y-2">
+                  <section aria-labelledby="exercise-instructions-heading">
+                    <h3 id="exercise-instructions-heading" className="mb-3 text-body font-semibold text-ink">
+                      How to do it
+                    </h3>
+                    <ol className="space-y-3">
                       {selectedExercise.instructions.map((instruction, index) => (
-                        <li key={index} className="text-ink-muted text-body">
-                          {instruction}
+                        <li key={index} className="flex gap-3 text-body text-ink-muted">
+                          <span
+                            aria-hidden="true"
+                            className="w-5 shrink-0 text-right font-num font-tabular font-bold text-ink"
+                          >
+                            {index + 1}
+                          </span>
+                          <span className="min-w-0">{instruction}</span>
                         </li>
                       ))}
                     </ol>
-                  </div>
+                  </section>
                 )}
               </div>
             )}
@@ -446,5 +339,31 @@ export default function ExercisesPage() {
         </Sheet>
       </div>
     </div>
+  );
+}
+
+function FilterChip({
+  selected,
+  onClick,
+  children,
+}: {
+  selected: boolean;
+  onClick: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      aria-pressed={selected}
+      onClick={onClick}
+      className={cn(
+        'min-h-touch-min shrink-0 whitespace-nowrap rounded-full px-4 text-body-sm font-semibold transition-colors duration-snap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface',
+        selected
+          ? 'bg-accent-2 text-accent-2-fg'
+          : 'bg-surface-raised text-ink-muted hover:text-ink',
+      )}
+    >
+      {children}
+    </button>
   );
 }
