@@ -11,7 +11,6 @@ import {
 } from 'lucide-react';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import type { CalendarMonth, WorkoutCalendarDay } from '../../utils/statsCalculator';
-import { getWorkoutIntensity } from '../../utils/workoutColors';
 import { usePlannedSchedule } from '../../hooks/usePlannedSchedule';
 import {
   MUSCLE_GROUPS,
@@ -34,13 +33,6 @@ interface WorkoutCalendarProps {
   /** Dev/testing only: seed the expanded (month) state. Defaults to collapsed (week). */
   initialExpanded?: boolean;
 }
-
-// Map an intensity bucket to a fill width for the under-icon bar.
-const INTENSITY_WIDTH: Record<'low' | 'medium' | 'high', string> = {
-  low: 'w-1/4',
-  medium: 'w-1/2',
-  high: 'w-full',
-};
 
 // Dashed muscle-hue border for a planned (not-yet-done) day. Literal class
 // strings keep Tailwind's JIT from purging them.
@@ -129,9 +121,12 @@ export function WorkoutCalendar({
           <Skeleton className="h-4 w-24" />
           <Skeleton className="h-7 w-16" />
         </div>
-        <div className="grid grid-cols-7 gap-1.5">
+        <div className="grid grid-cols-7 gap-1">
           {Array.from({ length: 7 }).map((_, i) => (
-            <Skeleton key={i} className="aspect-square rounded-md" />
+            <div key={i} className="flex flex-col items-center gap-1.5">
+              <Skeleton className="h-10 w-10 rounded-full" />
+              <Skeleton className="h-3 w-6" />
+            </div>
           ))}
         </div>
       </div>
@@ -143,7 +138,7 @@ export function WorkoutCalendar({
       {/* Slim control row. The date label itself is the week/month toggle (a
           chevron hints at it) — no separate "Month"/"Week" button. Month nav
           (prev/next) only appears in the expanded month view. */}
-      <div className="mb-2 flex items-center justify-between">
+      <div className="mb-3 flex items-center justify-between">
         <button
           type="button"
           onClick={handleToggle}
@@ -151,19 +146,19 @@ export function WorkoutCalendar({
           aria-controls="home-calendar-grid"
           aria-label={expanded ? 'Collapse to week view' : 'Expand to month view'}
           className={cn(
-            'group -ml-1 inline-flex items-center gap-1.5 rounded-md px-1.5 py-1',
-            'transition-colors hover:bg-surface-subtle',
-            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2',
+            'group -ml-2 inline-flex min-h-touch-min items-center gap-2 rounded-full px-2',
+            'transition-colors hover:bg-surface-raised/60',
+            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface',
           )}
         >
-          <Calendar className="text-accent" size={18} aria-hidden="true" />
+          <Calendar className="text-ink-muted group-hover:text-ink" size={18} aria-hidden="true" />
           {expanded ? (
-            <h3 className="font-marker text-body text-ink">
+            <h3 className="text-body font-semibold text-ink">
               {calendarData.monthName}{' '}
               <span className="font-num font-tabular">{calendarData.year}</span>
             </h3>
           ) : (
-            <span className="font-num font-tabular text-caption text-ink-muted group-hover:text-ink">
+            <span className="font-num font-tabular text-body-sm text-ink-muted group-hover:text-ink">
               {formatWeekRange(currentWeek)}
             </span>
           )}
@@ -209,15 +204,9 @@ export function WorkoutCalendar({
       {/* Month view keeps a shared weekday header; the week strip puts the day
           label inside each square instead (see CalendarDayCell). */}
       {expanded && (
-        <div className="mb-1.5 grid grid-cols-7 gap-1.5">
-          {WEEKDAY_LABELS.map((day, i) => (
-            <div
-              key={day}
-              className={cn(
-                'text-center font-marker text-[10px] uppercase tracking-wide text-ink-subtle',
-                (i === 0 || i === 6) && 'text-ink-subtle/70',
-              )}
-            >
+        <div className="mb-2 grid grid-cols-7 gap-1">
+          {WEEKDAY_LABELS.map((day) => (
+            <div key={day} className="text-center text-caption text-ink-subtle">
               {day}
             </div>
           ))}
@@ -226,7 +215,7 @@ export function WorkoutCalendar({
 
       {/* Calendar weeks — the today row carries a constant key so it persists
           across expand/collapse (only the surrounding rows fade). */}
-      <div id="home-calendar-grid" className="space-y-1.5">
+      <div id="home-calendar-grid" className="space-y-2">
         <AnimatePresence initial={false}>
           {displayedWeeks.map((week) => {
             const isTodayRow = week.some((d) => d.isToday);
@@ -241,7 +230,7 @@ export function WorkoutCalendar({
                 animate={{ opacity: 1, y: 0 }}
                 exit={reduceMotion ? { opacity: 0 } : { opacity: 0, y: -4 }}
                 transition={{ duration: reduceMotion ? 0 : 0.18, ease: [0.32, 0.72, 0, 1] }}
-                className="grid grid-cols-7 gap-1.5"
+                className="grid grid-cols-7 gap-1"
               >
                 {week.map((day) => (
                   <CalendarDayCell
@@ -282,7 +271,7 @@ function Legend() {
       <div className="flex items-center gap-1.5 text-caption text-ink-muted">
         <span
           aria-hidden="true"
-          className="h-3.5 w-3.5 rounded border border-dashed border-ink-subtle"
+          className="h-3.5 w-3.5 rounded-full border-2 border-dashed border-ink-subtle"
         />
         <span>Planned</span>
       </div>
@@ -300,25 +289,14 @@ interface CalendarDayCellProps {
 // 'planned' is the revived "upcoming" state — now that WorkoutCalendarDay carries
 // a per-day Charlie-Split plan signal (day.planned), future planned days render a
 // ghosted glyph instead of collapsing to a rest dot.
-type DayState = 'completed' | 'today' | 'planned' | 'rest' | 'missed';
+type DayState = 'completed' | 'planned' | 'rest' | 'missed';
 
 function CalendarDayCell({ day, showWeekday, onClick }: CalendarDayCellProps) {
   const hasWorkouts = day.workouts.length > 0;
   const planned = day.planned ?? null;
   const isPlannedActive = planned != null && planned.status === 'planned';
 
-  // Day-state vocabulary: today > completed > planned > missed > rest.
-  const state: DayState = day.isToday
-    ? 'today'
-    : hasWorkouts
-      ? 'completed'
-      : !day.isPast && isPlannedActive
-        ? 'planned'
-        : day.isPast
-          ? 'missed'
-          : 'rest';
-
-  // Muscle group + intensity: completed days derive from the session NAME; a
+  // Muscle group: completed days derive from the session NAME; a
   // planned/missed day uses its plan's dayType directly (push/pull/legs).
   const primary = hasWorkouts ? day.workouts[0] : null;
   const group: MuscleGroup | null =
@@ -328,22 +306,41 @@ function CalendarDayCell({ day, showWeekday, onClick }: CalendarDayCellProps) {
         ? (planned.dayType as MuscleGroup)
         : null;
   const meta = group ? MUSCLE_GROUP_META[group] : null;
-  const intensity = primary
-    ? getWorkoutIntensity(primary.totalVolume, primary.duration, primary.totalSets)
-    : null;
-
   const Icon = meta?.icon ?? null;
   const extraCount = day.workouts.length - 1;
   const weekdayLabel = WEEKDAY_LABELS[day.date.getDay()];
+
+  // Tempo day vocabulary: a filled muscle-hue circle = done, a dashed hue ring
+  // = planned, a raised circle = rest/missed, and an amber ring marks today on
+  // top of whatever the day holds.
+  const baseState: DayState = hasWorkouts
+    ? 'completed'
+    : !day.isPast && isPlannedActive
+      ? 'planned'
+      : day.isPast && !day.isToday
+        ? 'missed'
+        : 'rest';
+
+  const circleClass = cn(
+    'relative flex items-center justify-center rounded-full transition-colors duration-snap',
+    showWeekday ? 'h-10 w-10' : 'h-9 w-9',
+    baseState === 'completed' && meta
+      ? meta.bgClass
+      : baseState === 'planned' && planned
+        ? cn('border-2 border-dashed bg-transparent', PLANNED_BORDER[planned.dayType])
+        : 'bg-surface-raised group-hover:bg-surface-raised/70',
+    day.isToday && 'ring-2 ring-accent ring-offset-2 ring-offset-surface',
+  );
 
   return (
     <button
       type="button"
       onClick={onClick}
-      title={primary?.name ?? (isPlannedActive && planned ? `Planned · ${planned.variantLabel}` : undefined)}
+      title={primary?.name ?? (isPlannedActive && planned ? `Planned: ${planned.variantLabel}` : undefined)}
+      aria-current={day.isToday ? 'date' : undefined}
       aria-label={`${weekdayLabel} ${day.date.toDateString()}${
         primary
-          ? `, ${primary.name}`
+          ? `, ${primary.name}${extraCount > 0 ? ` and ${extraCount} more` : ''}`
           : isPlannedActive && planned
             ? `, planned ${planned.dayType}`
             : day.isToday
@@ -351,101 +348,64 @@ function CalendarDayCell({ day, showWeekday, onClick }: CalendarDayCellProps) {
               : ', rest day'
       }`}
       className={cn(
-        'relative flex aspect-square flex-col rounded-md border p-1 text-left',
-        'transition-colors duration-snap focus-visible:outline-none',
-        'focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2',
-        'bg-surface-raised border-ink/8 hover:bg-surface-subtle',
-        state === 'planned' && 'border-dashed',
-        state === 'planned' && planned ? PLANNED_BORDER[planned.dayType] : '',
-        day.isToday && 'bg-accent/8 ring-2 ring-accent border-accent',
+        'group flex min-h-touch-min flex-col items-center gap-1.5 rounded-2xl py-1',
+        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent',
         !day.isCurrentMonth && 'opacity-40',
       )}
     >
-      {/* Top row: weekday label (week strip only) + date number, kept on one line. */}
-      <div className="flex items-baseline justify-between gap-0.5 leading-none">
-        {showWeekday && (
+      <span className={circleClass}>
+        {Icon && meta ? (
+          <Icon
+            size={showWeekday ? 20 : 18}
+            aria-hidden="true"
+            className={cn(
+              baseState === 'completed' ? 'text-ink-inverse' : meta.textClass,
+              baseState === 'missed' && 'opacity-45',
+            )}
+          />
+        ) : showWeekday ? (
           <span
             className={cn(
-              'font-marker text-[9px] uppercase leading-none',
-              day.isToday ? 'text-accent' : 'text-ink-subtle',
+              'font-num font-tabular text-body-sm',
+              day.isToday ? 'font-bold text-accent' : 'text-ink-muted',
             )}
           >
-            {weekdayLabel}
-          </span>
-        )}
-        <span
-          className={cn(
-            'font-num font-tabular text-caption leading-none',
-            day.isToday ? 'text-accent font-semibold' : 'text-ink-subtle',
-          )}
-        >
-          {day.dayNumber}
-        </span>
-      </div>
-
-      {/* Center: muscle glyph or rest dot */}
-      <div className="flex flex-1 flex-col items-center justify-center">
-        {Icon && meta ? (
-          <span className="relative inline-flex items-center justify-center">
-            <Icon
-              size={20}
-              aria-hidden="true"
-              className={cn(
-                meta.textClass,
-                state === 'missed' && 'opacity-50',
-                state === 'planned' && 'opacity-70',
-              )}
-            />
-            {state === 'missed' && (
-              <Slash
-                size={20}
-                aria-hidden="true"
-                className="absolute inset-0 text-danger/85"
-              />
-            )}
+            {day.dayNumber}
           </span>
         ) : (
-          // Rest day → subtle dot only.
-          <span
-            aria-hidden="true"
-            className="h-1 w-1 rounded-full bg-ink-subtle/30"
-          />
+          <span aria-hidden="true" className="h-1 w-1 rounded-full bg-ink-subtle/50" />
         )}
 
-        {/* Intensity bar (non-rest, has intensity) */}
-        {meta && intensity && (
-          <span className="mt-1 flex h-0.5 w-5 overflow-hidden rounded-full">
-            <span
-              className={cn('h-full rounded-full', meta.barClass, INTENSITY_WIDTH[intensity])}
-            />
+        {baseState === 'missed' && Icon && (
+          <Slash size={20} aria-hidden="true" className="absolute text-danger/80" />
+        )}
+
+        {/* 1RM-retest marker */}
+        {day.planned?.isRetest && baseState !== 'completed' && (
+          <span
+            title="1RM test"
+            className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-accent ring-2 ring-surface"
+          >
+            <Sparkles size={9} className="text-accent-fg" aria-hidden="true" />
           </span>
         )}
-      </div>
 
-      {/* Completed check badge (top-right) */}
-      {state === 'completed' && (
-        <span
-          aria-hidden="true"
-          className="absolute -top-1 -right-1 h-3 w-3 rounded-full bg-success ring-2 ring-surface-raised"
-        />
-      )}
+        {/* Multi-session overflow */}
+        {extraCount > 0 && (
+          <span className="absolute -bottom-1 -right-1 rounded-full bg-surface px-1 font-num font-tabular text-[10px] font-semibold leading-4 text-ink">
+            +{extraCount}
+          </span>
+        )}
+      </span>
 
-      {/* 1RM-retest badge (top-left) */}
-      {day.planned?.isRetest && state !== 'completed' && (
-        <span
-          title="1RM test"
-          className="absolute -top-1 -left-1 flex h-4 w-4 items-center justify-center rounded-full bg-accent ring-2 ring-surface-raised"
-        >
-          <Sparkles size={9} className="text-accent-fg" aria-hidden="true" />
-        </span>
-      )}
-
-      {/* Multi-session overflow indicator */}
-      {extraCount > 0 && (
-        <span className="absolute bottom-0.5 right-1 font-num font-tabular text-[8px] font-medium text-ink-subtle">
-          +{extraCount}
-        </span>
-      )}
+      <span
+        className={cn(
+          'font-num font-tabular text-caption leading-none',
+          day.isToday ? 'font-semibold text-accent' : 'text-ink-muted',
+        )}
+      >
+        {showWeekday ? weekdayLabel : day.dayNumber}
+      </span>
     </button>
   );
 }

@@ -52,7 +52,8 @@
  * `color` drives them; the body outline group draws the separation strokes.
  * ------------------------------------------------------------------------- */
 .muscle-map {
-  color: hsl(var(--surface-raised)); /* resting muscle */
+  /* Resting muscle: a light slate that reads clearly on the subtle card. */
+  color: hsl(var(--ink) / 0.24);
 }
 .muscle-map svg {
   display: block;
@@ -71,7 +72,9 @@
   pointer-events: none;
 }
 .muscle-map svg [stroke] {
-  stroke: hsl(var(--surface));
+  /* The outline group draws the head/hands AND the muscle separations, so it
+     must stay visible: a lighter slate than the resting muscle fill. */
+  stroke: hsl(var(--ink) / 0.45);
 }
 /* MuscleWiki ships hidden joint markers — keep them hidden. */
 .muscle-map g[id].hidden {

@@ -9,7 +9,7 @@ import { BODY_BACK_SVG } from './bodyBackSvg';
  * BodyMuscleMap — MuscleWiki-style front/back interactive muscle map for the
  * Home page. The SVG artwork (bodyFrontSvg.ts / bodyBackSvg.ts) is MuscleWiki's,
  * supplied by the project owner; it is re-skinned to the board palette by the
- * `.muscle-map` rules in board.css (muscle <g> fills are `currentColor`).
+ * `.muscle-map` rules in tempo.css (muscle <g> fills are `currentColor`).
  *
  * Layout: when a back view is available, both figures show side-by-side on wide
  * screens (md+) and collapse to a Front/Back toggle on narrow screens. With no
@@ -55,47 +55,43 @@ export function BodyMuscleMap({
 
   return (
     <div>
-      <div className="mb-3 flex items-end justify-between gap-3">
-        <div>
-          <h2 className="font-marker text-title leading-none text-ink">Pick a muscle</h2>
-          <p className="mt-1 text-body-sm text-ink-muted">
-            Tap a muscle to browse its exercises
-          </p>
-        </div>
+      <div className="mb-4">
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="text-title text-ink">Muscles</h2>
 
-        {/* Front/Back toggle — only on narrow screens, only when a back exists. */}
-        {hasBack && (
-          <div
-            className="flex shrink-0 overflow-hidden rounded-md border border-border md:hidden"
-            role="group"
-            aria-label="Body view"
-          >
-            {(['front', 'back'] as const).map((v) => (
-              <button
-                key={v}
-                type="button"
-                onClick={() => setView(v)}
-                aria-pressed={view === v}
-                className={cn(
-                  'px-3 py-1 font-marker text-caption uppercase tracking-wide transition-colors',
-                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-inset',
-                  view === v
-                    ? 'bg-accent text-accent-fg'
-                    : 'text-ink-muted hover:bg-surface-subtle',
-                )}
-              >
-                {v}
-              </button>
-            ))}
-          </div>
-        )}
+          {/* Front/Back toggle — only on narrow screens, only when a back exists. */}
+          {hasBack && (
+            <div
+              className="flex shrink-0 gap-1 rounded-full bg-surface-raised p-1 md:hidden"
+              role="group"
+              aria-label="Body view"
+            >
+              {(['front', 'back'] as const).map((v) => (
+                <button
+                  key={v}
+                  type="button"
+                  onClick={() => setView(v)}
+                  aria-pressed={view === v}
+                  className={cn(
+                    'min-h-9 rounded-full px-4 text-body-sm font-semibold capitalize transition-colors duration-snap',
+                    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent',
+                    view === v ? 'bg-surface text-ink' : 'text-ink-muted hover:text-ink',
+                  )}
+                >
+                  {v}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+        <p className="mt-1 text-body-sm text-ink-muted">Tap a muscle to see its exercises.</p>
       </div>
 
       {/* Click handling delegated to the wrapper (event bubbles from the paths). */}
       <div className="muscle-map flex items-start justify-center gap-4" onClick={handleClick}>
         <figure className={cn(figureBase, frontDisplay)}>
           <div className="w-full" dangerouslySetInnerHTML={{ __html: frontSvg }} />
-          <figcaption className="mt-1 font-marker text-caption uppercase tracking-wide text-ink-subtle">
+          <figcaption className="mt-2 text-caption text-ink-muted">
             Front
           </figcaption>
         </figure>
@@ -103,7 +99,7 @@ export function BodyMuscleMap({
         {hasBack && (
           <figure className={cn(figureBase, backDisplay)}>
             <div className="w-full" dangerouslySetInnerHTML={{ __html: backSvg }} />
-            <figcaption className="mt-1 font-marker text-caption uppercase tracking-wide text-ink-subtle">
+            <figcaption className="mt-2 text-caption text-ink-muted">
               Back
             </figcaption>
           </figure>

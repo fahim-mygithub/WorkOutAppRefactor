@@ -3,7 +3,7 @@
  *
  * Same structure as bodyFrontSvg.ts: each muscle group is a `<g id="...">` with
  * `fill="currentColor"` paths (re-skinned to the board palette by the
- * `.muscle-map` rules in board.css), the `#body` outline group draws the
+ * `.muscle-map` rules in tempo.css), the `#body` outline group draws the
  * separation strokes, and the joint-marker groups ship `class="hidden"`.
  * Mapped group ids (see MuscleMap MUSCLE_TERMS): traps, traps-middle,
  * rear-shoulders, triceps, forearms, lats, lowerback, glutes, hamstrings,

@@ -2,7 +2,7 @@
  * MuscleWiki anterior (front) body map SVG, captured from musclewiki.com.
  *
  * NOTE: this is MuscleWiki's proprietary artwork, supplied by the project owner.
- * It is re-skinned to the board palette via the `.muscle-map` rules in board.css
+ * It is re-skinned to the Tempo palette via the `.muscle-map` rules in tempo.css
  * (the muscle <g> fills use `currentColor`, so CSS `color` drives them). Muscle
  * group <g id="..."> values map to directory search terms in BodyMuscleMap.tsx.
  *
