@@ -263,8 +263,12 @@ export default function ProfilePage() {
     }
   };
 
-  const displayName = profile?.displayName || 'Profile';
-  const initial = (profile?.displayName?.[0] ?? profile?.email?.[0] ?? '?').toUpperCase();
+  // Identity comes from the signed-in account (Google fills name, email and
+  // photo); the Firestore profile can lag or be blank for email sign-ups.
+  const email = profile?.email || user?.email || '';
+  const displayName = profile?.displayName || user?.displayName || email.split('@')[0] || 'Profile';
+  const photoURL = profile?.photoURL || user?.photoURL || '';
+  const initial = (displayName[0] ?? '?').toUpperCase();
 
   const lifetime: { label: string; value: ReactNode }[] = [
     { label: 'Workouts', value: stats.totalWorkouts.toLocaleString() },
@@ -291,15 +295,24 @@ export default function ProfilePage() {
       {/* Identity */}
       <header className="flex items-center justify-between gap-3">
         <div className="min-w-0">
-          <p className="truncate text-body-sm text-ink-muted">{profile?.email || 'No email'}</p>
+          <p className="truncate text-body-sm text-ink-muted">{email || 'No email'}</p>
           <h1 className="truncate font-display text-display text-ink">{displayName}</h1>
         </div>
-        <span
-          aria-hidden="true"
-          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-surface-raised font-display text-body text-ink"
-        >
-          {initial}
-        </span>
+        {photoURL ? (
+          <img
+            src={photoURL}
+            alt=""
+            referrerPolicy="no-referrer"
+            className="h-11 w-11 shrink-0 rounded-full bg-surface-raised object-cover"
+          />
+        ) : (
+          <span
+            aria-hidden="true"
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-surface-raised font-display text-body text-ink"
+          >
+            {initial}
+          </span>
+        )}
       </header>
 
       {/* Lifetime numbers */}
