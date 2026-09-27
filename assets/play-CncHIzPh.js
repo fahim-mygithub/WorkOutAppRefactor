@@ -1,6 +1,6 @@
-import{c as o}from"./index-CoGTVcfa.js";/**
+import{c as o}from"./index-DMxWGnjL.js";/**
  * @license lucide-react v0.515.0 - ISC
  *
  * This source code is licensed under the ISC license.
  * See the LICENSE file in the root directory of this source tree.
- */const n=[["path",{d:"m6 9 6 6 6-6",key:"qrunsl"}]],e=o("chevron-down",n);export{e as C};
+ */const c=[["polygon",{points:"6 3 20 12 6 21 6 3",key:"1oa8hb"}]],e=o("play",c);export{e as P};

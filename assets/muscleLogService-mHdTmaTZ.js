@@ -1,4 +1,4 @@
-import{c as M,U as p,a as m}from"./index-CoGTVcfa.js";import{r as l,j as c}from"./vendor-react-B6UnZnM6.js";import{R as y,P as g,O as C,C as v,a as E,D as S}from"./vendor-radix-B4ZBZUNN.js";import{A as N,m as x}from"./vendor-motion-CbPdIbmR.js";import{A as j,c as k}from"./muscleTerms-WidbX1jP.js";/**
+import{c as M,U as p,a as m}from"./index-DMxWGnjL.js";import{r as l,j as c}from"./vendor-react-B6UnZnM6.js";import{R as y,P as g,O as C,C as v,a as E,D as S}from"./vendor-radix-B4ZBZUNN.js";import{A as N,m as x}from"./vendor-motion-CbPdIbmR.js";import{A as j,c as k}from"./muscleTerms-BrJby38I.js";/**
  * @license lucide-react v0.515.0 - ISC
  *
  * This source code is licensed under the ISC license.

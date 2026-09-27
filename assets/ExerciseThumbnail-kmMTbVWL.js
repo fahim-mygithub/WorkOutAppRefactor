@@ -1,4 +1,4 @@
-import{j as i}from"./vendor-react-B6UnZnM6.js";import{c as r,a as o}from"./index-CoGTVcfa.js";import{M as n}from"./muscleTerms-WidbX1jP.js";/**
+import{j as i}from"./vendor-react-B6UnZnM6.js";import{c as r,a as o}from"./index-DMxWGnjL.js";import{M as n}from"./muscleTerms-BrJby38I.js";/**
  * @license lucide-react v0.515.0 - ISC
  *
  * This source code is licensed under the ISC license.
