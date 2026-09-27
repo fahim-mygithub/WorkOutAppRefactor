@@ -207,7 +207,7 @@ export const ParsedWorkoutConfigurator: React.FC<ParsedWorkoutConfiguratorProps>
 
       // Estimate time: ~45s per set + rest time
       estimatedTime += setCount * 45;
-      const restTime = exercise.sets[0]?.rest || 120;
+      const restTime = exercise.restTime || exercise.sets[0]?.rest || 120;
       estimatedTime += setCount * restTime;
     });
 

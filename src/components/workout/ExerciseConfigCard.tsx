@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { Exercise } from '../../types/exercise';
@@ -99,33 +99,32 @@ export const ExerciseConfigCard: React.FC<ExerciseConfigCardProps> = ({
     });
   };
 
-  const handleRepsChange = (setIndex: number, repsValue: string) => {
-    let reps: any;
-
-    if (repsValue.toLowerCase() === 'amrap') {
-      reps = 'AMRAP';
-    } else if (repsValue.includes('-')) {
-      const [min, max] = repsValue.split('-').map(v => parseInt(v.trim()));
-      if (!isNaN(min) && !isNaN(max)) {
-        reps = { min, max };
-      } else {
-        reps = parseInt(repsValue) || 10;
-      }
-    } else {
-      reps = parseInt(repsValue) || 10;
-    }
-
-    handleSetUpdate(setIndex, 'reps', reps);
+  // Several fields change together, so patch the set once (two separate
+  // handleSetUpdate calls would each start from the stale props and the
+  // second would undo the first).
+  const patchSet = (setIndex: number, patch: Record<string, any>) => {
+    const updatedSets = [...exercise.sets];
+    updatedSets[setIndex] = { ...updatedSets[setIndex], ...patch };
+    onUpdate({ ...exercise, sets: updatedSets });
   };
 
-  const handleWeightChange = (setIndex: number, weightValue: string) => {
-    const numValue = parseFloat(weightValue);
-    if (!isNaN(numValue) && numValue > 0) {
-      handleSetUpdate(setIndex, 'weight', numValue);
-      handleSetUpdate(setIndex, 'unit', exercise.sets[setIndex].unit || weightUnit);
-    } else if (weightValue === '' || numValue === 0) {
-      handleSetUpdate(setIndex, 'weight', undefined);
-      handleSetUpdate(setIndex, 'unit', undefined);
+  const handleRepsCommit = (setIndex: number, repsValue: string) => {
+    const reps = parseReps(repsValue);
+    if (reps !== null) handleSetUpdate(setIndex, 'reps', reps);
+  };
+
+  const handleWeightCommit = (setIndex: number, weightValue: string) => {
+    const trimmed = weightValue.trim();
+    if (trimmed === '') {
+      patchSet(setIndex, { weight: undefined, unit: undefined });
+      return;
+    }
+    const numValue = parseFloat(trimmed);
+    if (!isNaN(numValue) && numValue >= 0) {
+      patchSet(setIndex, {
+        weight: numValue > 0 ? numValue : undefined,
+        unit: exercise.sets[setIndex].unit || weightUnit,
+      });
     }
   };
 
@@ -133,26 +132,21 @@ export const ExerciseConfigCard: React.FC<ExerciseConfigCardProps> = ({
     const currentSet = exercise.sets[setIndex];
     const currentUnit = currentSet.unit || 'lbs';
     const newUnit = currentUnit === 'lbs' ? 'kg' : 'lbs';
-
-    // Convert weight if there's a value
-    if (currentSet.weight) {
-      const convertedWeight = currentUnit === 'lbs'
-        ? Math.round(currentSet.weight / 2.20462 * 10) / 10  // lbs to kg
-        : Math.round(currentSet.weight * 2.20462 * 10) / 10; // kg to lbs
-
-      handleSetUpdate(setIndex, 'weight', convertedWeight);
-    }
-
-    handleSetUpdate(setIndex, 'unit', newUnit);
+    const weight = currentSet.weight
+      ? currentUnit === 'lbs'
+        ? Math.round(currentSet.weight / 2.20462 * 10) / 10 // lbs to kg
+        : Math.round(currentSet.weight * 2.20462 * 10) / 10 // kg to lbs
+      : currentSet.weight;
+    patchSet(setIndex, { weight, unit: newUnit });
   };
 
+  // The workout reads `exercise.restTime`; sets keep `rest` for older callers.
   const handleRestTimeChange = (restValue: string) => {
     const restSeconds = parseInt(restValue) || 120; // Default 2 minutes
-    const updatedSets = exercise.sets.map((set: any) => ({ ...set, rest: restSeconds }));
-
     onUpdate({
       ...exercise,
-      sets: updatedSets,
+      restTime: restSeconds,
+      sets: exercise.sets.map((set: any) => ({ ...set, rest: restSeconds })),
     });
   };
 
@@ -188,8 +182,9 @@ export const ExerciseConfigCard: React.FC<ExerciseConfigCardProps> = ({
     return String(reps);
   };
 
+  const restSeconds: number = exercise.restTime || exercise.sets[0]?.rest || 120;
+
   const getRestTimeInMinutes = (): number => {
-    const restSeconds = exercise.sets[0]?.rest || 120;
     return Math.round(restSeconds / 60 * 10) / 10; // Round to 1 decimal
   };
 
@@ -318,7 +313,7 @@ export const ExerciseConfigCard: React.FC<ExerciseConfigCardProps> = ({
           <div className="flex items-center justify-between gap-3">
             <span className="text-body-sm text-ink-muted">Rest between sets</span>
             <Select
-              value={String(exercise.sets[0]?.rest || 120)}
+              value={String(restSeconds)}
               onValueChange={(value) => handleRestTimeChange(value)}
             >
               <SelectTrigger className="w-32" aria-label="Rest between sets">
@@ -329,6 +324,7 @@ export const ExerciseConfigCard: React.FC<ExerciseConfigCardProps> = ({
                 <SelectItem value="60">1 min</SelectItem>
                 <SelectItem value="90">1.5 min</SelectItem>
                 <SelectItem value="120">2 min</SelectItem>
+                <SelectItem value="150">2.5 min</SelectItem>
                 <SelectItem value="180">3 min</SelectItem>
                 <SelectItem value="240">4 min</SelectItem>
                 <SelectItem value="300">5 min</SelectItem>
@@ -357,21 +353,21 @@ export const ExerciseConfigCard: React.FC<ExerciseConfigCardProps> = ({
                     {setIndex + 1}
                   </span>
 
-                  <Input
+                  <DraftInput
                     type="text"
                     placeholder="Reps"
                     aria-label={`Set ${setIndex + 1} reps`}
                     value={formatReps(set.reps)}
-                    onChange={(e) => handleRepsChange(setIndex, e.target.value)}
+                    onCommit={(v) => handleRepsCommit(setIndex, v)}
                   />
 
-                  <Input
-                    type="number"
+                  <DraftInput
+                    type="text"
                     inputMode="decimal"
                     placeholder="0"
                     aria-label={`Set ${setIndex + 1} weight`}
-                    value={set.weight || ''}
-                    onChange={(e) => handleWeightChange(setIndex, e.target.value)}
+                    value={set.weight ? String(set.weight) : ''}
+                    onCommit={(v) => handleWeightCommit(setIndex, v)}
                   />
 
                   <button
@@ -429,3 +425,58 @@ export const ExerciseConfigCard: React.FC<ExerciseConfigCardProps> = ({
     </li>
   );
 };
+
+/** "10", "8-12" or "AMRAP" → the parsed reps; null while the text is incomplete. */
+export function parseReps(text: string): number | { min: number; max: number } | 'AMRAP' | null {
+  const t = text.trim();
+  if (t.toLowerCase() === 'amrap') return 'AMRAP';
+  const range = t.match(/^(\d+)\s*[-–]\s*(\d+)$/);
+  if (range) {
+    const min = Number(range[1]);
+    const max = Number(range[2]);
+    if (min > 0 && max >= min) return max === min ? min : { min, max };
+    return null;
+  }
+  if (/^\d+$/.test(t) && Number(t) > 0) return Number(t);
+  return null;
+}
+
+type DraftInputProps = Omit<React.ComponentProps<typeof Input>, 'value' | 'onChange'> & {
+  value: string;
+  /** Called on every edit with the raw text; the caller ignores what it can't parse. */
+  onCommit: (text: string) => void;
+};
+
+/**
+ * A text field that owns its draft while focused, so half-typed values ("8-",
+ * an empty box) aren't parsed and snapped back mid-edit. It re-syncs from
+ * `value` when not focused, and on blur shows the last committed value.
+ */
+function DraftInput({ value, onCommit, onFocus, onBlur, ...props }: DraftInputProps) {
+  const [draft, setDraft] = useState(value);
+  const [focused, setFocused] = useState(false);
+
+  useEffect(() => {
+    if (!focused) setDraft(value);
+  }, [value, focused]);
+
+  return (
+    <Input
+      {...props}
+      value={focused ? draft : value}
+      onFocus={(e) => {
+        setDraft(value);
+        setFocused(true);
+        onFocus?.(e);
+      }}
+      onChange={(e) => {
+        setDraft(e.target.value);
+        onCommit(e.target.value);
+      }}
+      onBlur={(e) => {
+        setFocused(false);
+        onBlur?.(e);
+      }}
+    />
+  );
+}
