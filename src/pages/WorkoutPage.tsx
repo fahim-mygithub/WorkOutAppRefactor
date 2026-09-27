@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { Navigate, useNavigate, useParams } from 'react-router-dom';
 import { useAppDispatch, useAppSelector } from '../store/hooks';
 import { useAuth } from '../contexts/AuthContext';
 import { useWakeLock } from '../hooks/useWakeLock';
@@ -248,16 +248,8 @@ export default function WorkoutPage() {
       );
     }
 
-    // Regular no workout page for authenticated users
-    return (
-      <div className="flex min-h-full items-center justify-center bg-surface p-4">
-        <Card elevation={1} className="p-8 text-center">
-          <h1 className="mb-4 text-title font-bold text-ink">No Active Workout</h1>
-          <p className="mb-6 text-ink-subtle">Start a workout from the Build page</p>
-          <Button onClick={() => navigate('/build')}>Go to Build Page</Button>
-        </Card>
-      </div>
-    );
+    // No workout running: Workout means "build one".
+    return <Navigate to="/build" replace />;
   }
 
   // Guard against an out-of-bounds currentExerciseIndex (empty/short exercises
