@@ -10,6 +10,8 @@ import { loadWorkoutContext } from '../store/slices/exerciseHistorySlice';
 import { WorkoutStorageService } from '../services/workoutStorageService';
 import { ScheduleService } from '../services/scheduleService';
 import { dayOverrideSet, retestAdvanced } from '../store/slices/scheduleSlice';
+import { sessionsRecorded } from '../store/slices/trackedLiftsSlice';
+import { trackedSessionsFromWorkout } from '../lib/trackedLiftProgression';
 import type { WorkoutSummary } from '../types/exerciseHistory';
 import type { ActiveWorkout } from '../types/exercise';
 import type { ActivePlanContext } from '../hooks/useStartPlannedDay';
@@ -86,6 +88,7 @@ export default function WorkoutPage() {
   const { preferences } = useAppSelector((state) => state.user);
   const { user } = useAuth(); // Get Firebase user from auth context
   const { previousPerformances } = useAppSelector((state) => state.exerciseHistory);
+  const trackedLifts = useAppSelector((state) => state.trackedLifts.lifts);
 
   // Check if we're viewing a shared workout
   const { shareId } = useParams<{ shareId?: string }>() || {};
@@ -384,6 +387,18 @@ export default function WorkoutPage() {
       planCtx = null;
     }
 
+    // Saving counts even when the Firestore write fails (the sets were done).
+    const recordTracked = () => {
+      if (!activeWorkout) return;
+      // Tracked lifts: log the sessions, move each cycle, queue new bests.
+      dispatch(
+        sessionsRecorded({
+          date: new Date().toISOString(),
+          entries: trackedSessionsFromWorkout(activeWorkout.exercises, trackedLifts),
+        }),
+      );
+    };
+
     const completePlanDay = () => {
       if (!planCtx) return;
       const idKey = user?.uid ?? 'anon';
@@ -416,6 +431,7 @@ export default function WorkoutPage() {
         await WorkoutStorageService.saveCompletedWorkout(user.uid, activeWorkout);
       }
 
+      recordTracked();
       completePlanDay();
       dispatch(endWorkout());
       setShowEndWorkoutModal(false);
@@ -429,6 +445,7 @@ export default function WorkoutPage() {
       console.error('❌ Error saving workout:', error);
       // Show user-friendly error message
       alert('Failed to save workout. Your progress will still be ended. Please check your connection and try again.');
+      recordTracked();
       completePlanDay();
       // Still end workout even if save fails
       dispatch(endWorkout());

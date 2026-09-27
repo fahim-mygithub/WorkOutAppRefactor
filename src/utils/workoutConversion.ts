@@ -191,6 +191,9 @@ export const sanitizeWorkoutExercisesForRedux = (exercises: any[]): any[] => {
       unit: set.unit || 'lbs',
       completed: Boolean(set.completed),
       rpe: set.rpe,
+      ...(set.repMin !== undefined && { repMin: set.repMin }),
+      ...(set.repMax !== undefined && { repMax: set.repMax }),
+      ...(set.time !== undefined && { time: set.time }),
     })),
     restTime: workoutExercise.restTime || 120,
     isSuperset: Boolean(workoutExercise.isSuperset),
@@ -198,6 +201,7 @@ export const sanitizeWorkoutExercisesForRedux = (exercises: any[]): any[] => {
     supersetIndex: workoutExercise.supersetIndex,
     supersetExerciseIds: workoutExercise.supersetExerciseIds,
     notes: workoutExercise.notes || '',
+    ...(workoutExercise.tracked && { tracked: { ...workoutExercise.tracked } }),
   }));
 };
 

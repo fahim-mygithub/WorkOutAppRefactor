@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { LayoutTemplate, PersonStanding, PencilRuler, Dumbbell } from 'lucide-react';
+import { LayoutTemplate, PersonStanding, PencilRuler, Dumbbell, Flag } from 'lucide-react';
 import { useAppDispatch, useAppSelector } from '../store/hooks';
 import { useExercises } from '../hooks/useExercises';
 import { startWorkout } from '../store/slices/workoutSlice';
@@ -15,6 +15,9 @@ import type { Exercise } from '../types/exercise';
 import { WizardShell } from '../components/build/WizardShell';
 import { ChoiceCard } from '../components/build/ChoiceCard';
 import { TrackedLifts } from '../components/build/TrackedLifts';
+import { goalChosen } from '../store/slices/trackedLiftsSlice';
+import { checkpointDue } from '../lib/trackedLiftProgression';
+import type { TrainingGoal } from '../types/trackedLifts';
 import { BodyMusclePicker } from '../components/build/BodyMusclePicker';
 import { RecommendedWorkout, type ReviewRow } from '../components/build/RecommendedWorkout';
 import { Button } from '../components/ui/button';
@@ -84,9 +87,21 @@ export default function BuildWizardPage() {
   // Tracked lifts checked on the chooser; "Build workout" hands them to the
   // custom builder's Visual tab (BuildPage reads `location.state.trackedLifts`).
   const trackedLifts = useAppSelector((s) => s.trackedLifts.lifts);
+  const goal: TrainingGoal = useAppSelector((s) => s.trackedLifts.lastGoal) ?? 'volume';
   const [selectedLiftIds, setSelectedLiftIds] = useState<string[]>([]);
   // Order follows the list, not click order; deleted lifts drop out.
   const selectedLifts = trackedLifts.filter((l) => selectedLiftIds.includes(l.id));
+  // A checked progression lift that's due turns the build into a dedicated
+  // checkpoint day with only the due lifts; otherwise the goal switch applies.
+  const dueLifts = selectedLifts.filter(checkpointDue);
+  const leftOut = dueLifts.length > 0 ? selectedLifts.filter((l) => !checkpointDue(l)) : [];
+  const hasProgression = selectedLifts.some((l) => l.progression);
+  const buildFromLifts = () =>
+    dueLifts.length > 0
+      ? navigate('/build/custom', { state: { trackedLifts: dueLifts, goal: 'checkpoint' } })
+      : navigate('/build/custom', {
+          state: { trackedLifts: selectedLifts, goal: hasProgression ? goal : undefined },
+        });
   const toggleLift = (id: string) =>
     setSelectedLiftIds((ids) => (ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id]));
   const [selectedTerms, setSelectedTerms] = useState<string[]>([]);
@@ -238,15 +253,62 @@ export default function BuildWizardPage() {
         scrollableBody
         footer={
           selectedLifts.length > 0 ? (
-            <Button
-              variant="primary"
-              size="xl"
-              onClick={() => navigate('/build/custom', { state: { trackedLifts: selectedLifts } })}
-            >
-              <Dumbbell className="h-5 w-5" aria-hidden="true" />
-              Build workout
-              <span className="font-tabular opacity-70">({selectedLifts.length})</span>
-            </Button>
+            <div className="flex flex-col gap-3">
+              {dueLifts.length > 0 ? (
+                leftOut.length > 0 && (
+                  <p className="px-1 text-body-sm text-ink-muted">
+                    {leftOut.map((l) => l.name).join(', ')} {leftOut.length === 1 ? "isn't" : "aren't"} due.
+                    Left out today.
+                  </p>
+                )
+              ) : (
+                hasProgression && (
+                  <div
+                    role="radiogroup"
+                    aria-label="Session goal"
+                    className="grid grid-cols-2 gap-1 rounded-full bg-surface-subtle p-1"
+                  >
+                    {(
+                      [
+                        { value: 'volume', label: 'Volume', hint: 'higher reps' },
+                        { value: 'strength', label: 'Strength', hint: 'heavy, low reps' },
+                      ] as const
+                    ).map((o) => (
+                      <button
+                        key={o.value}
+                        type="button"
+                        role="radio"
+                        aria-checked={goal === o.value}
+                        onClick={() => dispatch(goalChosen(o.value))}
+                        className={cn(
+                          'min-h-touch-min rounded-full px-3 text-body-sm font-semibold transition-colors duration-snap',
+                          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent',
+                          goal === o.value ? 'bg-ink text-ink-inverse' : 'text-ink-muted hover:text-ink',
+                        )}
+                      >
+                        {o.label}
+                        <span className="sr-only">, {o.hint}</span>
+                      </button>
+                    ))}
+                  </div>
+                )
+              )}
+              <Button variant="primary" size="xl" onClick={buildFromLifts}>
+                {dueLifts.length > 0 ? (
+                  <>
+                    <Flag className="h-5 w-5" aria-hidden="true" />
+                    Build checkpoint day
+                    <span className="font-tabular opacity-70">({dueLifts.length})</span>
+                  </>
+                ) : (
+                  <>
+                    <Dumbbell className="h-5 w-5" aria-hidden="true" />
+                    Build workout
+                    <span className="font-tabular opacity-70">({selectedLifts.length})</span>
+                  </>
+                )}
+              </Button>
+            </div>
           ) : undefined
         }
       >

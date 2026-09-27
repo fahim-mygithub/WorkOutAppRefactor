@@ -37,6 +37,7 @@ interface FormState {
   repMax: string;
   seconds: string;
   tempo: string;
+  sets: string;
 }
 
 const NEW_CATEGORY = '__new__';
@@ -56,6 +57,7 @@ function toForm(lift: TrackedLift | null, fallbackCategory: string, unit: Weight
     repMax: '1',
     seconds: '',
     tempo: '',
+    sets: lift?.sets !== undefined ? String(lift.sets) : '',
   };
   if (lift) {
     const { load, target } = lift;
@@ -91,7 +93,9 @@ const positiveInt = (s: string): number | null => {
 };
 
 /** Parse the form into a lift (minus id), or null when something is invalid. */
-function fromForm(f: FormState): Omit<TrackedLift, 'id'> | null {
+type EditableLift = Pick<TrackedLift, 'name' | 'category' | 'load' | 'target' | 'sets'>;
+
+function fromForm(f: FormState): EditableLift | null {
   const name = f.name.trim();
   const category = (f.category === NEW_CATEGORY ? f.newCategory : f.category).trim();
   if (!name || !category) return null;
@@ -136,7 +140,15 @@ function fromForm(f: FormState): Omit<TrackedLift, 'id'> | null {
     target = { kind: 'none' };
   }
 
-  return { name, category, load, target };
+  // Blank = the default (3); kept as an explicit key so clearing it saves.
+  let sets: number | undefined;
+  if (f.sets.trim() !== '') {
+    const n = positiveInt(f.sets);
+    if (n === null || n > 20) return null;
+    sets = n;
+  }
+
+  return { name, category, load, target, sets };
 }
 
 // --- small local controls ----------------------------------------------------
@@ -206,7 +218,7 @@ export interface TrackedLiftEditorProps {
   /** Category preselected when adding (e.g. the list the user tapped "Add" in). */
   defaultCategory?: string;
   defaultUnit: WeightUnit;
-  onSave: (lift: Omit<TrackedLift, 'id'>) => void;
+  onSave: (lift: EditableLift) => void;
   onDelete?: () => void;
 }
 
@@ -369,6 +381,16 @@ export function TrackedLiftEditor({
               </div>
             )}
           </Group>
+
+          <Field label="Sets (accessories repeat this; default 3)" htmlFor={`${id}-sets`}>
+            <Input
+              id={`${id}-sets`}
+              inputMode="numeric"
+              value={form.sets}
+              onChange={(e) => set('sets', e.target.value)}
+              placeholder="3"
+            />
+          </Field>
 
           <div className="flex flex-col gap-2 pt-1">
             <Button type="submit" size="xl" disabled={!parsed}>

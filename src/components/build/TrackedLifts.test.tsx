@@ -6,12 +6,19 @@ import { configureStore } from '@reduxjs/toolkit';
 import trackedLifts from '../../store/slices/trackedLiftsSlice';
 import user from '../../store/slices/userSlice';
 import { TrackedLifts } from './TrackedLifts';
+import { useTrackedLiftsSync } from '../../hooks/useTrackedLiftsSync';
+
+/** AppShell mounts the sync hook app-wide; stand in for it here. */
+function WithSync(props: React.ComponentProps<typeof TrackedLifts>) {
+  useTrackedLiftsSync();
+  return <TrackedLifts {...props} />;
+}
 
 function renderList(props: React.ComponentProps<typeof TrackedLifts> = {}) {
   const store = configureStore({ reducer: { trackedLifts, user } });
   const { unmount } = render(
     <Provider store={store}>
-      <TrackedLifts {...props} />
+      <WithSync {...props} />
     </Provider>,
   );
   return Object.assign(store, { unmount });
@@ -72,7 +79,7 @@ describe('TrackedLifts', () => {
   it('edits and deletes an existing lift', async () => {
     const u = userEvent.setup();
     const store = renderList();
-    await u.click(await screen.findByRole('button', { name: /Seal Row/ }));
+    await u.click(await screen.findByRole('button', { name: /^Seal Row/ }));
     let dialog = await screen.findByRole('dialog');
     const weight = within(dialog).getByLabelText('Weight');
     await u.clear(weight);
@@ -84,7 +91,7 @@ describe('TrackedLifts', () => {
       unit: 'lb',
     });
 
-    await u.click(await screen.findByRole('button', { name: /Seal Row/ }));
+    await u.click(await screen.findByRole('button', { name: /^Seal Row/ }));
     dialog = await screen.findByRole('dialog');
     await u.click(within(dialog).getByRole('button', { name: 'Delete lift' }));
     expect(store.getState().trackedLifts.lifts.some((l) => l.name === 'Seal Row')).toBe(false);
@@ -93,7 +100,7 @@ describe('TrackedLifts', () => {
   it('persists the list locally and restores it on the next mount', async () => {
     const u = userEvent.setup();
     const first = renderList();
-    await u.click(await screen.findByRole('button', { name: /Front Squat/ }));
+    await u.click(await screen.findByRole('button', { name: /^Front Squat/ }));
     const dialog = await screen.findByRole('dialog');
     await u.click(within(dialog).getByRole('button', { name: 'Delete lift' }));
     first.unmount();
@@ -122,5 +129,19 @@ describe('TrackedLifts', () => {
     renderList();
     await screen.findAllByRole('heading', { level: 3 });
     expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
+  });
+
+  it('flags a lift for progression from the row', async () => {
+    const u = userEvent.setup();
+    const store = renderList();
+    const flag = await screen.findByRole('button', { name: 'Track progression for Seal Row' });
+    expect(flag).toHaveAttribute('aria-pressed', 'false');
+    await u.click(flag);
+    expect(store.getState().trackedLifts.lifts[1].progression).toBe(true);
+    expect(flag).toHaveAttribute('aria-pressed', 'true');
+    // flagged rows show their cycle status
+    // flagged rows (Bench, Front Squat from the template, now Seal Row) show their cycle status
+    expect(screen.getAllByText(/^Volume 0\/2 · Strength 0\/2/)).toHaveLength(3);
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 });

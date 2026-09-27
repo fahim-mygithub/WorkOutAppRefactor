@@ -2,6 +2,8 @@ import React from 'react';
 import { BottomNavigation } from './BottomNavigation';
 import { useAppViewport } from '../hooks/useAppViewport';
 import { useScheduleSync } from '../hooks/useScheduleSync';
+import { useTrackedLiftsSync } from '../hooks/useTrackedLiftsSync';
+import { NewBestSheet } from './build/NewBestSheet';
 import { APP_SCROLL_ID } from '../lib/scroll';
 
 export interface AppShellProps {
@@ -36,6 +38,8 @@ export const AppShell: React.FC<AppShellProps> = ({
   const { height, isKeyboardOpen, needsManualResize } = useAppViewport();
   // Single-instance schedule hydration + local-first persistence (Charlie Split).
   useScheduleSync();
+  // Tracked lifts: hydrated app-wide so the player can record sessions.
+  useTrackedLiftsSync();
 
   // On iOS, pin the shell to the visual viewport so the keyboard doesn't shove
   // content off-screen. Elsewhere rely on 100svh / native resize.
@@ -56,6 +60,7 @@ export const AppShell: React.FC<AppShellProps> = ({
         {children}
       </main>
       {showNav && !isKeyboardOpen && <BottomNavigation />}
+      {showNav && <NewBestSheet />}
     </div>
   );
 };

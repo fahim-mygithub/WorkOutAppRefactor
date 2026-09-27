@@ -4,6 +4,8 @@ import { useAppDispatch, useAppSelector } from '../store/hooks';
 import { useAuth } from '../contexts/AuthContext';
 import { endWorkout, setShowCompletionModal } from '../store/slices/workoutSlice';
 import { WorkoutStorageService } from '../services/workoutStorageService';
+import { sessionsRecorded } from '../store/slices/trackedLiftsSlice';
+import { trackedSessionsFromWorkout } from '../lib/trackedLiftProgression';
 import {
   Sheet,
   SheetContent,
@@ -24,6 +26,7 @@ export const WorkoutCompletionModal: React.FC<WorkoutCompletionModalProps> = ({
   const navigate = useNavigate();
   const dispatch = useAppDispatch();
   const { activeWorkout } = useAppSelector((state) => state.workout);
+  const trackedLifts = useAppSelector((state) => state.trackedLifts.lifts);
   const { user } = useAuth();
   const [isCompleting, setIsCompleting] = useState(false);
   // Compact clock for the summary: 1:05:09 / 42:07.
@@ -70,6 +73,13 @@ export const WorkoutCompletionModal: React.FC<WorkoutCompletionModalProps> = ({
     try {
       await WorkoutStorageService.saveCompletedWorkout(user.uid, activeWorkout);
       console.log('Workout saved successfully');
+      // Tracked lifts: log the sessions, move each cycle, queue new bests.
+      dispatch(
+        sessionsRecorded({
+          date: new Date().toISOString(),
+          entries: trackedSessionsFromWorkout(activeWorkout.exercises, trackedLifts),
+        }),
+      );
       dispatch(endWorkout());
       dispatch(setShowCompletionModal(false));
       navigate('/profile', { state: { showWorkoutComplete: true } });
@@ -79,6 +89,13 @@ export const WorkoutCompletionModal: React.FC<WorkoutCompletionModalProps> = ({
       // Show user-friendly error message
       alert('Failed to save workout. Your progress will still be ended. Please check your connection and try again.');
 
+      // Tracked lifts: log the sessions, move each cycle, queue new bests.
+      dispatch(
+        sessionsRecorded({
+          date: new Date().toISOString(),
+          entries: trackedSessionsFromWorkout(activeWorkout.exercises, trackedLifts),
+        }),
+      );
       // Still end the workout even if save fails to prevent user from being stuck
       dispatch(endWorkout());
       dispatch(setShowCompletionModal(false));

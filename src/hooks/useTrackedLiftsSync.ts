@@ -1,6 +1,7 @@
 /**
- * Hydration + local-first persistence for the trackedLifts slice. Mount once
- * (TrackedLifts is its only consumer). Same guard as useScheduleSync: nothing
+ * Hydration + local-first persistence for the trackedLifts slice. Mounted once
+ * in AppShell, so workouts finished on any page (the player records sessions
+ * and new bests) are saved. Same guard as useScheduleSync: nothing
  * is written until this identity has hydrated, so the empty initial state can
  * never overwrite a saved list.
  */
@@ -34,6 +35,11 @@ export function useTrackedLiftsSync(): void {
   useEffect(() => {
     if (hydratedKey.current !== idKey || state.status !== 'ready') return;
     if (state === staleState.current) return;
-    TrackedLiftsService.saveLocal(idKey, { categories: state.categories, lifts: state.lifts });
+    TrackedLiftsService.saveLocal(idKey, {
+      categories: state.categories,
+      lifts: state.lifts,
+      lastGoal: state.lastGoal,
+      pendingBests: state.pendingBests,
+    });
   }, [state, idKey]);
 }

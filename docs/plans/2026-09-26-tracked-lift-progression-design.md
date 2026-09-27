@@ -1,6 +1,6 @@
 # Tracked-lift progression: Volume / Strength / Checkpoint
 
-Date: 2026-09-26 · Branch: `feat/tempo-ui` · Status: design approved, not built
+Date: 2026-09-26 · Branch: `feat/tempo-ui` · Status: built (see Implementation notes)
 
 ## Goal
 
@@ -99,3 +99,16 @@ Firestore sync is a later step.
 
 Missing exercise link → re-resolve by name. Lift appearing twice in one workout
 → counted once. Unit mismatch → convert the estimate to the lift's unit.
+
+## Implementation notes (as built)
+
+- **Log source:** each tracked lift keeps its own session log (last 6 finished
+  sessions, recorded on Save and end) instead of linking to Firestore exercise
+  history. Works offline and in the demo build; sessions of the same exercise
+  logged outside a tracked build don't count toward the estimate or cycle.
+- **Checkpoint attempt floor:** the attempt is max(102% of the estimate, one
+  loadable step above the benchmark), and the warm-up ladder scales from it, so
+  submaximal logged sets (no RIR tapped) never make a checkpoint target below
+  the benchmark.
+- **Seed:** Bench Press and Front Squat start flagged; Seal Row is an accessory.
+- New best sheet is app-wide (AppShell) and never opens over the player.

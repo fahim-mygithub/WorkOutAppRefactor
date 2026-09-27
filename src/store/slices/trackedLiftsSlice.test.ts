@@ -7,6 +7,10 @@ import reducer, {
   categoryAdded,
   categoryRenamed,
   categoryRemoved,
+  progressionToggled,
+  goalChosen,
+  sessionsRecorded,
+  bestResolved,
   type TrackedLiftsState,
 } from './trackedLiftsSlice';
 import { seedTrackedLifts } from '../../lib/trackedLifts';
@@ -103,5 +107,44 @@ describe('trackedLiftsSlice', () => {
     const s = reducer(ready(), categoryRemoved('Pull'));
     expect(s.categories).toEqual(['Push', 'Legs']);
     expect(s.lifts).toHaveLength(seedTrackedLifts().lifts.length);
+  });
+
+  it('keeps the progression flag, cycle and log when the editor saves', () => {
+    let s = ready();
+    s = reducer(s, sessionsRecorded({ date: 'd', entries: [{ liftId: 'seed-bench-press', goal: 'volume', sets: [{ weight: 180, reps: 10 }] }] }));
+    const bench = s.lifts[0];
+    s = reducer(s, liftUpdated({ id: bench.id, name: 'Bench', category: 'Push', load: bench.load, target: bench.target, sets: undefined }));
+    expect(s.lifts[0]).toMatchObject({ name: 'Bench', progression: true, cycle: { volume: 1, strength: 0 } });
+    expect(s.lifts[0].sessions).toHaveLength(1);
+  });
+
+  it('toggles progression and remembers the goal', () => {
+    let s = reducer(ready(), progressionToggled('seed-seal-row'));
+    expect(s.lifts[1].progression).toBe(true);
+    s = reducer(s, progressionToggled('seed-seal-row'));
+    expect(s.lifts[1].progression).toBe(false);
+    expect(reducer(s, goalChosen('strength')).lastGoal).toBe('strength');
+  });
+
+  it('queues a new best for progression lifts only, and Update applies it', () => {
+    let s = reducer(
+      ready(),
+      sessionsRecorded({
+        date: 'd',
+        entries: [
+          { liftId: 'seed-bench-press', goal: 'checkpoint', sets: [{ weight: 275, reps: 1 }] },
+          { liftId: 'seed-seal-row', goal: 'volume', sets: [{ weight: 200, reps: 10 }] }, // accessory
+        ],
+      }),
+    );
+    expect(s.pendingBests?.map((b) => b.liftId)).toEqual(['seed-bench-press']);
+    expect(s.lifts[1].sessions).toHaveLength(1); // accessory is still logged
+
+    const kept = reducer(s, bestResolved({ liftId: 'seed-bench-press', accept: false }));
+    expect(kept.pendingBests).toEqual([]);
+    expect(kept.lifts[0].load).toEqual({ kind: 'weight', value: 265, unit: 'lb' });
+
+    s = reducer(s, bestResolved({ liftId: 'seed-bench-press', accept: true }));
+    expect(s.lifts[0].load).toEqual({ kind: 'weight', value: 275, unit: 'lb' });
   });
 });

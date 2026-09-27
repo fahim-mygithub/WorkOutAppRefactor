@@ -1,9 +1,14 @@
 import { useMemo, useState } from 'react';
-import { Check, Plus } from 'lucide-react';
+import { Check, Flag, Plus } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAppDispatch, useAppSelector } from '../../store/hooks';
-import { liftAdded, liftRemoved, liftUpdated } from '../../store/slices/trackedLiftsSlice';
-import { useTrackedLiftsSync } from '../../hooks/useTrackedLiftsSync';
+import {
+  liftAdded,
+  liftRemoved,
+  liftUpdated,
+  progressionToggled,
+} from '../../store/slices/trackedLiftsSlice';
+import { checkpointDue, progressionStatus } from '../../lib/trackedLiftProgression';
 import { formatLoad, formatTarget, groupByCategory } from '../../lib/trackedLifts';
 import type { TrackedLift, WeightUnit } from '../../types/trackedLifts';
 import { Button } from '../ui/button';
@@ -22,6 +27,10 @@ import { TrackedLiftEditor } from './TrackedLiftEditor';
  * With `onToggleSelect`, each row also gets a checkbox on the left so lifts can
  * be picked to build a workout from; the parent owns the selection and the
  * "Build workout" action.
+ *
+ * The flag on the right marks a lift for progression (Volume / Strength sets
+ * from its log, checkpoint days); flagged rows show that status under the
+ * target. Unflagged lifts are accessories, repeated as tracked.
  */
 
 /** `lift`/`category` are kept after closing so the sheet's exit animation
@@ -41,7 +50,6 @@ interface TrackedLiftsProps {
 }
 
 export function TrackedLifts({ className, selectedIds = [], onToggleSelect }: TrackedLiftsProps) {
-  useTrackedLiftsSync();
   const dispatch = useAppDispatch();
   const { status, categories, lifts } = useAppSelector((s) => s.trackedLifts);
   const prefUnit = useAppSelector((s) => s.user.preferences.weightUnit);
@@ -94,6 +102,7 @@ export function TrackedLifts({ className, selectedIds = [], onToggleSelect }: Tr
               {rows.map((lift, i) => {
                 const target = formatTarget(lift.target);
                 const checked = selectedIds.includes(lift.id);
+                const due = checkpointDue(lift);
                 return (
                   <li
                     key={lift.id}
@@ -126,7 +135,7 @@ export function TrackedLifts({ className, selectedIds = [], onToggleSelect }: Tr
                       type="button"
                       onClick={() => setEditor({ open: true, lift })}
                       className={cn(
-                        'flex min-h-[64px] min-w-0 flex-1 items-center gap-4 py-3 pr-4 text-left transition-colors duration-snap',
+                        'flex min-h-[64px] min-w-0 flex-1 items-center gap-4 py-3 pr-1 text-left transition-colors duration-snap',
                         'hover:bg-surface-raised/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent',
                         onToggleSelect ? 'pl-2' : 'pl-4',
                       )}
@@ -136,9 +145,40 @@ export function TrackedLifts({ className, selectedIds = [], onToggleSelect }: Tr
                         {target && (
                           <span className="mt-0.5 block truncate text-body-sm text-ink-muted">{target}</span>
                         )}
+                        {lift.progression && (
+                          <span
+                            className={cn(
+                              'mt-0.5 block text-caption',
+                              due ? 'font-semibold text-accent' : 'text-accent-2',
+                            )}
+                          >
+                            {progressionStatus(lift)}
+                          </span>
+                        )}
                       </span>
                       <span className="max-w-[45%] shrink-0 truncate text-right font-num font-tabular font-wide text-title font-bold text-ink">
                         {formatLoad(lift.load)}
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      aria-pressed={!!lift.progression}
+                      aria-label={`Track progression for ${lift.name}`}
+                      title={lift.progression ? 'Progression lift' : 'Accessory (mark for progression)'}
+                      onClick={() => dispatch(progressionToggled(lift.id))}
+                      className="group flex w-12 shrink-0 items-center justify-center pr-1 focus-visible:outline-none"
+                    >
+                      <span
+                        aria-hidden="true"
+                        className={cn(
+                          'flex h-9 w-9 items-center justify-center rounded-full transition-colors duration-snap',
+                          'group-focus-visible:ring-2 group-focus-visible:ring-accent',
+                          lift.progression
+                            ? 'bg-accent-2/15 text-accent-2'
+                            : 'text-ink-subtle group-hover:bg-surface-raised group-hover:text-ink-muted',
+                        )}
+                      >
+                        <Flag size={18} fill={lift.progression ? 'currentColor' : 'none'} />
                       </span>
                     </button>
                   </li>

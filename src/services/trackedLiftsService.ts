@@ -19,7 +19,12 @@ export class TrackedLiftsService {
       const data = JSON.parse(raw) as PersistedTrackedLifts;
       if (data.schemaVersion !== SCHEMA_VERSION) return null;
       if (!Array.isArray(data.categories) || !Array.isArray(data.lifts)) return null;
-      return { categories: data.categories, lifts: data.lifts };
+      return {
+        categories: data.categories,
+        lifts: data.lifts,
+        lastGoal: data.lastGoal,
+        pendingBests: Array.isArray(data.pendingBests) ? data.pendingBests : [],
+      };
     } catch {
       return null;
     }

@@ -19,8 +19,9 @@ import { EnhancedTextInput } from '../components/workout/EnhancedTextInput';
 import { ParsedWorkoutConfigurator } from '../components/workout/ParsedWorkoutConfigurator';
 import { RealtimePreview } from '../components/workout/RealtimePreview';
 import { ExerciseQuickAdd, newBuilderExercise } from '../components/workout/ExerciseQuickAdd';
-import { trackedLiftsToWorkout, workoutNameForLifts } from '../lib/trackedLifts';
-import type { TrackedLift } from '../types/trackedLifts';
+import { workoutNameForLifts } from '../lib/trackedLifts';
+import { buildTrackedWorkout } from '../lib/trackedLiftProgression';
+import type { SessionGoal, TrackedLift } from '../types/trackedLifts';
 import { useExercises } from '../hooks/useExercises';
 import { useUndoRedo } from '../hooks/useUndoRedo';
 import { generateFallbackExerciseId, sanitizeWorkoutExercisesForRedux } from '../utils/workoutConversion';
@@ -174,14 +175,19 @@ export default function BuildPage() {
   const location = useLocation();
   const dispatch = useAppDispatch();
 
-  // Tracked lifts checked on the Build chooser arrive in router state: open on
-  // Visual with them listed and a name from their categories. The state is
-  // cleared right away so a refresh or back-navigation doesn't re-add them.
+  // Tracked lifts checked on the Build chooser arrive in router state with the
+  // session goal: open on Visual with their sets worked out (progression lifts)
+  // or copied (accessories). The state is cleared right away so a refresh or
+  // back-navigation doesn't re-add them.
   useEffect(() => {
-    const lifts = (location.state as { trackedLifts?: TrackedLift[] } | null)?.trackedLifts;
+    const state = location.state as { trackedLifts?: TrackedLift[]; goal?: SessionGoal } | null;
+    const lifts = state?.trackedLifts;
     if (!lifts?.length) return;
-    setEditedWorkout(trackedLiftsToWorkout(lifts));
-    setWorkoutName((name) => name || workoutNameForLifts(lifts));
+    const goal = state?.goal ?? null;
+    setEditedWorkout(buildTrackedWorkout(lifts, goal));
+    setWorkoutName(
+      (name) => name || (goal === 'checkpoint' ? 'Checkpoint day' : workoutNameForLifts(lifts)),
+    );
     setActiveTab('visual');
     navigate(location.pathname, { replace: true, state: null });
   }, [location.state, location.pathname, navigate]);
@@ -549,8 +555,11 @@ export default function BuildPage() {
         const workoutSets: WorkoutSet[] = exercise.sets.map((set: any, setIndex: number) => ({
           id: `set-${Date.now()}-${index}-${setIndex}`,
           reps: typeof set.reps === 'number' ? set.reps : set.reps.min,
+          // A rep range (Volume 8-12) drives the player's double progression.
+          ...(typeof set.reps === 'object' && { repMin: set.reps.min, repMax: set.reps.max }),
           weight: set.weight,
           unit: set.unit,
+          ...(set.time && { time: set.time }),
           completed: false,
         }));
 
@@ -559,6 +568,8 @@ export default function BuildPage() {
           exercise: dbExercise || createFallbackExercise(exercise.name, index),
           sets: workoutSets,
           restTime: exercise.restTime || 120,
+          ...(exercise.notes && { notes: exercise.notes }),
+          ...(exercise.tracked && { tracked: exercise.tracked }),
         });
       }
     });

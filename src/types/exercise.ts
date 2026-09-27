@@ -59,6 +59,8 @@ export interface WorkoutExercise {
   supersetId?: string;
   supersetIndex?: number; // Index within the superset (0, 1, 2...)
   supersetExerciseIds?: string[]; // Only populated for the first exercise in superset
+  /** Built from a tracked lift (Build page); finished sets count toward its cycle. */
+  tracked?: { liftId: string; goal: 'volume' | 'strength' | 'checkpoint' };
 }
 
 export interface ActiveWorkout {
