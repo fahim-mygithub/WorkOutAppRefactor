@@ -10,6 +10,7 @@ import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { cn } from '../../lib/utils';
+import { ExerciseQuickAdd } from '../workout/ExerciseQuickAdd';
 
 /**
  * TrackedLiftEditor — the bottom sheet for adding or editing one tracked lift.
@@ -278,15 +279,15 @@ export function TrackedLiftEditor({
             if (parsed) onSave(parsed);
           }}
         >
-          <Field label="Lift" htmlFor={`${id}-name`}>
-            <Input
-              id={`${id}-name`}
-              value={form.name}
-              onChange={(e) => set('name', e.target.value)}
-              placeholder="e.g. Bench Press"
-              autoComplete="off"
-            />
-          </Field>
+          {/* Searches the exercise library like the Build tab; any typed name still works. */}
+          <ExerciseQuickAdd
+            id={`${id}-name`}
+            label="Lift"
+            value={form.name}
+            onValueChange={(v) => set('name', v)}
+            onAdd={(exercise) => set('name', exercise.name)}
+            placeholder="Search exercises, e.g. Bench Press"
+          />
 
           <Group title="Category">
             <Segmented label="Category" value={form.category} onChange={(v) => set('category', v)} options={categoryOptions} />
