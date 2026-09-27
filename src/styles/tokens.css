@@ -43,6 +43,9 @@
   --success: 150 50% 56%;
   --warning:  24 90% 64%;
   --danger:    4 80% 66%;
+  /* Body-map heat: recently worked muscles (orange 1 exercise, red 2+). */
+  --heat-warm: 24 92% 58%;
+  --heat-hot:  2 82% 58%;
 
   /* Muscle groups — tuned to read on navy */
   --muscle-push:        4 78% 66%;

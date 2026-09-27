@@ -7,6 +7,7 @@ import { BodyMuscleMap } from '../components/home/BodyMuscleMap';
 import { WorkoutDayModal } from '../components/home/WorkoutDayModal';
 import { useWorkoutCalendar } from '../hooks/useWorkoutCalendar';
 import { useWorkoutStats } from '../hooks/useWorkoutStats';
+import { useMuscleHeat } from '../hooks/useMuscleHeat';
 import type { WorkoutCalendarDay } from '../utils/statsCalculator';
 import { Card, CardBody } from '../components/ui/card';
 import { Button } from '../components/ui/button';
@@ -17,6 +18,7 @@ import { Button } from '../components/ui/button';
  */
 export default function HomePage() {
   const [selectedDay, setSelectedDay] = useState<WorkoutCalendarDay | null>(null);
+  const muscleHeat = useMuscleHeat();
   const [isModalOpen, setIsModalOpen] = useState(false);
 
   const {
@@ -87,7 +89,7 @@ export default function HomePage() {
 
       <Card>
         <CardBody className="p-5 pt-5">
-          <BodyMuscleMap />
+          <BodyMuscleMap heat={muscleHeat} />
         </CardBody>
       </Card>
 

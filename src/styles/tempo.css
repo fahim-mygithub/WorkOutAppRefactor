@@ -43,6 +43,13 @@
 .muscle-map g.bodymap:hover {
   color: hsl(var(--accent-2));
 }
+/* Heat (Home): orange = 1 exercise / cooling, red = 2+ today. */
+.muscle-map g[data-heat='warm'] {
+  color: hsl(var(--heat-warm));
+}
+.muscle-map g[data-heat='hot'] {
+  color: hsl(var(--heat-hot));
+}
 /* The body outline is decorative: never let it intercept muscle clicks. */
 .muscle-map g.body-map__model {
   pointer-events: none;

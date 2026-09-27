@@ -6,6 +6,7 @@ import { endWorkout, setShowCompletionModal } from '../store/slices/workoutSlice
 import { WorkoutStorageService } from '../services/workoutStorageService';
 import { sessionsRecorded } from '../store/slices/trackedLiftsSlice';
 import { trackedSessionsFromWorkout } from '../lib/trackedLiftProgression';
+import { MuscleLogService } from '../services/muscleLogService';
 import {
   Sheet,
   SheetContent,
@@ -80,6 +81,7 @@ export const WorkoutCompletionModal: React.FC<WorkoutCompletionModalProps> = ({
           entries: trackedSessionsFromWorkout(activeWorkout.exercises, trackedLifts),
         }),
       );
+      MuscleLogService.recordWorkout(user?.uid ?? 'anon', activeWorkout);
       dispatch(endWorkout());
       dispatch(setShowCompletionModal(false));
       navigate('/profile', { state: { showWorkoutComplete: true } });
@@ -96,6 +98,7 @@ export const WorkoutCompletionModal: React.FC<WorkoutCompletionModalProps> = ({
           entries: trackedSessionsFromWorkout(activeWorkout.exercises, trackedLifts),
         }),
       );
+      MuscleLogService.recordWorkout(user?.uid ?? 'anon', activeWorkout);
       // Still end the workout even if save fails to prevent user from being stuck
       dispatch(endWorkout());
       dispatch(setShowCompletionModal(false));

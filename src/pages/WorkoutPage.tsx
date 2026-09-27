@@ -15,6 +15,7 @@ import { ScheduleService } from '../services/scheduleService';
 import { dayOverrideSet, retestAdvanced } from '../store/slices/scheduleSlice';
 import { sessionsRecorded } from '../store/slices/trackedLiftsSlice';
 import { trackedSessionsFromWorkout } from '../lib/trackedLiftProgression';
+import { MuscleLogService } from '../services/muscleLogService';
 import type { WorkoutSummary } from '../types/exerciseHistory';
 import type { ActiveWorkout } from '../types/exercise';
 import type { ActivePlanContext } from '../hooks/useStartPlannedDay';
@@ -407,6 +408,8 @@ export default function WorkoutPage() {
           entries: trackedSessionsFromWorkout(activeWorkout.exercises, trackedLifts),
         }),
       );
+      // Home body map heat.
+      MuscleLogService.recordWorkout(user?.uid ?? 'anon', activeWorkout);
     };
 
     const completePlanDay = () => {

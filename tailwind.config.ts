@@ -62,6 +62,8 @@ const config: Config = {
         success: 'hsl(var(--success))',
         warning: 'hsl(var(--warning))',
         danger: 'hsl(var(--danger))',
+        'heat-warm': 'hsl(var(--heat-warm))',
+        'heat-hot': 'hsl(var(--heat-hot))',
         // Muscle groups (drives icon backgrounds + calendar dots — Tasks 9/10)
         muscle: {
           push: 'hsl(var(--muscle-push))',

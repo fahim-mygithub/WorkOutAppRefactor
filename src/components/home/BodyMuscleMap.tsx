@@ -1,9 +1,10 @@
-import { useState, type MouseEvent } from 'react';
+import { memo, useEffect, useRef, useState, type MouseEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { cn } from '../../lib/utils';
 import { MUSCLE_TERMS } from '../../lib/muscleTerms';
 import { BODY_FRONT_SVG } from './bodyFrontSvg';
 import { BODY_BACK_SVG } from './bodyBackSvg';
+import { groupIdsByTerm, type HeatLevel } from '../../lib/muscleHeat';
 
 /**
  * BodyMuscleMap — MuscleWiki-style front/back interactive muscle map for the
@@ -24,17 +25,51 @@ import { BODY_BACK_SVG } from './bodyBackSvg';
 // The SVG group id → search term map now lives in src/lib/muscleTerms.ts so the
 // build wizard's muscle picker shares the exact same vocabulary.
 
+/**
+ * The injected artwork, memoised: re-rendering a dangerouslySetInnerHTML node
+ * can replace the SVG and wipe the heat markers, so it only re-renders when
+ * the markup itself changes.
+ */
+const SvgArt = memo(function SvgArt({ html }: { html: string }) {
+  return <div className="w-full" dangerouslySetInnerHTML={{ __html: html }} />;
+});
+
 interface BodyMuscleMapProps {
   /** Defaults to the bundled MuscleWiki artwork; overridable for dev/testing. */
   frontSvg?: string;
   backSvg?: string;
+  /** Recently worked muscles by term (see lib/muscleHeat): warm = orange, hot = red. */
+  heat?: Record<string, HeatLevel>;
 }
+
+const LEGEND: { level: HeatLevel; label: string }[] = [
+  { level: 'warm', label: '1 exercise' },
+  { level: 'hot', label: '2 or more' },
+];
 
 export function BodyMuscleMap({
   frontSvg = BODY_FRONT_SVG,
   backSvg = BODY_BACK_SVG,
+  heat = {},
 }: BodyMuscleMapProps = {}) {
   const navigate = useNavigate();
+  const mapRef = useRef<HTMLDivElement>(null);
+
+  // Shade worked muscles: the SVGs are injected markup, so mark their groups
+  // with data-heat and let tempo.css colour them.
+  const heatKey = JSON.stringify(heat);
+  useEffect(() => {
+    const root = mapRef.current;
+    if (!root) return;
+    const idsByTerm = groupIdsByTerm();
+    root.querySelectorAll('g[data-heat]').forEach((g) => g.removeAttribute('data-heat'));
+    for (const [term, level] of Object.entries(heat)) {
+      for (const id of idsByTerm[term] ?? []) {
+        root.querySelectorAll(`g[id="${id}"]`).forEach((g) => g.setAttribute('data-heat', level));
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [heatKey, frontSvg, backSvg]);
   const [view, setView] = useState<'front' | 'back'>('front');
   const hasBack = Boolean(backSvg);
 
@@ -84,13 +119,23 @@ export function BodyMuscleMap({
             </div>
           )}
         </div>
-        <p className="mt-1 text-body-sm text-ink-muted">Tap a muscle to see its exercises.</p>
+        <p className="mt-1 text-body-sm text-ink-muted">
+          Worked muscles cool down over 2 days. Tap one to see its exercises.
+        </p>
+        <ul className="mt-2 flex gap-4" aria-label="Muscle heat key">
+          {LEGEND.map(({ level, label }) => (
+            <li key={level} className="flex items-center gap-1.5 text-caption text-ink-muted">
+              <span aria-hidden="true" className={cn('h-2.5 w-2.5 rounded-full', level === 'hot' ? 'bg-heat-hot' : 'bg-heat-warm')} />
+              {label}
+            </li>
+          ))}
+        </ul>
       </div>
 
       {/* Click handling delegated to the wrapper (event bubbles from the paths). */}
-      <div className="muscle-map flex items-start justify-center gap-4" onClick={handleClick}>
+      <div ref={mapRef} className="muscle-map flex items-start justify-center gap-4" onClick={handleClick}>
         <figure className={cn(figureBase, frontDisplay)}>
-          <div className="w-full" dangerouslySetInnerHTML={{ __html: frontSvg }} />
+          <SvgArt html={frontSvg} />
           <figcaption className="mt-2 text-caption text-ink-muted">
             Front
           </figcaption>
@@ -98,7 +143,7 @@ export function BodyMuscleMap({
 
         {hasBack && (
           <figure className={cn(figureBase, backDisplay)}>
-            <div className="w-full" dangerouslySetInnerHTML={{ __html: backSvg }} />
+            <SvgArt html={backSvg} />
             <figcaption className="mt-2 text-caption text-ink-muted">
               Back
             </figcaption>
