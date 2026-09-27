@@ -35,21 +35,30 @@ export const AppShell: React.FC<AppShellProps> = ({
   showNav = true,
   header
 }) => {
-  const { height, isKeyboardOpen, needsManualResize } = useAppViewport();
+  const { height, isKeyboardOpen, needsManualResize, standaloneHeight } = useAppViewport();
   // Single-instance schedule hydration + local-first persistence (Charlie Split).
   useScheduleSync();
   // Tracked lifts: hydrated app-wide so the player can record sessions.
   useTrackedLiftsSync();
 
   // On iOS, pin the shell to the visual viewport so the keyboard doesn't shove
-  // content off-screen. Elsewhere rely on 100svh / native resize.
-  const shellStyle =
-    needsManualResize && height > 0 ? { height: `${height}px` } : undefined;
+  // content off-screen. Launched from the home screen with the keyboard closed,
+  // fill the whole screen (iOS under-reports the viewport there). Elsewhere
+  // rely on 100svh / native resize.
+  const shellHeight =
+    standaloneHeight > 0 && !isKeyboardOpen
+      ? standaloneHeight
+      : needsManualResize && height > 0
+        ? height
+        : 0;
+  const shellStyle = shellHeight > 0 ? { height: `${shellHeight}px` } : undefined;
 
   return (
-    <div className="flex flex-col h-[100svh] bg-surface" style={shellStyle}>
+    // Top inset on the shell itself: the status bar is translucent, so every
+    // page (with or without a header) must start below it.
+    <div className="flex flex-col h-[100svh] bg-surface pt-[env(safe-area-inset-top)]" style={shellStyle}>
       {header && (
-        <header className="shrink-0 pt-[env(safe-area-inset-top)]">
+        <header className="shrink-0">
           {header}
         </header>
       )}

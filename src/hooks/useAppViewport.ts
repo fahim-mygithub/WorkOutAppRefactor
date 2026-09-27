@@ -13,6 +13,12 @@ export interface AppViewport {
   keyboardHeight: number;
   /** True only on iOS/WebKit where we must JS-drive the shell height. */
   needsManualResize: boolean;
+  /**
+   * Full screen height when launched from the home screen (standalone), else 0.
+   * iOS standalone under-reports visualViewport/svh, leaving a strip below the
+   * nav, but the app always owns the whole screen there.
+   */
+  standaloneHeight: number;
 }
 
 const KEYBOARD_THRESHOLD = 120;
@@ -32,6 +38,20 @@ const detectNeedsManualResize = (): boolean => {
   return supportsCallout && isTouch;
 };
 
+const isStandalone = (): boolean =>
+  typeof window !== 'undefined' &&
+  ((typeof window.matchMedia === 'function' &&
+    window.matchMedia('(display-mode: standalone)').matches) ||
+    (navigator as Navigator & { standalone?: boolean }).standalone === true);
+
+/** Screen height in the current orientation (iOS reports screen in portrait). */
+const readStandaloneHeight = (): number => {
+  if (!isStandalone() || !window.screen) return 0;
+  const { width, height } = window.screen;
+  const landscape = window.innerWidth > window.innerHeight;
+  return landscape ? Math.min(width, height) : Math.max(width, height);
+};
+
 const readViewport = (needsManualResize: boolean): AppViewport => {
   if (typeof window === 'undefined') {
     return {
@@ -40,9 +60,11 @@ const readViewport = (needsManualResize: boolean): AppViewport => {
       offsetTop: 0,
       isKeyboardOpen: false,
       keyboardHeight: 0,
-      needsManualResize
+      needsManualResize,
+      standaloneHeight: 0
     };
   }
+  const standaloneHeight = readStandaloneHeight();
 
   const vv = window.visualViewport;
   const layoutHeight =
@@ -55,7 +77,8 @@ const readViewport = (needsManualResize: boolean): AppViewport => {
       offsetTop: 0,
       isKeyboardOpen: false,
       keyboardHeight: 0,
-      needsManualResize
+      needsManualResize,
+      standaloneHeight
     };
   }
 
@@ -67,7 +90,8 @@ const readViewport = (needsManualResize: boolean): AppViewport => {
     offsetTop: vv.offsetTop,
     isKeyboardOpen: keyboardHeight > KEYBOARD_THRESHOLD,
     keyboardHeight,
-    needsManualResize
+    needsManualResize,
+    standaloneHeight
   };
 };
 
