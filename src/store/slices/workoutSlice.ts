@@ -1,5 +1,5 @@
 import { createSlice, type PayloadAction } from '@reduxjs/toolkit';
-import type { ActiveWorkout, RestTimer, WorkoutExercise, WorkoutSet } from '../../types/exercise';
+import type { ActiveWorkout, Exercise, RestTimer, WorkoutExercise, WorkoutSet } from '../../types/exercise';
 import type { ExperienceLevel, ProgressionTracking } from '../../types/progression';
 import { computeTargetEndTime } from '../../lib/restTimer';
 import { prescribedFloor } from '../../lib/progression/setPrescription';
@@ -364,6 +364,19 @@ const workoutSlice = createSlice({
       }
     },
 
+    /**
+     * Swap which movement an exercise is (e.g. the parser guessed wrong).
+     * Sets, rest, superset links and the tracked-lift origin stay; the old
+     * custom title is dropped since it described the old movement.
+     */
+    replaceExerciseMovement: (state, action: PayloadAction<{ exerciseId: string; exercise: Exercise }>) => {
+      if (!state.activeWorkout) return;
+      const target = state.activeWorkout.exercises.find((ex) => ex.id === action.payload.exerciseId);
+      if (!target) return;
+      target.exercise = action.payload.exercise;
+      delete target.customTitle;
+    },
+
     updateExerciseNotesAndTitle: (state, action: PayloadAction<{ exerciseId: string; notes?: string; customTitle?: string }>) => {
       if (!state.activeWorkout) return;
 
@@ -461,6 +474,7 @@ export const {
   nextSupersetExercise,
   completeSuperset,
   updateExercise,
+  replaceExerciseMovement,
   updateExerciseNotesAndTitle,
   setShowCompletionModal,
   checkWorkoutCompletion,

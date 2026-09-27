@@ -26,6 +26,8 @@ import { Card } from '../ui/card';
 import { Button } from '../ui/button';
 import { Play, RotateCcw } from 'lucide-react';
 import { ExerciseQuickAdd, newBuilderExercise } from './ExerciseQuickAdd';
+import { matchExercise } from '../../lib/exerciseMatch';
+import { pairSuperset, removeExercise, unpairSuperset } from '../../lib/builderSupersets';
 
 interface ParsedWorkoutConfiguratorProps {
   workout: any;
@@ -50,8 +52,6 @@ export const ParsedWorkoutConfigurator: React.FC<ParsedWorkoutConfiguratorProps>
 
   // Superset state management
   const [supersetMode, setSupersetMode] = useState<number | null>(null);
-  const [supersetGroups, setSupersetGroups] = useState<Map<number, number>>(new Map());
-  const [nextSupersetGroup, setNextSupersetGroup] = useState(1);
 
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -96,7 +96,7 @@ export const ParsedWorkoutConfigurator: React.FC<ParsedWorkoutConfiguratorProps>
   const handleDeleteExercise = useCallback((exerciseIndex: number) => {
     if (!workout) return;
 
-    const newExercises = workout.exercises.filter((_: any, idx: number) => idx !== exerciseIndex);
+    const newExercises = removeExercise(workout.exercises, exerciseIndex);
 
     onUpdate({
       ...workout,
@@ -122,16 +122,10 @@ export const ParsedWorkoutConfigurator: React.FC<ParsedWorkoutConfiguratorProps>
     });
   }, [workout, onUpdate]);
 
-  // Helper function to find exercise in database
-  const findExerciseInDatabase = useCallback((exerciseName: string): Exercise | null => {
-    const name = exerciseName.toLowerCase();
-    return exercises.find(ex =>
-      ex.name.toLowerCase() === name ||
-      ex.name.toLowerCase().includes(name) ||
-      name.includes(ex.name.toLowerCase()) ||
-      ex.searchKeywords.some(keyword => keyword.includes(name))
-    ) || null;
-  }, [exercises]);
+  const findExerciseInDatabase = useCallback(
+    (exerciseName: string): Exercise | null => matchExercise(exerciseName, exercises),
+    [exercises],
+  );
 
   const handleQuickExerciseAdd = useCallback((exercise: Exercise) => {
     if (!workout) return;
@@ -142,49 +136,23 @@ export const ParsedWorkoutConfigurator: React.FC<ParsedWorkoutConfiguratorProps>
     });
   }, [workout, onUpdate]);
 
-  // Handle superset toggling
+  // Supersets: the pairing is stored on the exercises (`supersetGroup`) so it
+  // survives reorders and reaches the started workout. Tap the link on one
+  // exercise, then on its partner; tapping into an existing superset joins it.
   const handleToggleSuperset = useCallback((exerciseIndex: number) => {
     if (supersetMode === null) {
-      // Start new superset group
       setSupersetMode(exerciseIndex);
     } else if (supersetMode === exerciseIndex) {
-      // Cancel superset mode
       setSupersetMode(null);
     } else {
-      // Create superset between two exercises
-      const groupId = nextSupersetGroup;
-      setSupersetGroups(prev => {
-        const next = new Map(prev);
-        next.set(supersetMode, groupId);
-        next.set(exerciseIndex, groupId);
-        return next;
-      });
-      setNextSupersetGroup(prev => prev + 1);
+      onUpdate({ ...workout, exercises: pairSuperset(workout.exercises, supersetMode, exerciseIndex) });
       setSupersetMode(null);
     }
-  }, [supersetMode, nextSupersetGroup]);
+  }, [supersetMode, workout, onUpdate]);
 
-  // Remove exercise from superset
   const handleRemoveFromSuperset = useCallback((exerciseIndex: number) => {
-    setSupersetGroups(prev => {
-      const next = new Map(prev);
-      const groupId = next.get(exerciseIndex);
-      if (groupId) {
-        // Remove this exercise from the group
-        next.delete(exerciseIndex);
-
-        // Check if only one exercise remains in this group
-        const remainingInGroup = Array.from(next.entries())
-          .filter(([_, gId]) => gId === groupId);
-
-        if (remainingInGroup.length === 1) {
-          // Remove the last exercise from the group as well
-          next.delete(remainingInGroup[0][0]);
-        }
-      }
-      return next;
-    });
-  }, []);
+    onUpdate({ ...workout, exercises: unpairSuperset(workout.exercises, exerciseIndex) });
+  }, [workout, onUpdate]);
 
   // Get superset color based on group ID. Returns a muscle-group token key
   // (resolved to static classes inside ExerciseConfigCard's SUPERSET_COLORS map,
@@ -270,9 +238,9 @@ export const ParsedWorkoutConfigurator: React.FC<ParsedWorkoutConfiguratorProps>
                   onDelete={() => handleDeleteExercise(index)}
                   onReplaceExercise={(newExercise) => handleReplaceExercise(index, newExercise)}
                   onToggleSuperset={() => handleToggleSuperset(index)}
-                  isInSuperset={supersetGroups.has(index)}
-                  supersetGroup={supersetGroups.get(index)}
-                  supersetColor={supersetGroups.has(index) ? getSupersetColor(supersetGroups.get(index)!) : undefined}
+                  isInSuperset={exercise.supersetGroup != null}
+                  supersetGroup={exercise.supersetGroup}
+                  supersetColor={exercise.supersetGroup != null ? getSupersetColor(exercise.supersetGroup) : undefined}
                   isInSupersetMode={supersetMode === index}
                   onRemoveFromSuperset={() => handleRemoveFromSuperset(index)}
                   exerciseDatabase={exercises}

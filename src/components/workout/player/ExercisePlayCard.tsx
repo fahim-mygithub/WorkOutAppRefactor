@@ -4,7 +4,7 @@
 // current), one "last time" line, then the big-stepper set input.
 import React, { useState } from 'react';
 import { useReducedMotion } from 'framer-motion';
-import { Pencil, BookOpen, Dumbbell, History, Link2, Check } from 'lucide-react';
+import { Pencil, BookOpen, Dumbbell, History, Link2, Check, Replace } from 'lucide-react';
 import type { WorkoutExercise, WorkoutSet } from '../../../types/exercise';
 import type { ExerciseHistory } from '../../../types/exerciseHistory';
 import type { InSessionDecision } from '@/types/progression';
@@ -26,6 +26,8 @@ interface ExercisePlayCardProps {
   recommendedWeight?: number;
   recommendedReps?: number;
   onEditSets: () => void;
+  /** Swap which movement this is (when the typed name was matched wrong). */
+  onChangeExercise?: () => void;
   onCompleteSet: (reps: number, weight: number, rir?: number) => void;
   onUncompleteSet: () => void;
   onJumpToSet: (index: number) => void;
@@ -97,6 +99,7 @@ export const ExercisePlayCard: React.FC<ExercisePlayCardProps> = ({
   recommendedWeight,
   recommendedReps,
   onEditSets,
+  onChangeExercise,
   onCompleteSet,
   onUncompleteSet,
   onJumpToSet,
@@ -135,9 +138,16 @@ export const ExercisePlayCard: React.FC<ExercisePlayCardProps> = ({
             </p>
           )}
         </div>
-        <IconButton variant="secondary" size="md" aria-label="Edit sets" onClick={onEditSets}>
-          <Pencil size={18} />
-        </IconButton>
+        <div className="flex shrink-0 gap-2">
+          {onChangeExercise && (
+            <IconButton variant="secondary" size="md" aria-label="Change exercise" onClick={onChangeExercise}>
+              <Replace size={18} />
+            </IconButton>
+          )}
+          <IconButton variant="secondary" size="md" aria-label="Edit sets" onClick={onEditSets}>
+            <Pencil size={18} />
+          </IconButton>
+        </div>
       </div>
 
       {/* Clip(s) — secondary: flexes into whatever height is left. Tapping

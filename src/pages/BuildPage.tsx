@@ -21,6 +21,8 @@ import { RealtimePreview } from '../components/workout/RealtimePreview';
 import { ExerciseQuickAdd, newBuilderExercise } from '../components/workout/ExerciseQuickAdd';
 import { workoutNameForLifts } from '../lib/trackedLifts';
 import { buildTrackedWorkout } from '../lib/trackedLiftProgression';
+import { matchExercise } from '../lib/exerciseMatch';
+import { orderForWorkout } from '../lib/builderSupersets';
 import type { SessionGoal, TrackedLift } from '../types/trackedLifts';
 import { useExercises } from '../hooks/useExercises';
 import { useUndoRedo } from '../hooks/useUndoRedo';
@@ -293,46 +295,12 @@ export default function BuildPage() {
     };
   }, []);
 
-  // Helper function to find exercise in database (improved matching)
-  const findExerciseInDatabase = useCallback((exerciseName: string): Exercise | null => {
-    const name = exerciseName.toLowerCase().trim();
-    
-    // First try exact match
-    const exactMatch = exerciseDatabase.find(ex => 
-      ex.name.toLowerCase() === name
-    );
-    if (exactMatch) return exactMatch;
-    
-    // Try partial match (database name contains search term or vice versa)
-    const partialMatch = exerciseDatabase.find(ex => {
-      const dbName = ex.name.toLowerCase();
-      return dbName.includes(name) || name.includes(dbName);
-    });
-    if (partialMatch) return partialMatch;
-    
-    // Then try common variations (handle plurals, common abbreviations)
-    const variations = [
-      name,
-      name.endsWith('s') ? name.slice(0, -1) : name + 's', // Handle plurals
-      name.replace(/\bbarbell\b/g, 'bb').replace(/\bdumbbell\b/g, 'db'), // Common abbreviations
-      name.replace(/\bbb\b/g, 'barbell').replace(/\bdb\b/g, 'dumbbell'), // Expand abbreviations
-      name.replace(/\bpress\b/g, ''), // Try without "press"
-      name + ' press', // Try adding "press"
-    ];
-    
-    for (const variation of variations) {
-      const match = exerciseDatabase.find(ex => {
-        const dbName = ex.name.toLowerCase();
-        return dbName === variation ||
-               dbName.includes(variation) ||
-               variation.includes(dbName) ||
-               ex.searchKeywords.some(keyword => keyword.toLowerCase().includes(variation));
-      });
-      if (match) return match;
-    }
-    
-    return null;
-  }, [exerciseDatabase]);
+  // Typed name -> library exercise (ranked: "bench press" is the barbell bench
+  // press, not the first entry that happens to contain the words).
+  const findExerciseInDatabase = useCallback(
+    (exerciseName: string): Exercise | null => matchExercise(exerciseName, exerciseDatabase),
+    [exerciseDatabase],
+  );
 
   // Validate that all exercises exist in database
   const validateAllExercisesExist = useCallback((exercises: any[]): string[] => {
@@ -508,8 +476,48 @@ export default function BuildPage() {
 
     const workoutExercises: WorkoutExercise[] = [];
 
-    // Process exercises from the workout data
-    workout.exercises.forEach((exercise: any, index: number) => {
+    // One parsed exercise -> a player exercise (sets, rep ranges, time, notes,
+    // tracked-lift origin).
+    const toWorkoutExercise = (exercise: any, index: number, id: string): WorkoutExercise => {
+      const dbExercise = findExerciseInDatabase(exercise.name);
+      const workoutSets: WorkoutSet[] = exercise.sets.map((set: any, setIndex: number) => ({
+        id: `set-${id}-${setIndex}`,
+        reps: typeof set.reps === 'number' ? set.reps : set.reps.min,
+        // A rep range (Volume 8-12) drives the player's double progression.
+        ...(typeof set.reps === 'object' && { repMin: set.reps.min, repMax: set.reps.max }),
+        weight: set.weight,
+        unit: set.unit,
+        ...(set.time && { time: set.time }),
+        completed: false,
+      }));
+      return {
+        id,
+        exercise: dbExercise || createFallbackExercise(exercise.name, index),
+        sets: workoutSets,
+        restTime: exercise.restTime || 120,
+        ...(exercise.notes && { notes: exercise.notes }),
+        ...(exercise.tracked && { tracked: exercise.tracked }),
+      };
+    };
+
+    // Visual-tab supersets: partners pulled together, tagged so the player
+    // alternates between them each round.
+    const units = orderForWorkout<any>(workout.exercises);
+    units.forEach((unit: any, index: number) => {
+      if (Array.isArray(unit)) {
+        const supersetId = `superset-${Date.now()}-v${index}`;
+        const members = unit.map((ex: any, i: number) => ({
+          ...toWorkoutExercise(ex, index + i, `exercise-${Date.now()}-${index}-${i}`),
+          isSuperset: true,
+          supersetId,
+          supersetIndex: i,
+          notes: [`Superset (${i + 1}/${unit.length})`, ex.notes].filter(Boolean).join(' · '),
+        }));
+        members[0].supersetExerciseIds = members.map((m: WorkoutExercise) => m.id);
+        workoutExercises.push(...members);
+        return;
+      }
+      const exercise = unit;
       // Check if this is a superset exercise (from configurator prepared data)
       if (exercise.isSuperset && exercise.supersetExercises) {
         // Handle superset - create individual exercises for workout execution
@@ -549,28 +557,8 @@ export default function BuildPage() {
         // Add all superset exercises to the main workout
         workoutExercises.push(...supersetExercises);
       } else {
-        // Handle regular exercise
-        const dbExercise = findExerciseInDatabase(exercise.name);
-
-        const workoutSets: WorkoutSet[] = exercise.sets.map((set: any, setIndex: number) => ({
-          id: `set-${Date.now()}-${index}-${setIndex}`,
-          reps: typeof set.reps === 'number' ? set.reps : set.reps.min,
-          // A rep range (Volume 8-12) drives the player's double progression.
-          ...(typeof set.reps === 'object' && { repMin: set.reps.min, repMax: set.reps.max }),
-          weight: set.weight,
-          unit: set.unit,
-          ...(set.time && { time: set.time }),
-          completed: false,
-        }));
-
-        workoutExercises.push({
-          id: `exercise-${Date.now()}-${index}`,
-          exercise: dbExercise || createFallbackExercise(exercise.name, index),
-          sets: workoutSets,
-          restTime: exercise.restTime || 120,
-          ...(exercise.notes && { notes: exercise.notes }),
-          ...(exercise.tracked && { tracked: exercise.tracked }),
-        });
+        // Regular exercise (Visual-tab supersets were handled above)
+        workoutExercises.push(toWorkoutExercise(exercise, index, `exercise-${Date.now()}-${index}`));
       }
     });
 

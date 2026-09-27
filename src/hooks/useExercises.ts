@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useMemo } from 'react';
 import { useAppDispatch, useAppSelector } from '../store/hooks';
 import { setExercises, setLoading, setError } from '../store/slices/exerciseSlice';
 import { loadExercises } from '../utils/loadExercises';
@@ -40,10 +40,12 @@ export const useExercises = () => {
     }
   }, [dispatch, user?.uid]);
 
-  // Merge custom exercises with database exercises
-  const mergedExercises = CustomExerciseService.mergeWithDatabaseExercises(
-    exercises,
-    customExercises
+  // Merge custom exercises with database exercises. Memoised: a fresh array
+  // every render restarts consumers' debounced searches (the player re-renders
+  // each second, so "Change exercise" never finished searching).
+  const mergedExercises = useMemo(
+    () => CustomExerciseService.mergeWithDatabaseExercises(exercises, customExercises),
+    [exercises, customExercises],
   );
 
   return {

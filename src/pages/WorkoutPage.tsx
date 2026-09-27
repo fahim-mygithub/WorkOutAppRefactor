@@ -6,7 +6,10 @@ import { useWakeLock } from '../hooks/useWakeLock';
 import { SharedWorkoutLoader } from '../components/SharedWorkoutLoader';
 import { SharedWorkoutStartPage } from '../components/SharedWorkoutStartPage';
 import { incrementWorkoutUseCount } from '../store/slices/sharedWorkoutSlice';
-import { loadWorkoutContext } from '../store/slices/exerciseHistorySlice';
+import { loadWorkoutContext, loadPreviousPerformance } from '../store/slices/exerciseHistorySlice';
+import { ExerciseSearchModal } from '../components/workout/ExerciseSearchModal';
+import { useExercises } from '../hooks/useExercises';
+import { sanitizeExerciseForRedux } from '../utils/workoutConversion';
 import { WorkoutStorageService } from '../services/workoutStorageService';
 import { ScheduleService } from '../services/scheduleService';
 import { dayOverrideSet, retestAdvanced } from '../store/slices/scheduleSlice';
@@ -18,6 +21,7 @@ import type { ActivePlanContext } from '../hooks/useStartPlannedDay';
 import {
   startWorkout,
   endWorkout,
+  replaceExerciseMovement,
   nextExercise,
   previousExercise,
   completeSet,
@@ -89,6 +93,9 @@ export default function WorkoutPage() {
   const { user } = useAuth(); // Get Firebase user from auth context
   const { previousPerformances } = useAppSelector((state) => state.exerciseHistory);
   const trackedLifts = useAppSelector((state) => state.trackedLifts.lifts);
+  // "Change exercise": the library, and which exercise is being swapped.
+  const { exercises: exerciseLibrary } = useExercises();
+  const [swapExerciseId, setSwapExerciseId] = useState<string | null>(null);
 
   // Check if we're viewing a shared workout
   const { shareId } = useParams<{ shareId?: string }>() || {};
@@ -202,6 +209,17 @@ export default function WorkoutPage() {
     setAppliedWeights((prev) => ({ ...prev, [exerciseId]: weight }));
   const markWelcomeBackAnswered = (exerciseId: string) =>
     setAnsweredIds((prev) => (prev.has(exerciseId) ? prev : new Set(prev).add(exerciseId)));
+
+  // Keyboard shortcuts: one listener registered here, BEFORE the early returns
+  // below (a hook after them made "end workout" render fewer hooks and crash
+  // into the error boundary). The handler itself is refreshed each render.
+  const shortcutHandlerRef = useRef<(event: KeyboardEvent) => void>(() => {});
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => shortcutHandlerRef.current(event);
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, []);
+  if (!activeWorkout) shortcutHandlerRef.current = () => {};
 
   if (!activeWorkout) {
     // If we're viewing a shared workout, wrap with SharedWorkoutLoader
@@ -469,8 +487,8 @@ export default function WorkoutPage() {
     return { completedSets, totalSets, percentage };
   };
 
-  // Keyboard shortcuts
-  useEffect(() => {
+  // Keyboard shortcuts (listener registered above the early returns)
+  {
     const handleKeyDown = (event: KeyboardEvent) => {
       // Don't trigger shortcuts if disabled or user is typing in an input
       if (!preferences.keyboardShortcuts.enabled) {
@@ -530,9 +548,8 @@ export default function WorkoutPage() {
       }
     };
 
-    document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [currentSet, currentExercise, activeWorkout, restTimer, dispatch, handleCompleteSet, handleUncompleteSet, handleJumpToSet]);
+    shortcutHandlerRef.current = handleKeyDown;
+  }
 
   const progress = calculateWorkoutProgress();
 
@@ -611,6 +628,7 @@ export default function WorkoutPage() {
             recommendedWeight={appliedWeights[currentExercise.exercise.id] ?? progressionHook.recommendation?.recommendedWeight}
             recommendedReps={progressionHook.recommendation?.recommendedReps}
             onEditSets={() => handleEditExercise(currentExercise)}
+            onChangeExercise={() => setSwapExerciseId(currentExercise.id)}
             onCompleteSet={handleCompleteSet}
             onUncompleteSet={handleUncompleteSet}
             onJumpToSet={handleJumpToSet}
@@ -621,6 +639,27 @@ export default function WorkoutPage() {
         </ExerciseDeck>
 
         <RestTimerBar />
+
+        <ExerciseSearchModal
+          exercises={exerciseLibrary}
+          isOpen={swapExerciseId !== null}
+          onClose={() => setSwapExerciseId(null)}
+          currentExerciseName={currentExercise.exercise.name}
+          onSelectExercise={(picked) => {
+            if (swapExerciseId) {
+              dispatch(
+                replaceExerciseMovement({
+                  exerciseId: swapExerciseId,
+                  exercise: sanitizeExerciseForRedux(picked),
+                }),
+              );
+              if (user?.uid && picked.id) {
+                dispatch(loadPreviousPerformance({ userId: user.uid, exerciseId: picked.id }));
+              }
+            }
+            setSwapExerciseId(null);
+          }}
+        />
       </div>
 
       {/* Exercise Edit Modal */}

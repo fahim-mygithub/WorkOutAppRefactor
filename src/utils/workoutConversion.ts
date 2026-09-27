@@ -1,49 +1,13 @@
 import { WorkoutExercise, WorkoutSet, Exercise } from '../types/exercise';
 import { SavedWorkout } from '../services/workoutStorageService';
 import { ExerciseHistory, WorkoutSummary } from '../types/exerciseHistory';
+import { matchExercise } from '../lib/exerciseMatch';
 
 /**
- * Helper function to find exercise in database with improved matching
+ * Find a typed exercise name in the library (ranked match; see lib/exerciseMatch).
  */
-export const findExerciseInDatabase = (exerciseName: string, exerciseDatabase: Exercise[]): Exercise | null => {
-  const name = exerciseName.toLowerCase().trim();
-
-  // First try exact match
-  const exactMatch = exerciseDatabase.find(ex =>
-    ex.name.toLowerCase() === name
-  );
-  if (exactMatch) return exactMatch;
-
-  // Try partial match (database name contains search term or vice versa)
-  const partialMatch = exerciseDatabase.find(ex => {
-    const dbName = ex.name.toLowerCase();
-    return dbName.includes(name) || name.includes(dbName);
-  });
-  if (partialMatch) return partialMatch;
-
-  // Then try common variations (handle plurals, common abbreviations)
-  const variations = [
-    name,
-    name.endsWith('s') ? name.slice(0, -1) : name + 's', // Handle plurals
-    name.replace(/\bbarbell\b/g, 'bb').replace(/\bdumbbell\b/g, 'db'), // Common abbreviations
-    name.replace(/\bbb\b/g, 'barbell').replace(/\bdb\b/g, 'dumbbell'), // Expand abbreviations
-    name.replace(/\bpress\b/g, ''), // Try without "press"
-    name + ' press', // Try adding "press"
-  ];
-
-  for (const variation of variations) {
-    const match = exerciseDatabase.find(ex => {
-      const dbName = ex.name.toLowerCase();
-      return dbName === variation ||
-             dbName.includes(variation) ||
-             variation.includes(dbName) ||
-             ex.searchKeywords.some(keyword => keyword.toLowerCase().includes(variation));
-    });
-    if (match) return match;
-  }
-
-  return null;
-};
+export const findExerciseInDatabase = (exerciseName: string, exerciseDatabase: Exercise[]): Exercise | null =>
+  matchExercise(exerciseName, exerciseDatabase);
 
 /**
  * Generate a deterministic ID for fallback exercises based on exercise name
