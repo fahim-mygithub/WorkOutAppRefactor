@@ -9,6 +9,7 @@ import { aiRequestSchema, type AiRequest } from './schemas';
 import { AiError, errorResponse, json } from './errors';
 import { isAllowed, takeDailySlot, verifyIdToken } from './access';
 import { assertContextSize, handleChat, handleParse, handleReadLift, makeClient } from './handlers';
+import { findExercise } from './findExercise';
 
 /** Largest request body accepted (characters). */
 const MAX_BODY_CHARS = 1_000_000;
@@ -41,6 +42,10 @@ export const defaultActions: Deps['actions'] = {
   },
   readLift: (d, c) =>
     handleReadLift(c, (d as Extract<AiRequest, { action: 'readLift' }>).text).then((result) => ({ result })),
+  findExercise: (d, c, env) =>
+    findExercise((d as Extract<AiRequest, { action: 'findExercise' }>).name, { client: c, referer: env.APP_ORIGIN }).then(
+      (result) => ({ result }),
+    ),
 };
 
 const defaultDeps: Deps = {

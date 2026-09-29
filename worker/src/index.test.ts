@@ -91,4 +91,28 @@ describe('defaultActions', () => {
     const client = { messages: { create } } as unknown as Anthropic;
     await expect(defaultActions.readLift!({ action: 'readLift', text: 'fs 250x5' }, client, env)).resolves.toEqual({ result: lift });
   });
+  it('registers findExercise, verifies media with APP_ORIGIN as Referer, and wraps it in { result }', async () => {
+    const input = {
+      name: 'Skull Crusher', muscleGroups: ['Triceps'], equipment: 'Barbell', difficulty: 'Intermediate',
+      instructions: ['Lie back.', 'Extend.'], mediaCandidates: ['https://m.test/a.mp4'],
+    };
+    const create = vi.fn().mockResolvedValue({
+      content: [{ type: 'tool_use', id: 't1', name: 'submitExercise', input }],
+      stop_reason: 'tool_use',
+    });
+    const client = { messages: { create } } as unknown as Anthropic;
+    const fetchMock = vi.fn().mockResolvedValue({
+      status: 200, ok: true, url: 'https://m.test/a.mp4', headers: new Headers({ 'content-type': 'video/mp4' }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    try {
+      const { mediaCandidates: _c, ...rest } = input;
+      await expect(defaultActions.findExercise!({ action: 'findExercise', name: 'skull crushers' }, client, env)).resolves.toEqual({
+        result: { ...rest, media: ['https://m.test/a.mp4'], rejectedMedia: 0 },
+      });
+      expect(fetchMock.mock.calls[0][1].headers.Referer).toBe(env.APP_ORIGIN);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
 });

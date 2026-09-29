@@ -115,10 +115,41 @@ export const READ_LIFT_OPTIONAL_KEYS = ['sets', 'rir', 'equipment', 'step'] as c
 
 export type ReadLiftResult = z.infer<typeof readLiftResultSchema>;
 
+// ---------------------------------------------------------------------------
+// findExercise action — look up an exercise missing from the library (Sonnet +
+// web search), with demo media verified server-side
+// ---------------------------------------------------------------------------
+
+export const findExerciseRequestSchema = z.object({
+  action: z.literal('findExercise'),
+  name: z.string().min(2).max(120),
+});
+
+export const exerciseLookupSchema = z
+  .object({
+    name: z.string().describe('Standard exercise name.'),
+    aliasOf: z
+      .string()
+      .optional()
+      .describe('Common library name if this is a synonym (e.g. skull crusher → Lying Triceps Extension).'),
+    muscleGroups: z.array(z.string()).min(1).describe('Primary muscles, e.g. ["Triceps"].'),
+    equipment: z.string().describe('e.g. Barbell, Dumbbells, Cables, Bodyweight, Kettlebells, Bands.'),
+    difficulty: z.enum(['Beginner', 'Intermediate', 'Advanced']),
+    instructions: z.array(z.string()).min(2).max(8).describe('Numbered steps in your own words.'),
+    mediaCandidates: z
+      .array(z.string())
+      .max(8)
+      .describe('Direct https URLs ending in .mp4, .webm or .gif showing the movement.'),
+  })
+  .describe('Submit the exercise you found. Call exactly once.');
+
+export type ExerciseLookup = z.infer<typeof exerciseLookupSchema>;
+
 export const aiRequestSchema = z.discriminatedUnion('action', [
   parseRequestSchema,
   chatRequestSchema,
   readLiftRequestSchema,
+  findExerciseRequestSchema,
 ]);
 
 export type AiRequest = z.infer<typeof aiRequestSchema>;
