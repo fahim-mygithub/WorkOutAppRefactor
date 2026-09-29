@@ -6,15 +6,25 @@
  */
 const TYPES = ['video/mp4', 'video/webm', 'image/gif'];
 export const MAX_BYTES = 25_000_000;
+/** Per-request timeout; a slow host counts as a failed check. */
+const TIMEOUT_MS = 5000;
 
 export type MediaCheck = { ok: true; type: string } | { ok: false; reason: string };
 
 export async function verifyMedia(url: string, referer: string, fetchImpl: typeof fetch = fetch): Promise<MediaCheck> {
   if (!url.startsWith('https://')) return { ok: false, reason: 'not https' };
   const headers = { Referer: referer, 'User-Agent': 'Mozilla/5.0 (WorkoutApp media check)' };
-  let r = await fetchImpl(url, { method: 'HEAD', headers, redirect: 'follow' }).catch(() => null);
+  let r = await fetchImpl(url, { method: 'HEAD', headers, redirect: 'follow', signal: AbortSignal.timeout(TIMEOUT_MS) })
+    .catch(() => null);
   if (!r || r.status === 405 || r.status === 501) {
-    r = await fetchImpl(url, { method: 'GET', headers: { ...headers, Range: 'bytes=0-0' }, redirect: 'follow' }).catch(() => null);
+    r = await fetchImpl(url, {
+      method: 'GET',
+      headers: { ...headers, Range: 'bytes=0-0' },
+      redirect: 'follow',
+      signal: AbortSignal.timeout(TIMEOUT_MS),
+    }).catch(() => null);
+    // Only the headers matter: release the connection without reading the body.
+    r?.body?.cancel().catch(() => {});
   }
   if (!r || !r.ok) return { ok: false, reason: `status ${r?.status ?? 'error'}` };
   if (r.url && !r.url.startsWith('https://')) return { ok: false, reason: 'redirected to non-https' };

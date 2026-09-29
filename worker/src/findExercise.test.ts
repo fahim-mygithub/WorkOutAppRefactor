@@ -40,6 +40,17 @@ describe('findExercise schemas', () => {
     expect(exerciseLookupSchema.safeParse({ ...input, difficulty: 'Expert' }).success).toBe(false);
     expect(exerciseLookupSchema.safeParse({ ...input, instructions: ['one'] }).success).toBe(false);
   });
+  it('caps string lengths', () => {
+    const long = (n: number) => 'x'.repeat(n);
+    expect(exerciseLookupSchema.safeParse({ ...input, name: long(120), aliasOf: long(120), equipment: long(60),
+      instructions: [long(300), 'b'], muscleGroups: [long(40)] }).success).toBe(true);
+    for (const bad of [
+      { name: long(121) }, { aliasOf: long(121) }, { equipment: long(61) },
+      { instructions: [long(301), 'b'] }, { muscleGroups: [long(41)] },
+    ]) {
+      expect(exerciseLookupSchema.safeParse({ ...input, ...bad }).success).toBe(false);
+    }
+  });
 });
 
 describe('FIND_EXERCISE_SYSTEM_PROMPT', () => {
@@ -86,12 +97,13 @@ describe('findExercise', () => {
     expect(create).toHaveBeenCalledTimes(3);
   });
 
-  it('nudges once for submitExercise without web search when the model ends without it', async () => {
+  it('nudges once, with the same tools, when the model ends without submitting', async () => {
     const { client, create } = clientOf(noSubmit, submit());
     await expect(findExercise('skull crushers', { client, verify: okIf(() => true) })).resolves.toMatchObject({ name: 'Skull Crusher' });
     expect(create).toHaveBeenCalledTimes(2);
     const req = create.mock.calls[1][0];
-    expect(req.tools).toEqual([submitExerciseTool]);
+    expect(req.tools).toEqual([WEB_SEARCH_TOOL, submitExerciseTool]);
+    expect(req.tool_choice).toBeUndefined();
     expect(req.messages).toEqual([
       { role: 'user', content: 'skull crushers' },
       { role: 'assistant', content: noSubmit.content },
@@ -110,6 +122,18 @@ describe('findExercise', () => {
     const { client, create } = clientOf({ stop_reason: 'refusal', content: [] }, submit());
     await expect(findExercise('zzz', { client, verify: okIf(() => true) })).rejects.toMatchObject({ code: 'not-found' });
     expect(create).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not nudge after max_tokens', async () => {
+    const { client, create } = clientOf({ stop_reason: 'max_tokens', content: [{ type: 'text', text: 'Searching' }] }, submit());
+    await expect(findExercise('zzz', { client, verify: okIf(() => true) })).rejects.toMatchObject({ code: 'not-found' });
+    expect(create).toHaveBeenCalledTimes(1);
+  });
+
+  it('allows one SDK retry per model call (subrequest budget)', async () => {
+    const { client, create } = clientOf(noSubmit, submit());
+    await findExercise('skull crushers', { client, verify: okIf(() => true) });
+    for (const call of create.mock.calls) expect(call[1]).toEqual({ maxRetries: 1 });
   });
 
   it('never makes more than 4 model calls', async () => {

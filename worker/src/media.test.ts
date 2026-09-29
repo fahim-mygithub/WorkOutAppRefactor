@@ -1,8 +1,8 @@
 import { describe, it, expect, vi } from 'vitest';
 import { verifyMedia } from './media';
 
-const res = (status: number, headers: Record<string, string>, url?: string) =>
-  ({ status, ok: status >= 200 && status < 300, headers: new Headers(headers), url }) as unknown as Response;
+const res = (status: number, headers: Record<string, string>, url?: string, body?: unknown) =>
+  ({ status, ok: status >= 200 && status < 300, headers: new Headers(headers), url, body }) as unknown as Response;
 
 describe('verifyMedia', () => {
   const REF = 'https://fahim-mygithub.github.io/';
@@ -58,5 +58,37 @@ describe('verifyMedia', () => {
       .mockResolvedValueOnce(res(501, {}))
       .mockResolvedValueOnce(res(206, { 'content-type': 'video/mp4', 'content-range': 'bytes 0-0/90000000' }));
     await expect(verifyMedia('https://x/a.mp4', REF, f)).resolves.toMatchObject({ ok: false, reason: 'too large' });
+  });
+  it('gives each request its own 5 s timeout signal', async () => {
+    const f = vi.fn()
+      .mockResolvedValueOnce(res(405, {}))
+      .mockResolvedValueOnce(res(206, { 'content-type': 'image/gif', 'content-range': 'bytes 0-0/1' }));
+    await verifyMedia('https://x/a.gif', REF, f);
+    const [head, get] = [f.mock.calls[0][1].signal, f.mock.calls[1][1].signal];
+    expect(head).toBeInstanceOf(AbortSignal);
+    expect(get).toBeInstanceOf(AbortSignal);
+    expect(get).not.toBe(head);
+  });
+  it('rejects when the requests time out', async () => {
+    const timeout = new DOMException('The operation timed out.', 'TimeoutError');
+    await expect(verifyMedia('https://x/a.mp4', REF, vi.fn().mockRejectedValue(timeout))).resolves.toMatchObject({ ok: false });
+    const abort = new DOMException('Aborted', 'AbortError');
+    await expect(verifyMedia('https://x/a.mp4', REF, vi.fn().mockRejectedValue(abort))).resolves.toMatchObject({ ok: false });
+  });
+  it('cancels the ranged GET body once headers are read', async () => {
+    const cancel = vi.fn().mockResolvedValue(undefined);
+    const f = vi.fn()
+      .mockResolvedValueOnce(res(405, {}))
+      .mockResolvedValueOnce(res(206, { 'content-type': 'image/gif', 'content-range': 'bytes 0-0/1' }, undefined, { cancel }));
+    await expect(verifyMedia('https://x/a.gif', REF, f)).resolves.toEqual({ ok: true, type: 'image/gif' });
+    expect(cancel).toHaveBeenCalledTimes(1);
+  });
+  it('cancels the ranged GET body on a failed status too', async () => {
+    const cancel = vi.fn().mockRejectedValue(new Error('already closed'));
+    const f = vi.fn()
+      .mockResolvedValueOnce(res(501, {}))
+      .mockResolvedValueOnce(res(403, {}, undefined, { cancel }));
+    await expect(verifyMedia('https://x/a.gif', REF, f)).resolves.toMatchObject({ ok: false });
+    expect(cancel).toHaveBeenCalledTimes(1);
   });
 });

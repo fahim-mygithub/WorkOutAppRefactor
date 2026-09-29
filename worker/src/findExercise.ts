@@ -8,8 +8,13 @@
  * other block the model produces (text, searches, results) is ignored, and no
  * other client tool is offered.
  *
- * Subrequest budget (Workers free plan: 50 per request): at most 4 model
- * calls + at most 8 candidates x 2 fetches (HEAD + ranged GET fallback).
+ * Subrequest budget (Workers free plan: 50 per request):
+ *   model: at most 4 calls x 2 attempts (maxRetries 1)          =  8
+ *   media: at most 8 candidates x 2 fetches (HEAD, ranged GET)  = 16
+ * = 24 before redirects. Each followed redirect is another subrequest, so
+ * there is room for ~26 hops across all media fetches; a pathological chain
+ * of redirects could still exceed it (the fetch then fails and the check
+ * counts as rejected, or the Worker errors).
  */
 import type Anthropic from '@anthropic-ai/sdk';
 import { AiError } from './errors';
@@ -33,6 +38,8 @@ const MAX_MEDIA = 3;
 const CONCURRENCY = 4;
 const MEDIA_PATH = /\.(mp4|webm|gif)$/i;
 const NUDGE = 'Call submitExercise now with what you found.';
+const NO_NUDGE = new Set<Anthropic.StopReason | null>(['pause_turn', 'refusal', 'max_tokens']);
+const TOOLS: Anthropic.ToolUnion[] = [WEB_SEARCH_TOOL, submitExerciseTool];
 
 export type FindExerciseResult = Omit<ExerciseLookup, 'mediaCandidates'> & {
   media: string[];
@@ -96,31 +103,34 @@ export async function findExercise(name: string, deps: FindExerciseDeps): Promis
   const { client } = deps;
   const verify = deps.verify ?? ((url: string) => verifyMedia(url, deps.referer ?? ''));
   const messages: Anthropic.MessageParam[] = [{ role: 'user', content: name }];
-  const ask = (tools: Anthropic.ToolUnion[]) =>
+  const ask = () =>
     client.messages.create({
       model: SMART_MODEL,
       max_tokens: 8000,
       system: [{ type: 'text', text: FIND_EXERCISE_SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } }],
-      tools,
-      // No forced tool_choice: web search must run first, and SMART_MODEL
-      // rejects tool_choice 'tool' / 'any' anyway.
+      // Every request sends the same tools: changing the tools array would
+      // invalidate earlier thinking blocks (a 400 on newer accounts).
+      tools: TOOLS,
+      // No tool_choice: Sonnet 5.5 rejects forced tool_choice ('tool' / 'any')
+      // with a 400, so the nudge below steers with a user message instead.
       messages: [...messages],
-    });
+    }, { maxRetries: 1 });
 
-  let response = await ask([WEB_SEARCH_TOOL, submitExerciseTool]);
+  let response = await ask();
   for (let round = 1; response.stop_reason === 'pause_turn' && round < MAX_SEARCH_ROUNDS; round++) {
     // Resume a paused server-side search: resend its content, no new user turn.
     messages.push({ role: 'assistant', content: response.content });
-    response = await ask([WEB_SEARCH_TOOL, submitExerciseTool]);
+    response = await ask();
   }
 
   let input = submitted(response);
   // One nudge when the model finished without submitting. Not after a pause
-  // (a user turn cannot follow an unfinished search) or a refusal.
-  if (input === undefined && response.stop_reason !== 'pause_turn' && response.stop_reason !== 'refusal') {
+  // (a user turn cannot follow an unfinished search), a refusal, or a
+  // max_tokens cut-off (the turn is incomplete).
+  if (input === undefined && !NO_NUDGE.has(response.stop_reason)) {
     if (response.content.length) messages.push({ role: 'assistant', content: response.content });
     messages.push({ role: 'user', content: NUDGE });
-    response = await ask([submitExerciseTool]);
+    response = await ask();
     input = submitted(response);
   }
   if (!input || typeof input !== 'object' || Array.isArray(input)) {
