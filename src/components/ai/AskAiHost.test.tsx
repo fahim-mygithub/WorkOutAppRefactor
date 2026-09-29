@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { Provider } from 'react-redux';
 import { MemoryRouter } from 'react-router-dom';
 import { configureStore } from '@reduxjs/toolkit';
-import workout, { startWorkout, completeSet, startRestTimer } from '../../store/slices/workoutSlice';
+import workout, { startWorkout, completeSet, startRestTimer, endWorkout } from '../../store/slices/workoutSlice';
 import trackedLifts, { trackedLiftsHydrated } from '../../store/slices/trackedLiftsSlice';
 import exercise, { setExercises } from '../../store/slices/exerciseSlice';
 import user from '../../store/slices/userSlice';
@@ -15,23 +15,25 @@ import type { TrackedLift } from '../../types/trackedLifts';
 import { AskAiHost } from './AskAiHost';
 
 const bench = { id: 'x-bench', name: 'Barbell Bench Press' } as Exercise;
+const dbBench = { id: 'x-db', name: 'Dumbbell Bench Press' } as Exercise;
 
 function makeStore() {
   return configureStore({ reducer: { workout, trackedLifts, exercise, user, ai } });
 }
 
-function makeStoreWithWorkoutAndLift() {
+function makeStoreWithWorkoutAndLift(tracked = false) {
   const store = makeStore();
   const e1 = {
     id: 'e1',
     exercise: bench,
     sets: [0, 1, 2, 3].map((k) => ({ id: `s${k}`, reps: 3, weight: 225, unit: 'lbs', completed: false })),
+    ...(tracked ? { tracked: { liftId: 'l1', goal: 'strength' } } : {}),
   } as WorkoutExercise;
   const lift: TrackedLift = {
     id: 'l1', name: 'Bench Press', category: 'Push',
     load: { kind: 'weight', value: 265, unit: 'lb' }, target: { kind: 'repMax', reps: 1 },
   };
-  store.dispatch(setExercises([bench]));
+  store.dispatch(setExercises([bench, dbBench]));
   store.dispatch(startWorkout({ name: 'Push', exercises: [e1] }));
   store.dispatch(completeSet({ exerciseIndex: 0, setIndex: 0, setData: {} }));
   store.dispatch(completeSet({ exerciseIndex: 0, setIndex: 1, setData: {} }));
@@ -39,7 +41,7 @@ function makeStoreWithWorkoutAndLift() {
   return store;
 }
 
-function renderHost(store = makeStoreWithWorkoutAndLift(), path = '/workout') {
+function renderHost(store = makeStoreWithWorkoutAndLift(), path = '/') {
   render(
     <Provider store={store}>
       <MemoryRouter initialEntries={[path]}>
@@ -112,6 +114,59 @@ describe('AskAiHost', () => {
     await waitFor(() =>
       expect(screen.queryByRole('button', { name: 'Ask AI', hidden: true })).not.toBeInTheDocument(),
     );
+  });
+
+  it('says unconfigured plainly and disables AI', async () => {
+    vi.spyOn(aiClient, 'chat').mockRejectedValue(new aiClient.AiBackendError('x', 'unconfigured'));
+    const store = renderHost();
+    const u = userEvent.setup();
+    await u.click(screen.getByRole('button', { name: 'Ask AI' }));
+    await u.type(screen.getByLabelText('Message'), 'hi');
+    await u.click(screen.getByRole('button', { name: 'Send' }));
+    expect(await screen.findByText("AI isn't set up yet.")).toBeInTheDocument();
+    expect(store.getState().ai.disabledReason).toBe('unconfigured');
+  });
+
+  it('stays off the workout route, where the player has its own entry', () => {
+    renderHost(makeStoreWithWorkoutAndLift(), '/workout');
+    expect(screen.queryByRole('button', { name: 'Ask AI' })).not.toBeInTheDocument();
+  });
+
+  it('hides the button while an Undo toast shows', async () => {
+    vi.spyOn(aiClient, 'chat').mockResolvedValue({
+      reply: '', source: 'backend',
+      toolCalls: [{ id: 't1', name: 'adjustSet', input: { exerciseId: 'e1', fromSetIndex: 2, weight: 205, reason: 'missed' } }],
+    });
+    renderHost();
+    const u = userEvent.setup();
+    await u.click(screen.getByRole('button', { name: 'Ask AI' }));
+    await u.type(screen.getByLabelText('Message'), 'missed');
+    await u.click(screen.getByRole('button', { name: 'Send' }));
+    await screen.findByRole('status');
+    await u.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(screen.getByRole('status')).toHaveTextContent(/205 lb/);
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Ask AI' })).not.toBeInTheDocument());
+  });
+
+  it('re-plans a late Apply and says why it no longer applies', async () => {
+    vi.spyOn(aiClient, 'chat').mockResolvedValue({
+      reply: 'Try dumbbells.', source: 'backend',
+      toolCalls: [{ id: 't5', name: 'swapExercise', input: { exerciseId: 'e1', replacementExerciseName: 'Dumbbell Bench Press', scope: 'ongoing', reason: 'shoulder' } }],
+    });
+    const store = renderHost(makeStoreWithWorkoutAndLift(true));
+    const u = userEvent.setup();
+    await u.click(screen.getByRole('button', { name: 'Ask AI' }));
+    await u.type(screen.getByLabelText('Message'), 'shoulder hurts');
+    await u.click(screen.getByRole('button', { name: 'Send' }));
+    await screen.findByRole('button', { name: 'Apply' });
+    act(() => {
+      store.dispatch(endWorkout());
+    });
+    const before = store.getState().trackedLifts;
+    await u.click(screen.getByRole('button', { name: 'Apply' }));
+    expect(await screen.findByText("Couldn't apply: That exercise is not in this workout.")).toBeInTheDocument();
+    expect(store.getState().trackedLifts).toBe(before);
   });
 
   it('says the limit plainly and disables AI', async () => {

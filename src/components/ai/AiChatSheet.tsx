@@ -37,9 +37,14 @@ import { Textarea } from '@/components/ui/textarea';
 import { Card, CardBody } from '@/components/ui/card';
 import {
   ApplyRejectCard,
-  type AiToolProposal,
   type ApplyRejectDecision,
 } from '@/components/ai/ApplyRejectCard';
+import type {
+  AiAssistantTurn,
+  AiNotice,
+  AiToolProposal,
+  AiVisualization,
+} from '@/ai/types';
 import { WorkoutParser } from '@/parser/workoutParser';
 import type { ParsedWorkout } from '@/parser/types';
 import { cn } from '@/lib/utils';
@@ -48,38 +53,7 @@ import { cn } from '@/lib/utils';
 // AI client boundary (the Worker transport contract).
 // ---------------------------------------------------------------------------
 
-/** A visualization tool-call — rendered read-only, never Apply/Reject. */
-export interface AiVisualization {
-  id: string;
-  /** Chart kind from the design's chart vocabulary, e.g. 'line' | 'bar'. */
-  kind: string;
-  /** Title shown above the chart. */
-  title: string;
-  /** Opaque chart spec/data; rendered by an injected renderer if provided. */
-  spec: unknown;
-}
-
-/**
- * A short line under the assistant prose saying what happened to a tool call:
- * applied on its own (auto tier) or discarded (failed the engine's checks).
- */
-export interface AiNotice {
-  id: string;
-  text: string;
-  tone: 'applied' | 'discarded';
-}
-
-/** One assistant turn returned by the AI Worker. */
-export interface AiAssistantTurn {
-  /** Free-text assistant prose (may be empty if it only emitted tool-calls). */
-  text: string;
-  /** Mutation tool-calls -> ApplyRejectCard. */
-  proposals?: AiToolProposal[];
-  /** Visualization tool-calls -> read-only render. */
-  visualizations?: AiVisualization[];
-  /** Applied / discarded notices -> small lines under the prose. */
-  notices?: AiNotice[];
-}
+export type { AiAssistantTurn, AiNotice, AiVisualization };
 
 /**
  * The injected transport to the AI Worker. Implemented by the page that
@@ -127,9 +101,11 @@ export interface AiChatSheetProps {
   /**
    * Called when the user confirms a mutation proposal (Apply). The mounting
    * page performs the real app-state mutation here. Also forwarded to
-   * `client.applyToolCall` if present.
+   * `client.applyToolCall` if present. Return a message to refuse (e.g. the
+   * change no longer fits the app state): the card stays open and the message
+   * shows as the error.
    */
-  onApplyProposal?: (proposal: AiToolProposal) => void;
+  onApplyProposal?: (proposal: AiToolProposal) => string | void;
   /** Called when the user rejects a mutation proposal. */
   onRejectProposal?: (proposal: AiToolProposal) => void;
   /**
@@ -216,8 +192,12 @@ export function AiChatSheet({
 
   const handleApply = React.useCallback(
     (proposal: AiToolProposal) => {
+      const problem = onApplyProposal?.(proposal);
+      if (typeof problem === 'string') {
+        setError(problem);
+        return;
+      }
       setDecisions((d) => ({ ...d, [proposal.id]: 'applied' }));
-      onApplyProposal?.(proposal);
       void client?.applyToolCall?.(proposal);
     },
     [client, onApplyProposal],

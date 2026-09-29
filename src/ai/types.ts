@@ -130,6 +130,57 @@ export interface AiChatResponse {
 }
 
 // ---------------------------------------------------------------------------
+// Chat sheet turn shapes (what the UI renders for one assistant turn)
+// ---------------------------------------------------------------------------
+
+/** A mutation tool-call the AI wants to perform, pending user confirmation. */
+export interface AiToolProposal {
+  /** Tool-call id (stable; from the assistant turn). Used as React key. */
+  id: string;
+  /** Tool name, e.g. 'add_exercise' / 'log_set' / 'create_workout'. */
+  tool: string;
+  /** Human-readable one-line summary of what will happen if applied. */
+  summary: string;
+  /** Optional longer detail / rationale shown under the summary. */
+  detail?: string;
+  /** The raw tool-call input; rendered as a read-only preview when present. */
+  input?: unknown;
+}
+
+/** A visualization tool-call — rendered read-only, never Apply/Reject. */
+export interface AiVisualization {
+  id: string;
+  /** Chart kind from the design's chart vocabulary, e.g. 'line' | 'bar'. */
+  kind: string;
+  /** Title shown above the chart. */
+  title: string;
+  /** Opaque chart spec/data; rendered by an injected renderer if provided. */
+  spec: unknown;
+}
+
+/**
+ * A short line under the assistant prose saying what happened to a tool call:
+ * applied on its own (auto tier) or discarded (failed the engine's checks).
+ */
+export interface AiNotice {
+  id: string;
+  text: string;
+  tone: 'applied' | 'discarded';
+}
+
+/** One assistant turn returned by the AI Worker. */
+export interface AiAssistantTurn {
+  /** Free-text assistant prose (may be empty if it only emitted tool-calls). */
+  text: string;
+  /** Mutation tool-calls -> ApplyRejectCard. */
+  proposals?: AiToolProposal[];
+  /** Visualization tool-calls -> read-only render. */
+  visualizations?: AiVisualization[];
+  /** Applied / discarded notices -> small lines under the prose. */
+  notices?: AiNotice[];
+}
+
+// ---------------------------------------------------------------------------
 // Internal helpers
 // ---------------------------------------------------------------------------
 

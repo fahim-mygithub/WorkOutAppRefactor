@@ -2,7 +2,7 @@
 //
 // Each tool call the model returns is planned against the LATEST store state
 // (`planToolCall`) and tiered: auto → applied now with an Undo toast; confirm →
-// an Apply/Reject card (the plan waits in a ref until Apply); rejected → a
+// an Apply/Reject card (re-planned against the state at Apply); rejected → a
 // "discarded" notice. The button hides when AI can't be used or mid-rest.
 import * as React from 'react';
 import { useStore } from 'react-redux';
@@ -17,8 +17,8 @@ import type { RootState } from '../../store';
 import { aiDisabled, askAiClosed, askAiOpened } from '../../store/slices/aiSlice';
 import { AiBackendError, chat, isBackendAvailable, isSignedIn } from '../../ai/aiClient';
 import { buildAiContext } from '../../ai/context';
-import { planToolCall, toAssistantTurn, type ToolPlan } from '../../ai/applyTool';
-import type { AiErrorCode } from '../../ai/types';
+import { planToolCall, toAssistantTurn } from '../../ai/applyTool';
+import type { AiErrorCode, AiToolCall } from '../../ai/types';
 import { useExerciseLibrary } from '../workout/ExerciseQuickAdd';
 import { AiChatSheet, type AiChatClient } from './AiChatSheet';
 import { UndoToast } from './UndoToast';
@@ -28,6 +28,7 @@ const FRIENDLY: Partial<Record<AiErrorCode, string>> = {
   'not-allowed': "AI isn't enabled for this account.",
   'signed-out': 'Sign in to use AI.',
   offline: "You're offline.",
+  unconfigured: "AI isn't set up yet.",
 };
 const GENERIC = 'Something went wrong — try again.';
 
@@ -36,8 +37,6 @@ interface QueuedUndo {
   message: string;
   undo: UnknownAction[];
 }
-
-type ConfirmPlan = Extract<ToolPlan, { kind: 'confirm' }>;
 
 export function AskAiHost() {
   const dispatch = useAppDispatch();
@@ -52,8 +51,21 @@ export function AskAiHost() {
   const [session, setSession] = React.useState({ open, n: 0 });
   if (session.open !== open) setSession({ open, n: open ? session.n + 1 : session.n });
 
-  const confirmPlans = React.useRef(new Map<string, ConfirmPlan>());
+  // Calls awaiting Apply, re-planned on Apply against the state at that moment.
+  const pendingCalls = React.useRef(new Map<string, AiToolCall>());
+  React.useEffect(() => {
+    if (!open) pendingCalls.current.clear();
+  }, [open]);
   const [undos, setUndos] = React.useState<QueuedUndo[]>([]);
+
+  const planNow = React.useCallback((call: AiToolCall) => {
+    const now = store.getState();
+    return planToolCall(call, {
+      activeWorkout: now.workout.activeWorkout,
+      trackedLifts: now.trackedLifts.lifts,
+      library: now.exercise.exercises,
+    });
+  }, [store]);
 
   const client = React.useMemo<AiChatClient>(() => ({
     async sendMessage({ messages }) {
@@ -76,23 +88,18 @@ export function AskAiHost() {
       }
       const planned = res.toolCalls.map((call) => {
         // Latest state per call: an earlier auto call in this turn may have applied.
-        const now = store.getState();
-        const plan = planToolCall(call, {
-          activeWorkout: now.workout.activeWorkout,
-          trackedLifts: now.trackedLifts.lifts,
-          library: now.exercise.exercises,
-        });
+        const plan = planNow(call);
         if (plan.kind === 'auto') {
           plan.apply.forEach((a) => dispatch(a));
           setUndos((q) => [...q, { id: plan.id, message: plan.summary, undo: plan.undo }]);
         } else if (plan.kind === 'confirm') {
-          confirmPlans.current.set(plan.id, plan);
+          pendingCalls.current.set(plan.id, call);
         }
         return { call, plan };
       });
       return toAssistantTurn(res.reply, planned);
     },
-  }), [store, dispatch, pathname]);
+  }), [store, dispatch, pathname, planNow]);
 
   const current = undos[0];
   const toast = (
@@ -108,7 +115,10 @@ export function AskAiHost() {
     </AnimatePresence>
   );
 
-  const showButton = !disabledReason && !resting && isBackendAvailable() && isSignedIn();
+  // Off the player (it has its own entry and its rest controls sit here), and
+  // out of the Undo toast's way.
+  const showButton = !disabledReason && !resting && !current && !pathname.startsWith('/workout')
+    && isBackendAvailable() && isSignedIn();
 
   return (
     <>
@@ -139,10 +149,16 @@ export function AskAiHost() {
         client={client}
         initialMessage={seed}
         onApplyProposal={(proposal) => {
-          confirmPlans.current.get(proposal.id)?.apply.forEach((a) => dispatch(a));
-          confirmPlans.current.delete(proposal.id);
+          const call = pendingCalls.current.get(proposal.id);
+          if (!call) return "Couldn't apply: this suggestion has expired.";
+          const plan = planNow(call);
+          if (plan.kind !== 'confirm') {
+            return `Couldn't apply: ${plan.kind === 'rejected' ? plan.reason : 'things changed since.'}`;
+          }
+          plan.apply.forEach((a) => dispatch(a));
+          pendingCalls.current.delete(proposal.id);
         }}
-        onRejectProposal={(proposal) => confirmPlans.current.delete(proposal.id)}
+        onRejectProposal={(proposal) => pendingCalls.current.delete(proposal.id)}
         overlay={open ? toast : undefined}
       />
       {open ? null : toast}

@@ -275,27 +275,13 @@ describe('planToolCall', () => {
     expect(planToolCall({ id: 'z', name: 'logSet', input: { exerciseId: 'e1', reps: 3 } }, { ...ctx, activeWorkout: null }).kind).toBe('rejected');
   });
 
-  // --- logSet on the player's current set advances like normal logging ------------
-
-  it('logSet on the current set starts the rest timer; undo stops it', () => {
+  it('logSet on the current set leaves the rest timer to the lifter', () => {
     const s0 = run(startState(), [jumpToSet({ exerciseIndex: 0, setIndex: 2 })]);
     const plan = auto(planToolCall({ id: 'a1', name: 'logSet', input: { exerciseId: 'e1', reps: 3, weight: 225 } }, ctxFor(s0)));
     const s1 = run(s0, plan.apply);
     expect(setsIn(s1)[2].completed).toBe(true);
-    expect(s1.restTimer).toMatchObject({ isActive: true, duration: 180 });
-    const s2 = run(s1, plan.undo);
-    expect(setsIn(s2)).toEqual(setsIn(s0));
-    expect(s2.restTimer.isActive).toBe(false);
-  });
-
-  it('logSet on another set, or in a superset, leaves the rest timer alone', () => {
-    const s0 = run(startState(), [jumpToSet({ exerciseIndex: 0, setIndex: 3 })]);
-    const other = auto(planToolCall({ id: 'a2', name: 'logSet', input: { exerciseId: 'e1', setIndex: 2, reps: 3 } }, ctxFor(s0)));
-    expect(run(s0, other.apply).restTimer.isActive).toBe(false);
-    const superset = workout.exercises.map((e) => ({ ...e, isSuperset: true, supersetId: 'ss' }));
-    const s1 = run(startState(superset), [jumpToSet({ exerciseIndex: 0, setIndex: 2 })]);
-    const inSuperset = auto(planToolCall({ id: 'a3', name: 'logSet', input: { exerciseId: 'e1', reps: 3 } }, ctxFor(s1)));
-    expect(run(s1, inSuperset.apply).restTimer.isActive).toBe(false);
+    expect(s1.restTimer).toEqual(s0.restTimer);
+    expect(run(s1, plan.undo).restTimer).toEqual(s0.restTimer);
   });
 });
 

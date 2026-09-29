@@ -24,19 +24,9 @@ import { Button } from '@/components/ui/button';
 import { motion as motionTokens } from '@/lib/motion';
 import { cn } from '@/lib/utils';
 
-/** A mutation tool-call the AI wants to perform, pending user confirmation. */
-export interface AiToolProposal {
-  /** Tool-call id (stable; from the assistant turn). Used as React key. */
-  id: string;
-  /** Tool name, e.g. 'add_exercise' / 'log_set' / 'create_workout'. */
-  tool: string;
-  /** Human-readable one-line summary of what will happen if applied. */
-  summary: string;
-  /** Optional longer detail / rationale shown under the summary. */
-  detail?: string;
-  /** The raw tool-call input; rendered as a read-only preview when present. */
-  input?: unknown;
-}
+import type { AiToolProposal } from '@/ai/types';
+
+export type { AiToolProposal };
 
 export type ApplyRejectDecision = 'applied' | 'rejected';
 

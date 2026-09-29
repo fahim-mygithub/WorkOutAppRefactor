@@ -11,20 +11,13 @@
 import type { UnknownAction } from '@reduxjs/toolkit';
 import type { ActiveWorkout, Exercise, WorkoutExercise, WorkoutSet } from '../types/exercise';
 import type { TrackedLift, TrackedLoad, TrackedTarget, WeightUnit } from '../types/trackedLifts';
-import {
-  replaceExerciseMovement,
-  setsPatched,
-  startRestTimer,
-  stopRestTimer,
-  type SetPatch,
-} from '../store/slices/workoutSlice';
+import { replaceExerciseMovement, setsPatched, type SetPatch } from '../store/slices/workoutSlice';
 import { prescribedFloor } from '../lib/progression/setPrescription';
 import { liftAdded, liftRemoved, liftUpdated } from '../store/slices/trackedLiftsSlice';
 import { checkProposedLoad } from '../lib/aiLoadCheck';
 import { formatLoad, formatTarget } from '../lib/trackedLifts';
 import { fromFlatLift, type FlatLift } from './liftFields';
-import type { AiToolCall } from './types';
-import type { AiAssistantTurn } from '../components/ai/AiChatSheet';
+import type { AiAssistantTurn, AiToolCall } from './types';
 
 export interface PlanContext {
   activeWorkout: ActiveWorkout | null;
@@ -170,22 +163,11 @@ export function planToolCall(call: AiToolCall, ctx: PlanContext): ToolPlan {
         failed: reps < prescribedFloor(set),
       };
       const pair = patchPair(set, changes, { completed: set.completed, reps: set.reps, weight: set.weight });
-      const apply: UnknownAction[] = [setsPatched({ exerciseId: ex.id, patches: [pair.apply] })];
-      const undo: UnknownAction[] = [setsPatched({ exerciseId: ex.id, patches: [pair.undo] })];
-      // Logging the player's current set moves on like the player does: a rest
-      // (which advances the set when it ends). Supersets rotate exercises
-      // instead, which the player owns, so they are left alone.
-      const w = ctx.activeWorkout!;
-      const isCurrent = w.exercises[w.currentExerciseIndex] === ex && w.currentSetIndex === idx;
-      if (isCurrent && !set.completed && !ex.isSuperset && ex.restTime) {
-        apply.push(startRestTimer({ duration: ex.restTime }));
-        undo.push(stopRestTimer());
-      }
       return {
         kind: 'auto', id,
         summary: `${set.completed ? 'Corrected' : 'Logged'} set ${idx + 1}: ${reps} reps${weight !== undefined ? ` at ${weight} ${unit}` : ''}`,
-        apply,
-        undo,
+        apply: [setsPatched({ exerciseId: ex.id, patches: [pair.apply] })],
+        undo: [setsPatched({ exerciseId: ex.id, patches: [pair.undo] })],
       };
     }
 
