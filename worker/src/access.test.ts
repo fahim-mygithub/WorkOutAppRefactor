@@ -54,6 +54,8 @@ describe('isAllowed', () => {
     expect(isAllowed('stranger@x.io', 'me@example.com')).toBe(false);
     expect(isAllowed(undefined, 'me@example.com')).toBe(false);
     expect(isAllowed('me@example.com', '')).toBe(false);
+    // AI_ALLOWED_EMAILS is a secret; before `wrangler secret put` it is unset.
+    expect(isAllowed('me@example.com', undefined)).toBe(false);
   });
 });
 

@@ -16,6 +16,8 @@ dev-dist/
 !.env.example
 # Non-secret: just VITE_DEMO=true, needed so `npm run build:demo` is reproducible.
 !.env.demo
+# Non-secret: just VITE_AI_URL (the public Worker URL) for the Pages build.
+!.env.production
 
 # Firebase
 .firebase/
