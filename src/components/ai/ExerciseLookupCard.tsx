@@ -9,11 +9,12 @@ import { useAppDispatch, useAppSelector } from '../../store/hooks';
 import { aiDisabled } from '../../store/slices/aiSlice';
 import { saveCustomExercise } from '../../store/slices/customExerciseSlice';
 import { AiBackendError, findExerciseOnline, type FindExerciseResult } from '../../ai/aiClient';
+import { isDemoMediaUrl, isGifUrl } from '../../ai/mediaUrl';
 import { customToExercise, useExerciseLibrary } from '../workout/useExerciseLibrary';
 import type { Exercise } from '../../types/exercise';
 
 /**
- * In-flight lookups by term. A lookup can take up to a minute and costs a
+ * In-flight lookups by user and term. A lookup can take up to a minute and costs a
  * model call, so a quick remount (React StrictMode's double effect, or Cancel
  * then looking the same term up again) joins the running request instead of
  * starting another. Dropped once it settles, so a retry asks again.
@@ -25,8 +26,9 @@ export function resetLookupCache(): void {
   inflight.clear();
 }
 
-function lookup(term: string): Promise<FindExerciseResult> {
-  const key = term.toLowerCase();
+function lookup(uid: string, term: string): Promise<FindExerciseResult> {
+  // Keyed by user too, so a different signed-in user never joins another's request.
+  const key = `${uid}:${term.toLowerCase()}`;
   let p = inflight.get(key);
   if (!p) {
     p = findExerciseOnline(term);
@@ -46,14 +48,6 @@ function errorLine(code: string): string {
   return "Couldn't look that up — try again later.";
 }
 
-const isGif = (url: string): boolean => {
-  try {
-    return /\.gif$/i.test(new URL(url).pathname);
-  } catch {
-    return /\.gif(\?|#|$)/i.test(url);
-  }
-};
-
 /** One demo clip over a glyph placeholder; fades in once decoded, so a slow
  *  or broken clip reads as the placeholder rather than a black box. */
 function DemoMedia({ url }: { url: string }) {
@@ -70,7 +64,7 @@ function DemoMedia({ url }: { url: string }) {
         <Dumbbell className="h-8 w-8 text-ink-subtle" aria-hidden="true" />
       </div>
       {!errored &&
-        (isGif(url) ? (
+        (isGifUrl(url) ? (
           <img
             src={url}
             alt=""
@@ -140,7 +134,7 @@ export function ExerciseLookupCard({ term, onAdd, onClose }: ExerciseLookupCardP
     setPhase({ kind: 'loading' });
     setAsNew(false);
     setClip(0);
-    lookup(term).then(
+    lookup(userId ?? '', term).then(
       (result) => {
         if (current && alive.current) setPhase({ kind: 'result', result });
       },
@@ -156,7 +150,7 @@ export function ExerciseLookupCard({ term, onAdd, onClose }: ExerciseLookupCardP
     return () => {
       current = false;
     };
-  }, [term, dispatch]);
+  }, [term, userId, dispatch]);
 
   if (phase.kind === 'loading') {
     return (
@@ -213,10 +207,13 @@ export function ExerciseLookupCard({ term, onAdd, onClose }: ExerciseLookupCardP
   }
 
   const media = result.media;
-  const chosen = media.length > 0 ? media[clip % media.length] : customUrl.trim();
+  const pasted = customUrl.trim();
+  // A pasted link must be direct https media; empty saves without a demo.
+  const pastedBad = media.length === 0 && pasted !== '' && !isDemoMediaUrl(pasted);
+  const chosen = media.length > 0 ? media[clip % media.length] : pasted;
 
   const apply = async () => {
-    if (!userId || saving) return;
+    if (!userId || saving || pastedBad) return;
     setSaving(true);
     setSaveError(null);
     try {
@@ -259,7 +256,6 @@ export function ExerciseLookupCard({ term, onAdd, onClose }: ExerciseLookupCardP
             <Button
               type="button"
               variant="ghost"
-              size="sm"
               className="self-start"
               onClick={() => setClip((c) => (c + 1) % media.length)}
             >
@@ -282,7 +278,14 @@ export function ExerciseLookupCard({ term, onAdd, onClose }: ExerciseLookupCardP
             placeholder="https://…"
             value={customUrl}
             onChange={(e) => setCustomUrl(e.target.value)}
+            aria-invalid={pastedBad || undefined}
+            aria-describedby={pastedBad ? `${urlId}-hint` : undefined}
           />
+          {pastedBad && (
+            <p id={`${urlId}-hint`} className="text-caption text-danger">
+              Needs an https .mp4, .webm or .gif link
+            </p>
+          )}
         </div>
       )}
 
@@ -294,7 +297,7 @@ export function ExerciseLookupCard({ term, onAdd, onClose }: ExerciseLookupCardP
 
       <div className="flex flex-col gap-1.5">
         <div className="flex flex-wrap gap-2">
-          <Button type="button" onClick={() => void apply()} disabled={!userId || saving}>
+          <Button type="button" onClick={() => void apply()} disabled={!userId || saving || pastedBad}>
             {saving ? 'Saving…' : 'Apply'}
           </Button>
           <Button type="button" variant="ghost" onClick={onClose}>

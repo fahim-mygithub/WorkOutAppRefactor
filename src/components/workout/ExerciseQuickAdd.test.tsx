@@ -208,5 +208,23 @@ describe('ExerciseQuickAdd — AI lookup', () => {
     expect(onPick).toHaveBeenCalledWith(expect.objectContaining({ id: 'bb-bench' }));
     expect(input).toHaveValue('Barbell Bench Press');
     await vi.waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    await vi.waitFor(() => expect(input).toHaveFocus());
+  });
+
+  it('keeps the term in the sheet while it closes', async () => {
+    aiOn();
+    vi.spyOn(aiClient, 'findExerciseOnline').mockReturnValue(new Promise(() => {}));
+    const u = userEvent.setup();
+    renderWith(<ExerciseQuickAdd label="Add an exercise" onAdd={() => {}} />);
+    await u.type(screen.getByLabelText('Add an exercise'), 'zercher carry');
+    await u.click(screen.getByRole('button', { name: lookupRow }));
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByText(/zercher carry/)).toBeInTheDocument();
+    await u.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+    // Mid exit animation the description still names the term, never “”.
+    if (screen.queryByRole('dialog')) expect(within(dialog).queryByText(/“”/)).toBeNull();
+    expect(within(dialog).queryByText(/“”/)).toBeNull();
+    await vi.waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(screen.getByLabelText('Add an exercise')).toHaveFocus();
   });
 });

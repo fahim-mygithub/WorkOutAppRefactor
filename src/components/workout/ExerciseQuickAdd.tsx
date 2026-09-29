@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import { Check, Dumbbell, Plus, Search, Sparkles } from 'lucide-react';
 import { useAppSelector } from '../../store/hooks';
 import { isBackendAvailable, isSignedIn } from '../../ai/aiClient';
@@ -90,8 +90,11 @@ export const ExerciseQuickAdd: React.FC<ExerciseQuickAddProps> = ({
   const searchTerm = controlled ? value : localTerm;
   // Opens on focus/typing, closes on blur, Escape or (controlled) a pick.
   const [open, setOpen] = useState(false);
-  // The term being looked up with AI (its sheet is open), or null.
-  const [lookupTerm, setLookupTerm] = useState<string | null>(null);
+  // The term last looked up with AI; kept after close so the sheet doesn't
+  // flash empty while it animates away. `lookupOpen` says whether it's showing.
+  const [lookupTerm, setLookupTerm] = useState('');
+  const [lookupOpen, setLookupOpen] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
   const aiOff = useAppSelector((s) => Boolean(s.ai?.disabledReason));
 
   const matches = useMemo(() => {
@@ -157,6 +160,7 @@ export const ExerciseQuickAdd: React.FC<ExerciseQuickAddProps> = ({
           className="pointer-events-none absolute left-4 top-1/2 z-10 h-4 w-4 -translate-y-1/2 text-ink-subtle"
         />
         <Input
+          ref={inputRef}
           id={id}
           type="text"
           aria-expanded={showList}
@@ -206,6 +210,7 @@ export const ExerciseQuickAdd: React.FC<ExerciseQuickAddProps> = ({
                   onMouseDown={(e) => e.preventDefault()}
                   onClick={() => {
                     setLookupTerm(trimmed);
+                    setLookupOpen(true);
                     setOpen(false);
                   }}
                   className="flex min-h-touch-min w-full items-center gap-3 px-4 py-2.5 text-left text-body-sm text-ink transition-colors duration-snap hover:bg-surface-subtle focus-visible:bg-surface-subtle focus-visible:outline-none"
@@ -226,22 +231,19 @@ export const ExerciseQuickAdd: React.FC<ExerciseQuickAddProps> = ({
         )}
       </div>
 
-      <Sheet
-        open={lookupTerm !== null}
-        onOpenChange={(next) => {
-          if (!next) setLookupTerm(null);
-        }}
-      >
-        <SheetContent>
+      <Sheet open={lookupOpen} onOpenChange={setLookupOpen}>
+        <SheetContent
+          onCloseAutoFocus={(e) => {
+            // The row that opened it is gone; hand focus back to the search.
+            e.preventDefault();
+            inputRef.current?.focus();
+          }}
+        >
           <SheetTitle className="text-title">Look it up</SheetTitle>
-          <SheetDescription>AI searches the web for it. Nothing is saved until you Apply.</SheetDescription>
+          <SheetDescription>AI searches the web for “{lookupTerm}”. Nothing is saved until you Apply.</SheetDescription>
           <div className="mt-4">
-            {lookupTerm !== null && (
-              <ExerciseLookupCard
-                term={lookupTerm}
-                onAdd={pick}
-                onClose={() => setLookupTerm(null)}
-              />
+            {lookupOpen && (
+              <ExerciseLookupCard term={lookupTerm} onAdd={pick} onClose={() => setLookupOpen(false)} />
             )}
           </div>
         </SheetContent>

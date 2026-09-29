@@ -93,10 +93,14 @@ SheetTrigger.displayName = 'SheetTrigger';
 // Public prop surface uses plain div attributes (consumer ergonomics). The
 // underlying element is a `motion.div` whose drag/pan handler signatures
 // diverge from React DOM's, so we cast the spread at the boundary.
-export type SheetContentProps = React.ComponentPropsWithoutRef<'div'>;
+// Radix's close-focus hook is forwarded to Dialog.Content (not the div), so a
+// sheet opened without a trigger can say where focus goes when it closes.
+export type SheetContentProps = React.ComponentPropsWithoutRef<'div'> & {
+  onCloseAutoFocus?: (event: Event) => void;
+};
 
 export const SheetContent = React.forwardRef<HTMLDivElement, SheetContentProps>(
-  ({ className, children, ...props }, ref) => {
+  ({ className, children, onCloseAutoFocus, ...props }, ref) => {
     const { open } = useSheetContext();
     return (
       <AnimatePresence>
@@ -109,7 +113,7 @@ export const SheetContent = React.forwardRef<HTMLDivElement, SheetContentProps>(
                 {...motionTokens.preset.fade}
               />
             </DialogPrimitive.Overlay>
-            <DialogPrimitive.Content asChild forceMount>
+            <DialogPrimitive.Content asChild forceMount onCloseAutoFocus={onCloseAutoFocus}>
               <fmotion.div
                 ref={ref}
                 // Radix v1.1 stopped emitting `aria-modal` (focus trap is the

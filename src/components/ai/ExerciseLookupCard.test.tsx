@@ -183,6 +183,47 @@ describe('ExerciseLookupCard', () => {
     expect(await screen.findByText(/couldn.t save/i)).toBeInTheDocument();
   });
 
+  it.each(['javascript:alert(1)', 'http://x/a.mp4', 'https://x/page'])(
+    'refuses to save a pasted link that is not direct https media: %s',
+    async (bad) => {
+      vi.spyOn(aiClient, 'findExerciseOnline').mockResolvedValue(found({ media: [] }));
+      const save = vi.spyOn(CustomExerciseService, 'saveCustomExercise');
+      const u = userEvent.setup();
+      renderWithLibrary(<ExerciseLookupCard term="zercher carry" onAdd={() => {}} onClose={() => {}} />);
+      await u.type(await screen.findByLabelText(/demo url/i), bad);
+      expect(screen.getByText('Needs an https .mp4, .webm or .gif link')).toBeInTheDocument();
+      const apply = screen.getByRole('button', { name: 'Apply' });
+      expect(apply).toBeDisabled();
+      await u.click(apply);
+      expect(save).not.toHaveBeenCalled();
+    },
+  );
+
+  it('accepts a pasted https gif link with a query, and saves without one when empty', async () => {
+    vi.spyOn(aiClient, 'findExerciseOnline').mockResolvedValue(found({ media: [] }));
+    const u = userEvent.setup();
+    renderWithLibrary(<ExerciseLookupCard term="zercher carry" onAdd={() => {}} onClose={() => {}} />);
+    const field = await screen.findByLabelText(/demo url/i);
+    expect(screen.getByRole('button', { name: 'Apply' })).toBeEnabled();
+    await u.type(field, 'https://x/a.GIF?y=1');
+    expect(screen.queryByText(/needs an https/i)).toBeNull();
+    expect(screen.getByRole('button', { name: 'Apply' })).toBeEnabled();
+  });
+
+  it('does not share an in-flight lookup across users', async () => {
+    const lookup = vi.spyOn(aiClient, 'findExerciseOnline').mockReturnValue(new Promise(() => {}));
+    const first = renderWithLibrary(<ExerciseLookupCard term="zercher carry" onAdd={() => {}} onClose={() => {}} />);
+    first.unmount();
+    const store = makeStore([], false);
+    store.dispatch(setProfile({ uid: 'u2', email: 'b@b.c', displayName: 'B', createdAt: '', lastActiveAt: '' }));
+    render(
+      <Provider store={store}>
+        <ExerciseLookupCard term="zercher carry" onAdd={() => {}} onClose={() => {}} />
+      </Provider>,
+    );
+    expect(lookup).toHaveBeenCalledTimes(2);
+  });
+
   it('asks to sign in before saving', async () => {
     vi.spyOn(aiClient, 'findExerciseOnline').mockResolvedValue(found());
     renderWithLibrary(
