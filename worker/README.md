@@ -14,9 +14,25 @@ npm run typecheck   # tsc --noEmit
 npm run dev         # wrangler dev (local only)
 ```
 
-Deploying (`wrangler login`, `wrangler secret put ANTHROPIC_API_KEY`,
-`wrangler deploy`, KV namespace id in `wrangler.toml`) is done by the owner —
-see Phase 9 of `docs/plans/2026-09-29-ai-coach.md`.
+## Deploying
+
+Done by the owner — see Phase 9 of `docs/plans/2026-09-29-ai-coach.md`
+(`wrangler login`, KV namespace id in `wrangler.toml`, the two secrets below,
+`wrangler deploy`). Prerequisites and gotchas:
+
+- **Web search must be on.** `findExercise` uses Anthropic's server web search
+  tool: enable the web search tool for your organization in the Console
+  (Settings → Privacy / Tools), or every lookup fails.
+- **Secrets, not vars.** Set both with `wrangler secret put` — never in
+  `wrangler.toml`, which is in a public repo:
+  - `ANTHROPIC_API_KEY` — the API key.
+  - `AI_ALLOWED_EMAILS` — comma-separated emails allowed to use AI
+    (`me@example.com,pal@example.com`). Unset means nobody is allowed.
+- `AI_DAILY_LIMIT` (in `[vars]`) is calls per user per day; `0` turns AI off.
+- `ALLOWED_ORIGINS` lists the sites that may call the Worker (GitHub Pages,
+  the Firebase Hosting domains, and `http://localhost:5290`).
+- The app finds the Worker through `VITE_AI_URL` in the root `.env.production`,
+  which is committed and holds only that (non-secret) URL.
 
 ## Evals (manual, costs a few cents)
 
