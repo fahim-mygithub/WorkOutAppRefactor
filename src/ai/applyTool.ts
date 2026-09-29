@@ -27,7 +27,11 @@ export interface PlanContext {
 
 export type ToolPlan =
   | { kind: 'auto'; id: string; summary: string; apply: UnknownAction[]; undo: UnknownAction[] }
-  | { kind: 'confirm'; id: string; summary: string; detail?: string; apply: UnknownAction[] }
+  | {
+      kind: 'confirm'; id: string; summary: string; detail?: string; apply: UnknownAction[];
+      /** The "benchmark stays" sentence inside `detail`, for the lift an ongoing swap renames. */
+      benchmarkNote?: { liftId: string; text: string };
+    }
   | { kind: 'rejected'; id: string; reason: string };
 
 const unitOf = (set?: WorkoutSet): WeightUnit => (set?.unit === 'kg' ? 'kg' : 'lb');
@@ -226,6 +230,7 @@ export function planToolCall(call: AiToolCall, ctx: PlanContext): ToolPlan {
         summary: `Swap ${ex.customTitle || ex.exercise.name} for ${replacement.name}${weight !== undefined ? ` at ${weight} ${unit}` : ''}${lift ? ' from now on' : ' today'}`,
         detail: [str(i.reason), benchmarkNote].filter(Boolean).join(' ') || undefined,
         apply,
+        ...(lift && benchmarkNote ? { benchmarkNote: { liftId: lift.id, text: benchmarkNote } } : {}),
       };
     }
 
@@ -279,6 +284,8 @@ export function planToolCall(call: AiToolCall, ctx: PlanContext): ToolPlan {
 /**
  * One assistant turn for the chat sheet: auto plans become "applied" notices,
  * confirm plans Apply/Reject proposals, rejected plans "discarded" notices.
+ * An ongoing swap's "benchmark stays" note is dropped when the same turn also
+ * proposes a new benchmark for that lift.
  */
 export function toAssistantTurn(
   reply: string,
@@ -286,14 +293,24 @@ export function toAssistantTurn(
 ): Required<Pick<AiAssistantTurn, 'text' | 'proposals' | 'notices'>> {
   const proposals: NonNullable<AiAssistantTurn['proposals']> = [];
   const notices: NonNullable<AiAssistantTurn['notices']> = [];
+  const rebenchmarked = new Set<string>();
+  for (const { call, plan } of plans) {
+    if (call.name === 'updateBenchmark' && plan.kind === 'confirm') {
+      rebenchmarked.add(String((call.input as Record<string, unknown>).liftId));
+    }
+  }
   for (const { call, plan } of plans) {
     if (plan.kind === 'auto') notices.push({ id: plan.id, tone: 'applied', text: plan.summary });
     else if (plan.kind === 'rejected') {
       notices.push({ id: plan.id, tone: 'discarded', text: `Suggestion discarded: ${plan.reason}` });
     } else {
+      const note = plan.benchmarkNote;
+      const detail = note && rebenchmarked.has(note.liftId)
+        ? plan.detail?.replace(note.text, '').trim()
+        : plan.detail;
       proposals.push({
         id: plan.id, tool: call.name, summary: plan.summary,
-        ...(plan.detail ? { detail: plan.detail } : {}),
+        ...(detail ? { detail } : {}),
       });
     }
   }

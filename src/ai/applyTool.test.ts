@@ -3,6 +3,7 @@ import type { UnknownAction } from '@reduxjs/toolkit';
 import { planToolCall, toAssistantTurn, type PlanContext, type ToolPlan } from './applyTool';
 import reducer, { startWorkout, completeSet, jumpToSet, type WorkoutState } from '../store/slices/workoutSlice';
 import type { ActiveWorkout, WorkoutExercise } from '../types/exercise';
+import type { AiToolCall } from './types';
 
 const workout = {
   id: 'w', name: 'Push', currentExerciseIndex: 0, currentSetIndex: 2,
@@ -336,6 +337,37 @@ describe('toAssistantTurn', () => {
       { id: 't2', tool: 'updateBenchmark', summary: 'Bench benchmark → 255 lb', detail: 'three misses' },
     ]);
     expect(turn.notices).toEqual([]);
+  });
+
+  describe('an ongoing swap next to a benchmark update', () => {
+    const swap = { id: 'sw', name: 'swapExercise' as const, input: {
+      exerciseId: 'e1', replacementExerciseName: 'Dumbbell Bench Press', scope: 'ongoing', reason: 'Shoulder hurts.',
+    } };
+    const benchmark = (liftId: string) => ({ id: 'bm', name: 'updateBenchmark' as const, input: {
+      liftId, loadKind: 'weight', weight: 90, unit: 'lb', targetKind: 'reps', reps: 8,
+    } });
+    const other = { id: 'l-row', name: 'Row', category: 'Pull', load: { kind: 'weight' as const, value: 185, unit: 'lb' as const }, target: { kind: 'repMax' as const, reps: 1 } };
+    const both = { ...ctx, trackedLifts: [...ctx.trackedLifts, other] };
+    const turnOf = (...calls: AiToolCall[]) =>
+      toAssistantTurn('', calls.map((c) => ({ call: c, plan: planToolCall(c, both) })));
+
+    it('drops the "benchmark stays" note when the same turn updates that benchmark', () => {
+      const turn = turnOf(swap, benchmark('l-bench'));
+      expect(turn.proposals[0]).toMatchObject({ id: 'sw', detail: 'Shoulder hurts.' });
+      expect(turn.proposals).toHaveLength(2);
+    });
+
+    it('keeps it otherwise, or when the benchmark update is for another lift or discarded', () => {
+      const note = /Benchmark stays 265 lb, 1-rep max/;
+      expect(turnOf(swap).proposals[0].detail).toMatch(note);
+      expect(turnOf(swap, benchmark('l-row')).proposals[0].detail).toMatch(note);
+      expect(turnOf(swap, { ...benchmark('l-bench'), input: { liftId: 'l-bench' } }).proposals[0].detail).toMatch(note);
+    });
+
+    it('leaves no empty detail when the note was all there was', () => {
+      const bare = { ...swap, input: { ...swap.input, reason: undefined } };
+      expect(turnOf(bare, benchmark('l-bench')).proposals[0]).not.toHaveProperty('detail');
+    });
   });
 
   it('maps rejected plans to discarded notices, keeping order', () => {

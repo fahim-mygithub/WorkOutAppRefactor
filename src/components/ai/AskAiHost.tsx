@@ -58,8 +58,9 @@ export function AskAiHost() {
   const [session, setSession] = React.useState({ open, n: 0 });
   if (session.open !== open) setSession({ open, n: open ? session.n + 1 : session.n });
 
-  // Calls awaiting Apply, re-planned on Apply against the state at that moment.
-  const pendingCalls = React.useRef(new Map<string, AiToolCall>());
+  // Calls awaiting Apply, with the actions their card was planned with. Each
+  // is re-planned on Apply against the state at that moment.
+  const pendingCalls = React.useRef(new Map<string, { call: AiToolCall; apply: string }>());
   React.useEffect(() => {
     if (!open) pendingCalls.current.clear();
   }, [open]);
@@ -101,7 +102,7 @@ export function AskAiHost() {
           plan.apply.forEach((a) => dispatch(a));
           setUndos((q) => [...q, { id: plan.id, message: plan.summary, undo: plan.undo }]);
         } else if (plan.kind === 'confirm') {
-          pendingCalls.current.set(plan.id, call);
+          pendingCalls.current.set(plan.id, { call, apply: JSON.stringify(plan.apply) });
         }
         return { call, plan };
       });
@@ -157,15 +158,17 @@ export function AskAiHost() {
         client={client}
         initialMessage={seed}
         onApplyProposal={(proposal) => {
-          const call = pendingCalls.current.get(proposal.id);
-          if (!call) return "Couldn't apply: this suggestion has expired.";
-          const plan = planNow(call);
+          const pending = pendingCalls.current.get(proposal.id);
+          if (!pending) return "Couldn't apply: this suggestion has expired.";
+          const plan = planNow(pending.call);
           if (plan.kind !== 'confirm') {
             return `Couldn't apply: ${plan.kind === 'rejected' ? plan.reason : 'things changed since.'}`;
           }
-          // Still valid but no longer what the card said (e.g. a renamed lift or
-          // a different target): don't apply something the user didn't read.
-          if (plan.summary !== proposal.summary) {
+          // Still valid but no longer the actions the card was planned with (e.g.
+          // a set logged since, or a different unit): don't apply something the
+          // user didn't read. Compared by actions, not wording, so a swap
+          // renaming the lift doesn't block a benchmark card from the same turn.
+          if (JSON.stringify(plan.apply) !== pending.apply) {
             return "Couldn't apply: things changed since this was suggested.";
           }
           plan.apply.forEach((a) => dispatch(a));

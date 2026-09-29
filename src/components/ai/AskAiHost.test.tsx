@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Provider } from 'react-redux';
 import { MemoryRouter } from 'react-router-dom';
@@ -192,39 +192,75 @@ describe('AskAiHost', () => {
     expect(store.getState().trackedLifts).toBe(before);
   });
 
-  it('refuses a late Apply whose re-plan no longer matches the proposal', async () => {
+  it('refuses a late Apply whose re-plan would do something else', async () => {
+    vi.spyOn(aiClient, 'chat').mockResolvedValue({
+      reply: 'Lower it.', source: 'backend',
+      // No unit: the lift's own. If that unit changes before Apply, so do the actions.
+      toolCalls: [{ id: 't6', name: 'updateBenchmark', input: { liftId: 'l1', loadKind: 'weight', weight: 255, targetKind: 'repMax', reps: 1, reason: 'misses' } }],
+    });
+    const store = renderHost();
+    const u = await send('too heavy');
+    await screen.findByRole('button', { name: 'Apply' });
+    act(() => {
+      store.dispatch(liftUpdated({ id: 'l1', load: { kind: 'weight', value: 120, unit: 'kg' } }));
+    });
+    await u.click(screen.getByRole('button', { name: 'Apply' }));
+    expect(await screen.findByText("Couldn't apply: things changed since this was suggested.")).toBeInTheDocument();
+    expect(store.getState().trackedLifts.lifts[0].load).toEqual({ kind: 'weight', value: 120, unit: 'kg' });
+  });
+
+  it('still applies a proposal when only a name it does not change was edited', async () => {
     vi.spyOn(aiClient, 'chat').mockResolvedValue({
       reply: 'Lower it.', source: 'backend',
       toolCalls: [{ id: 't6', name: 'updateBenchmark', input: { liftId: 'l1', loadKind: 'weight', weight: 255, unit: 'lb', targetKind: 'repMax', reps: 1, reason: 'misses' } }],
     });
     const store = renderHost();
-    const u = userEvent.setup();
-    await u.click(screen.getByRole('button', { name: 'Ask AI' }));
-    await u.type(screen.getByLabelText('Message'), 'too heavy');
-    await u.click(screen.getByRole('button', { name: 'Send' }));
+    const u = await send('too heavy');
     await screen.findByRole('button', { name: 'Apply' });
     act(() => {
       store.dispatch(liftUpdated({ id: 'l1', name: 'Paused Bench' }));
     });
     await u.click(screen.getByRole('button', { name: 'Apply' }));
-    expect(await screen.findByText("Couldn't apply: things changed since this was suggested.")).toBeInTheDocument();
-    expect(store.getState().trackedLifts.lifts[0].load).toEqual({ kind: 'weight', value: 265, unit: 'lb' });
+    expect(store.getState().trackedLifts.lifts[0]).toMatchObject({ name: 'Paused Bench', load: { kind: 'weight', value: 255, unit: 'lb' } });
   });
 
-  it('sends swap alternatives from the merged library and swaps to a custom exercise', async () => {
-    const chat = vi.spyOn(aiClient, 'chat').mockResolvedValue({
-      reply: 'Try the machine.', source: 'backend',
-      toolCalls: [{ id: 't7', name: 'swapExercise', input: { exerciseId: 'e1', replacementExerciseName: 'chest press', scope: 'today', reason: 'no bench' } }],
+  it('applies an ongoing swap and its benchmark from the same turn, and drops the "benchmark stays" note', async () => {
+    vi.spyOn(aiClient, 'chat').mockResolvedValue({
+      reply: 'Switch to dumbbells.', source: 'backend',
+      toolCalls: [
+        { id: 'sw', name: 'swapExercise', input: { exerciseId: 'e1', replacementExerciseName: 'Dumbbell Bench Press', scope: 'ongoing', weight: 80, reason: 'Shoulder.' } },
+        { id: 'bm', name: 'updateBenchmark', input: { liftId: 'l1', loadKind: 'weight', weight: 90, unit: 'lb', targetKind: 'reps', reps: 8, reason: 'New movement.' } },
+      ],
     });
-    const store = makeStoreWithWorkoutAndLift();
-    addCustom(store, 'My Chest Press Machine');
-    renderHost(store);
-    const u = await send('bench is taken');
-    expect((chat.mock.calls[0][0].context as AiContext).activeWorkout!.exercises[0]).toMatchObject({
-      alternatives: ['Dumbbell Bench Press', 'My Chest Press Machine'],
+    const store = renderHost(makeStoreWithWorkoutAndLift(true));
+    const u = await send('shoulder');
+    const swapCard = await screen.findByRole('group', { name: /Swap Barbell Bench Press for Dumbbell Bench Press/ });
+    expect(swapCard).toHaveTextContent('Shoulder.');
+    expect(swapCard).not.toHaveTextContent(/Benchmark stays/);
+    await u.click(within(swapCard).getByRole('button', { name: 'Apply' }));
+    const benchCard = screen.getByRole('group', { name: /benchmark/ });
+    await u.click(within(benchCard).getByRole('button', { name: 'Apply' }));
+    expect(screen.queryByText(/Couldn't apply/)).not.toBeInTheDocument();
+    expect(store.getState().workout.activeWorkout!.exercises[0].exercise.name).toBe('Dumbbell Bench Press');
+    expect(store.getState().trackedLifts.lifts[0]).toMatchObject({
+      name: 'Dumbbell Bench Press', load: { kind: 'weight', value: 90, unit: 'lb' },
     });
-    await u.click(await screen.findByRole('button', { name: 'Apply' }));
-    expect(store.getState().workout.activeWorkout!.exercises[0].exercise.name).toBe('My Chest Press Machine');
+  });
+
+  it('refuses a late swap whose set patches changed because a set was logged', async () => {
+    vi.spyOn(aiClient, 'chat').mockResolvedValue({
+      reply: 'Try dumbbells.', source: 'backend',
+      toolCalls: [{ id: 'sw', name: 'swapExercise', input: { exerciseId: 'e1', replacementExerciseName: 'Dumbbell Bench Press', scope: 'today', weight: 80, reason: 'x' } }],
+    });
+    const store = renderHost();
+    const u = await send('no bench');
+    await screen.findByRole('button', { name: 'Apply' });
+    act(() => {
+      store.dispatch(completeSet({ exerciseIndex: 0, setIndex: 2, setData: {} }));
+    });
+    await u.click(screen.getByRole('button', { name: 'Apply' }));
+    expect(await screen.findByText("Couldn't apply: things changed since this was suggested.")).toBeInTheDocument();
+    expect(store.getState().workout.activeWorkout!.exercises[0].exercise.name).toBe('Barbell Bench Press');
   });
 
   it('says the limit plainly and disables AI', async () => {
