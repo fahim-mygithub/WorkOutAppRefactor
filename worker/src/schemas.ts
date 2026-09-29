@@ -93,16 +93,25 @@ export const readLiftRequestSchema = z.object({
   text: z.string().min(1).max(500),
 });
 
-export const readLiftResultSchema = z.object({
-  name: z.string(),
-  ...flatLiftFields,
-  sets: z.number().int().min(1).max(10).nullable().optional(),
-  rir: z.number().int().min(0).max(5).nullable().optional(),
-  equipment: z.enum(['barbell', 'dumbbell', 'machine', 'cable', 'bodyweight', 'band', 'other']).nullable().optional(),
-  /** Load increment; capped so an absurd model step never reaches the engine. */
-  step: z.number().positive().max(50).finite().nullable().optional(),
-  question: z.string().nullable().optional(),
-});
+export const readLiftResultSchema = z
+  .object({
+    name: z.string().describe('Standard exercise name, e.g. "Front Squat".'),
+    ...flatLiftFields,
+    sets: z.number().int().min(1).max(10).nullable().optional().describe('Number of sets.'),
+    rir: z.number().int().min(0).max(5).nullable().optional().describe('Reps in reserve.'),
+    equipment: z
+      .enum(['barbell', 'dumbbell', 'kettlebell', 'machine', 'cable', 'bodyweight', 'band', 'other'])
+      .nullable()
+      .optional()
+      .describe('Equipment kind.'),
+    /** Load increment; capped so an absurd model step never reaches the engine. */
+    step: z.number().positive().max(50).finite().nullable().optional().describe('Smallest load change, in unit.'),
+    question: z.string().nullable().optional().describe('ONE short clarifying question, only if needed.'),
+  })
+  .describe('Submit the lift read from the description.');
+
+/** Optional readLift fields dropped one by one when invalid (best effort). */
+export const READ_LIFT_OPTIONAL_KEYS = ['sets', 'rir', 'equipment', 'step'] as const;
 
 export type ReadLiftResult = z.infer<typeof readLiftResultSchema>;
 

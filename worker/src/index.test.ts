@@ -1,6 +1,7 @@
 // worker/src/index.test.ts
 import { describe, it, expect, vi } from 'vitest';
-import { handleRequest, type Deps, type Env } from './index';
+import type Anthropic from '@anthropic-ai/sdk';
+import { defaultActions, handleRequest, type Deps, type Env } from './index';
 
 const env = {
   FIREBASE_PROJECT_ID: 'p', ALLOWED_ORIGINS: 'https://app.test', APP_ORIGIN: 'https://app.test/',
@@ -77,5 +78,17 @@ describe('handleRequest', () => {
   });
   it('503 when the key is missing', async () => {
     expect((await handleRequest(post(chat), { ...env, ANTHROPIC_API_KEY: '' }, deps())).status).toBe(503);
+  });
+});
+
+describe('defaultActions', () => {
+  it('registers readLift and wraps the lift in { result }', async () => {
+    const lift = { name: 'Front Squat', loadKind: 'weight', weight: 250, unit: 'lb', targetKind: 'reps', reps: 5 };
+    const create = vi.fn().mockResolvedValue({
+      content: [{ type: 'tool_use', id: 't1', name: 'submitLift', input: lift }],
+      stop_reason: 'tool_use',
+    });
+    const client = { messages: { create } } as unknown as Anthropic;
+    await expect(defaultActions.readLift!({ action: 'readLift', text: 'fs 250x5' }, client, env)).resolves.toEqual({ result: lift });
   });
 });

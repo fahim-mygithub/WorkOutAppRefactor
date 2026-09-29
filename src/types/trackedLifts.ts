@@ -65,7 +65,7 @@ export interface TrackedLift {
   /** Smallest load change the equipment allows (default 5 lb / 2.5 kg). */
   step?: number;
   /** Equipment kind, for display and AI context. */
-  equipment?: 'barbell' | 'dumbbell' | 'machine' | 'cable' | 'bodyweight' | 'band' | 'other';
+  equipment?: 'barbell' | 'dumbbell' | 'kettlebell' | 'machine' | 'cable' | 'bodyweight' | 'band' | 'other';
 }
 
 /** A logged result that beat a benchmark, waiting for Update / Keep. */

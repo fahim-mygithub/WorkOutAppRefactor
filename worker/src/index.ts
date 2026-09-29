@@ -32,18 +32,21 @@ export interface Deps {
   actions: Partial<Record<ActionName, Handler>>;
 }
 
+/** The real action handlers, keyed by `action`. */
+export const defaultActions: Deps['actions'] = {
+  parse: (d, c) => handleParse(c, (d as Extract<AiRequest, { action: 'parse' }>).text).then((result) => ({ result })),
+  chat: (d, c) => {
+    const req = d as Extract<AiRequest, { action: 'chat' }>;
+    return handleChat(c, req.messages, req.context);
+  },
+  readLift: (d, c) =>
+    handleReadLift(c, (d as Extract<AiRequest, { action: 'readLift' }>).text).then((result) => ({ result })),
+};
+
 const defaultDeps: Deps = {
   verify: (t, p) => verifyIdToken(t, p),
   takeSlot: takeDailySlot,
-  actions: {
-    parse: (d, c) => handleParse(c, (d as Extract<AiRequest, { action: 'parse' }>).text).then((result) => ({ result })),
-    chat: (d, c) => {
-      const req = d as Extract<AiRequest, { action: 'chat' }>;
-      return handleChat(c, req.messages, req.context);
-    },
-    readLift: (d, c) =>
-      handleReadLift(c, (d as Extract<AiRequest, { action: 'readLift' }>).text).then((result) => ({ result })),
-  },
+  actions: defaultActions,
 };
 
 function corsHeaders(request: Request, env: Env): Record<string, string> {

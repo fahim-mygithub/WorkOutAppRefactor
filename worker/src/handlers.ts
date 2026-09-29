@@ -5,7 +5,8 @@
  *
  *   parse: free text -> structured sets (FAST_MODEL)
  *   chat:  tool-use; tool calls are validated and returned, never applied here.
- *   readLift: a described lift -> one tracked-lift entry (FAST_MODEL)
+ *   readLift: a described lift -> one tracked-lift entry (FAST_MODEL, forced
+ *             submitLift tool so the shape is fixed)
  *
  * Both put the system prompt behind cache_control so the prefix is cached.
  */
@@ -16,13 +17,14 @@ import { CHAT_SYSTEM_PROMPT, PARSE_SYSTEM_PROMPT, READ_LIFT_SYSTEM_PROMPT } from
 import {
   parseOutputJsonSchema,
   parseResultSchema,
+  READ_LIFT_OPTIONAL_KEYS,
   readLiftResultSchema,
   type ChatContext,
   type ChatMessage,
   type ParseResult,
   type ReadLiftResult,
 } from './schemas';
-import { buildToolDefs, toolValidators, type ToolName } from './tools';
+import { buildToolDefs, toToolDef, toolValidators, type ToolName } from './tools';
 
 /** Largest serialized chat context accepted (characters). */
 const MAX_CONTEXT_CHARS = 40_000;
@@ -92,11 +94,29 @@ export async function handleParse(client: Anthropic, text: string): Promise<Pars
 // readLift action
 // ---------------------------------------------------------------------------
 
-/** Drop top-level null values: the model often writes `weight: null` for a
+/** The single tool readLift must answer with; its input is the lift. */
+export const submitLiftTool: Anthropic.Tool = toToolDef('submitLift', readLiftResultSchema);
+
+/** Drop top-level null values: the model sometimes writes `weight: null` for a
  *  field it does not know, which the shared lift fields treat as absent. */
-function withoutNulls(raw: unknown): unknown {
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return raw;
+function withoutNulls(raw: unknown): Record<string, unknown> | null {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
   return Object.fromEntries(Object.entries(raw).filter(([, v]) => v !== null));
+}
+
+/** Best effort: drop each optional field that fails its own schema, so one
+ *  bad optional (e.g. step 500) does not sink an otherwise good lift. */
+function withoutInvalidOptionals(raw: Record<string, unknown>): Record<string, unknown> {
+  const out = { ...raw };
+  const dropped: string[] = [];
+  for (const key of READ_LIFT_OPTIONAL_KEYS) {
+    if (key in out && !readLiftResultSchema.shape[key].safeParse(out[key]).success) {
+      delete out[key];
+      dropped.push(key);
+    }
+  }
+  if (dropped.length) console.warn('readLift dropped invalid optional fields', dropped);
+  return out;
 }
 
 export async function handleReadLift(client: Anthropic, text: string): Promise<ReadLiftResult> {
@@ -104,17 +124,15 @@ export async function handleReadLift(client: Anthropic, text: string): Promise<R
     model: FAST_MODEL,
     max_tokens: 512,
     system: [{ type: 'text', text: READ_LIFT_SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } }],
+    tools: [submitLiftTool],
+    tool_choice: { type: 'tool', name: submitLiftTool.name },
     messages: [{ role: 'user', content: text }],
   });
-  const block = response.content.find((b) => b.type === 'text');
-  if (!block || block.type !== 'text') throw new AiError('internal', 'No reply.');
-  let raw: unknown;
-  try {
-    raw = JSON.parse(extractJson(block.text));
-  } catch {
-    throw new AiError('internal', 'Reply was not JSON.');
-  }
-  const result = readLiftResultSchema.safeParse(withoutNulls(raw));
+  const block = response.content.find((b) => b.type === 'tool_use' && b.name === submitLiftTool.name);
+  if (!block || block.type !== 'tool_use') throw new AiError('internal', 'No lift in the reply.');
+  const raw = withoutNulls(block.input);
+  if (!raw) throw new AiError('internal', 'Reply did not match the lift schema.');
+  const result = readLiftResultSchema.safeParse(withoutInvalidOptionals(raw));
   if (!result.success) {
     console.warn('readLift output failed schema validation', JSON.stringify(result.error.issues));
     throw new AiError('internal', 'Reply did not match the lift schema.');

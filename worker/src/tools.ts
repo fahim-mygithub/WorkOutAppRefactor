@@ -109,7 +109,8 @@ export const toolValidators: Record<ToolName, z.ZodTypeAny> = allToolSchemas;
 
 /**
  * Minimal Zod -> JSON Schema conversion sufficient for the shapes used in this
- * catalog (objects of scalars/enums/arrays, optional + default + describe, and
+ * catalog (objects of scalars/enums/arrays, optional + nullable + default +
+ * describe, and
  * numeric min/max checks as minimum/exclusiveMinimum/maximum). We
  * hand-roll this to avoid pulling in `zod-to-json-schema` and to keep the
  * emitted schema flat and Anthropic-friendly (`additionalProperties: false`).
@@ -126,6 +127,10 @@ function zodToJsonSchema(schema: z.ZodTypeAny): Record<string, unknown> {
     if (current instanceof z.ZodDefault) {
       current = current._def.innerType;
     } else if (current instanceof z.ZodOptional) {
+      current = current._def.innerType;
+    } else if (current instanceof z.ZodNullable) {
+      // Emitted as the inner type: tool inputs omit unknown fields rather than
+      // send null (the handler still strips nulls as a safety net).
       current = current._def.innerType;
     } else {
       break;
@@ -180,22 +185,20 @@ function zodToJsonSchema(schema: z.ZodTypeAny): Record<string, unknown> {
   return withDesc({ type: 'string' });
 }
 
+/** One Anthropic tool definition from a Zod object schema. The object-level
+ *  description becomes the tool description. */
+export function toToolDef(name: string, schema: z.ZodTypeAny): Anthropic.Tool {
+  const inputSchema = zodToJsonSchema(schema);
+  const { description, ...schemaRest } = inputSchema as {
+    description?: string;
+  } & Record<string, unknown>;
+  // zodToJsonSchema always emits `type: 'object'` for an object schema;
+  // assert the literal so it satisfies Anthropic.Tool.InputSchema.
+  const input_schema = { ...schemaRest, type: 'object' } as Anthropic.Tool.InputSchema;
+  return { name, description: description ?? schema.description ?? name, input_schema };
+}
+
 /** The full tool list passed to the Messages API for the `chat` action. */
 export function buildToolDefs(): Anthropic.Tool[] {
-  return (Object.keys(allToolSchemas) as ToolName[]).map((name) => {
-    const schema = allToolSchemas[name];
-    const inputSchema = zodToJsonSchema(schema);
-    // The object-level description belongs on the tool, not the schema root.
-    const { description, ...schemaRest } = inputSchema as {
-      description?: string;
-    } & Record<string, unknown>;
-    // zodToJsonSchema always emits `type: 'object'` for the top-level object
-    // schema; assert the literal so it satisfies Anthropic.Tool.InputSchema.
-    const input_schema = { ...schemaRest, type: 'object' } as Anthropic.Tool.InputSchema;
-    return {
-      name,
-      description: description ?? schema.description ?? name,
-      input_schema,
-    };
-  });
+  return (Object.keys(allToolSchemas) as ToolName[]).map((name) => toToolDef(name, allToolSchemas[name]));
 }
