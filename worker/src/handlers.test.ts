@@ -34,4 +34,13 @@ describe('handleChat', () => {
     expect(req.model).toBe(SMART_MODEL);
     expect(req.messages[0].content).toMatch(/^CONTEXT/);
   });
+  it('strips top-level nulls from tool inputs before validating', async () => {
+    const { client } = fakeClient([
+      { type: 'tool_use', id: 't1', name: 'adjustSet', input: { exerciseId: 'e1', fromSetIndex: 2, weight: null, reps: 3, reason: 'missed' } },
+    ], 'tool_use');
+    const r = await handleChat(client, [{ role: 'user', content: 'missed' }], undefined);
+    expect(r.toolCalls).toEqual([
+      { id: 't1', name: 'adjustSet', input: { exerciseId: 'e1', fromSetIndex: 2, reps: 3, reason: 'missed' } },
+    ]);
+  });
 });

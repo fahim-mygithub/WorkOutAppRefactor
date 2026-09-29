@@ -36,8 +36,9 @@ export function makeClient(apiKey: string): Anthropic {
 /** The single tool readLift must answer with; its input is the lift. */
 export const submitLiftTool: Anthropic.Tool = toToolDef('submitLift', readLiftResultSchema);
 
-/** Drop top-level null values: the model sometimes writes `weight: null` for a
- *  field it does not know, which the shared lift fields treat as absent. */
+/** Drop top-level null values (shallow): the model sometimes writes
+ *  `weight: null` for a field it does not know, which the schemas treat as
+ *  absent. Used for readLift and every chat tool call. */
 function withoutNulls(raw: unknown): Record<string, unknown> | null {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
   return Object.fromEntries(Object.entries(raw).filter(([, v]) => v !== null));
@@ -154,8 +155,9 @@ export async function handleChat(
         console.warn('model emitted unknown tool', name);
         continue;
       }
-      // Drop malformed calls rather than forward them to the client.
-      const parsed = validator.safeParse(block.input);
+      // Nulls mean "not given" (e.g. `weight: null`), not a bad call; then drop
+      // malformed calls rather than forward them to the client.
+      const parsed = validator.safeParse(withoutNulls(block.input) ?? block.input);
       if (!parsed.success) {
         console.warn('tool input failed validation; dropping call', name, JSON.stringify(parsed.error.issues));
         continue;

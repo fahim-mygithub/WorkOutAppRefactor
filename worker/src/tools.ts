@@ -130,7 +130,8 @@ function zodToJsonSchema(schema: z.ZodTypeAny): Record<string, unknown> {
       current = current._def.innerType;
     } else if (current instanceof z.ZodNullable) {
       // Emitted as the inner type: tool inputs omit unknown fields rather than
-      // send null (the handler still strips nulls as a safety net).
+      // send null (handleChat and handleReadLift also strip top-level nulls
+      // before validating, as a safety net).
       current = current._def.innerType;
     } else {
       break;
