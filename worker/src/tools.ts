@@ -53,7 +53,7 @@ export const mutationToolSchemas = {
     .object({
       exerciseId: z.string().describe('WorkoutExercise id in the active workout.'),
       fromSetIndex: z.number().int().nonnegative().describe('First not-yet-done set to change; later sets change too.'),
-      weight: z.number().positive().optional().describe('New load for those sets.'),
+      weight: z.number().positive().optional().describe('New load for those sets, in the workout unit.'),
       reps: z.number().int().positive().optional().describe('New target reps for those sets.'),
       reason: z.string().describe('One short line shown to the lifter.'),
     })
@@ -64,7 +64,7 @@ export const mutationToolSchemas = {
       exerciseId: z.string().describe('WorkoutExercise id in the active workout.'),
       replacementExerciseName: z.string().describe('Library name of the replacement.'),
       scope: z.enum(['today', 'ongoing']).describe("'ongoing' also renames the tracked lift."),
-      weight: z.number().positive().optional().describe('Starting load for the replacement.'),
+      weight: z.number().positive().optional().describe('Starting load for the replacement, in the workout unit.'),
       reason: z.string().describe('One short line shown to the lifter.'),
     })
     .describe('Replace an exercise the lifter cannot do or keeps failing. Needs confirmation.'),
@@ -109,7 +109,8 @@ export const toolValidators: Record<ToolName, z.ZodTypeAny> = allToolSchemas;
 
 /**
  * Minimal Zod -> JSON Schema conversion sufficient for the shapes used in this
- * catalog (objects of scalars/enums/arrays, optional + default + describe). We
+ * catalog (objects of scalars/enums/arrays, optional + default + describe, and
+ * numeric min/max checks as minimum/exclusiveMinimum/maximum). We
  * hand-roll this to avoid pulling in `zod-to-json-schema` and to keep the
  * emitted schema flat and Anthropic-friendly (`additionalProperties: false`).
  */
@@ -139,8 +140,13 @@ function zodToJsonSchema(schema: z.ZodTypeAny): Record<string, unknown> {
     return withDesc({ type: 'string' });
   }
   if (current instanceof z.ZodNumber) {
-    const isInt = current._def.checks.some((c) => c.kind === 'int');
-    return withDesc({ type: isInt ? 'integer' : 'number' });
+    const out: Record<string, unknown> = { type: 'number' };
+    for (const check of current._def.checks) {
+      if (check.kind === 'int') out.type = 'integer';
+      else if (check.kind === 'min') out[check.inclusive ? 'minimum' : 'exclusiveMinimum'] = check.value;
+      else if (check.kind === 'max') out[check.inclusive ? 'maximum' : 'exclusiveMaximum'] = check.value;
+    }
+    return withDesc(out);
   }
   if (current instanceof z.ZodBoolean) {
     return withDesc({ type: 'boolean' });
