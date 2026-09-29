@@ -14,6 +14,8 @@ import type { AiChatContext } from './types';
 
 /** Sessions of a lift's log sent along (the engine keeps up to 6). */
 const RECENT_SESSIONS = 3;
+/** Client-side JSON size target, below the Worker's 40,000-char cap. */
+export const CONTEXT_BUDGET = 30_000;
 
 export interface AiContextSet {
   index: number;
@@ -36,14 +38,16 @@ export interface AiContextExercise {
   sets: AiContextSet[];
 }
 
+/** A tracked lift; lifts outside today's workout may be cut to id, name and benchmark. */
 export interface AiContextLift {
   id: string;
   name: string;
-  category: string;
+  category?: string;
   benchmark: string;
   unit?: WeightUnit;
   step?: number;
-  progression: boolean;
+  equipment?: TrackedLift['equipment'];
+  progression?: boolean;
   /** Current estimated 1RM, rounded to a loadable number. */
   estimate?: number;
   status?: string;
@@ -89,7 +93,7 @@ export function buildAiContext(input: {
   focusExerciseId?: string;
 }): AiContext {
   const { activeWorkout } = input;
-  return {
+  const ctx: AiContext = {
     screen: input.screen,
     units: input.units,
     ...(input.focusExerciseId ? { focusExerciseId: input.focusExerciseId } : {}),
@@ -118,13 +122,14 @@ export function buildAiContext(input: {
         benchmark: [formatLoad(l.load), formatTarget(l.target)].filter(Boolean).join(', '),
         ...(unit ? { unit } : {}),
         ...(l.step !== undefined ? { step: l.step } : {}),
+        ...(l.equipment ? { equipment: l.equipment } : {}),
         progression: !!l.progression,
         ...(estimate && unit ? { estimate: roundLoad(estimate.value, unit, l.step) } : {}),
         ...(l.progression ? { status: progressionStatus(l) } : {}),
         ...(sessions.length
           ? {
               recentSessions: sessions.map((s) => ({
-                date: s.date,
+                date: s.date.slice(0, 10),
                 goal: s.goal,
                 sets: s.sets.map((set) => pick(set, LOG_KEYS) as TrackedSetLog),
               })),
@@ -142,4 +147,28 @@ export function buildAiContext(input: {
       };
     }),
   };
+
+  // Lifts in today's workout (which includes the focus exercise's lift) are never trimmed.
+  const keep = new Set<string>();
+  for (const e of activeWorkout?.exercises ?? []) if (e.tracked) keep.add(e.tracked.liftId);
+  return fitBudget(ctx, keep);
+}
+
+/**
+ * Trim the other lifts in stages until the JSON fits `CONTEXT_BUDGET`:
+ * drop their recent sessions, then their prescriptions, then all but
+ * id, name and benchmark.
+ */
+function fitBudget(ctx: AiContext, keep: ReadonlySet<string>): AiContext {
+  const stages: ((l: AiContextLift) => AiContextLift)[] = [
+    (l) => ({ ...l, recentSessions: undefined }),
+    (l) => ({ ...l, next: undefined }),
+    ({ id, name, benchmark }) => ({ id, name, benchmark }),
+  ];
+  let out = ctx;
+  for (const stage of stages) {
+    if (JSON.stringify(out).length <= CONTEXT_BUDGET) break;
+    out = { ...out, trackedLifts: out.trackedLifts.map((l) => (keep.has(l.id) ? l : stage(l))) };
+  }
+  return out;
 }

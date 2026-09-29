@@ -111,4 +111,56 @@ describe('buildAiContext', () => {
     });
     expect(JSON.stringify(ctx).length).toBeLessThan(20_000);
   });
+
+  it('sends session dates as the date only, and the equipment when set', () => {
+    const lift: TrackedLift = {
+      ...bench, equipment: 'barbell',
+      sessions: [{ date: '2026-09-01T18:30:00.000Z', goal: 'volume', sets: [{ reps: 9, weight: 185 }] }],
+    };
+    const [l] = buildAiContext({ screen: 'build', units: 'lbs', activeWorkout: null, trackedLifts: [lift] }).trackedLifts;
+    expect(l.equipment).toBe('barbell');
+    expect(l.recentSessions![0].date).toBe('2026-09-01');
+    const [plain] = buildAiContext({ screen: 'build', units: 'lbs', activeWorkout: null, trackedLifts: [bench] }).trackedLifts;
+    expect(plain).not.toHaveProperty('equipment');
+  });
+
+  it('trims lifts outside the workout to stay under budget, never the ones in it', () => {
+    const lifts: TrackedLift[] = Array.from({ length: 40 }, (_, k) => ({
+      id: `lift-${k}-abcdef123456`, name: `Tracked lift number ${k}`, category: 'Push',
+      progression: true, step: 2.5, equipment: 'barbell', cycle: { volume: 1, strength: 1 },
+      load: { kind: 'weight', value: 200 + k, unit: 'lb' }, target: { kind: 'reps', min: 5, max: 8 },
+      sessions: Array.from({ length: 6 }, (_, s) => ({
+        date: `2026-09-${String(s + 10)}T18:30:00.000Z`, goal: s % 2 ? 'strength' : 'volume',
+        sets: Array.from({ length: 6 }, () => ({ reps: 9, weight: 142.5, rir: 2 })),
+      })),
+    }));
+    const exercises: WorkoutExercise[] = Array.from({ length: 8 }, (_, e) => ({
+      id: `exercise-${e}`, exercise: { id: `lib-${e}`, name: `Exercise ${e}` } as never,
+      // The last lifts are the ones in today's workout.
+      tracked: { liftId: `lift-${32 + e}-abcdef123456`, goal: 'volume' },
+      sets: Array.from({ length: 5 }, (_, s) => ({ id: `set-${e}-${s}`, reps: 10, weight: 137.5, unit: 'lbs' as const, completed: false })),
+    }));
+    const ctx = buildAiContext({
+      screen: 'workout', units: 'lbs', focusExerciseId: 'exercise-7',
+      activeWorkout: { id: 'w', name: 'Upper', exercises, currentExerciseIndex: 0, currentSetIndex: 0, startTime: '', duration: 0, isActive: true },
+      trackedLifts: lifts,
+    });
+    expect(JSON.stringify(ctx).length).toBeLessThan(40_000);
+    expect(ctx.trackedLifts).toHaveLength(40);
+    for (const e of exercises) {
+      const l = ctx.trackedLifts.find((x) => x.id === e.tracked!.liftId)!;
+      expect(l.next).toBeDefined();
+      expect(l.recentSessions).toHaveLength(3);
+    }
+    // Other lifts keep at least their id, name and benchmark.
+    expect(ctx.trackedLifts[0]).toMatchObject({ id: 'lift-0-abcdef123456', name: 'Tracked lift number 0', benchmark: expect.any(String) });
+    expect(ctx.trackedLifts[0].recentSessions).toBeUndefined();
+  });
+
+  it('leaves a context under budget untrimmed', () => {
+    const lift: TrackedLift = { ...bench, sessions: [{ date: '2026-09-01', goal: 'volume', sets: [{ reps: 9, weight: 185 }] }] };
+    const [l] = buildAiContext({ screen: 'build', units: 'lbs', activeWorkout: null, trackedLifts: [lift] }).trackedLifts;
+    expect(l.recentSessions).toHaveLength(1);
+    expect(l.next).toBeDefined();
+  });
 });
