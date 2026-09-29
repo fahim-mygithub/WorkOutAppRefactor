@@ -60,16 +60,18 @@ export const chatMessageSchema = z.object({
 export type ChatMessage = z.infer<typeof chatMessageSchema>;
 
 /**
- * Optional context the client passes so the model can reference the active
- * workout and recent history without us hard-coding shapes. Kept permissive
- * (passthrough) but size-bounded by the overall request limits.
+ * Optional read-only context the client passes so the model can reference the
+ * active workout and tracked lifts without us hard-coding shapes. Kept
+ * permissive; the handler caps its serialized size.
  */
 export const chatContextSchema = z
   .object({
-    activeWorkout: z.unknown().optional(),
-    recentHistory: z.unknown().optional(),
+    screen: z.enum(['workout', 'build', 'other']).optional(),
     units: WeightUnit.optional(),
-    goal: z.string().optional(),
+    activeWorkout: z.unknown().optional(),
+    trackedLifts: z.unknown().optional(),
+    /** The exercise the lifter asked about (Ask coach). */
+    focusExerciseId: z.string().optional(),
   })
   .partial();
 
