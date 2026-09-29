@@ -133,7 +133,7 @@ export const exerciseLookupSchema = z
       .max(120)
       .optional()
       .describe('Common library name if this is a synonym (e.g. skull crusher → Lying Triceps Extension).'),
-    muscleGroups: z.array(z.string().max(40)).min(1).describe('Primary muscles, e.g. ["Triceps"].'),
+    muscleGroups: z.array(z.string().max(40)).min(1).max(6).describe('Primary muscles, e.g. ["Triceps"].'),
     equipment: z.string().max(60).describe('e.g. Barbell, Dumbbells, Cables, Bodyweight, Kettlebells, Bands.'),
     difficulty: z.enum(['Beginner', 'Intermediate', 'Advanced']),
     instructions: z.array(z.string().max(300)).min(2).max(8).describe('Numbered steps in your own words.'),

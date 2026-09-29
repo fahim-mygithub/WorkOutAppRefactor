@@ -110,8 +110,8 @@ export const toolValidators: Record<ToolName, z.ZodTypeAny> = allToolSchemas;
 /**
  * Minimal Zod -> JSON Schema conversion sufficient for the shapes used in this
  * catalog (objects of scalars/enums/arrays, optional + nullable + default +
- * describe, and
- * numeric min/max checks as minimum/exclusiveMinimum/maximum). We
+ * describe, numeric min/max checks as minimum/exclusiveMinimum/maximum,
+ * string min/max as minLength/maxLength, array min/max as minItems/maxItems). We
  * hand-roll this to avoid pulling in `zod-to-json-schema` and to keep the
  * emitted schema flat and Anthropic-friendly (`additionalProperties: false`).
  */
@@ -142,7 +142,13 @@ function zodToJsonSchema(schema: z.ZodTypeAny): Record<string, unknown> {
     description ? { ...obj, description } : obj;
 
   if (current instanceof z.ZodString) {
-    return withDesc({ type: 'string' });
+    const out: Record<string, unknown> = { type: 'string' };
+    for (const check of current._def.checks) {
+      if (check.kind === 'min') out.minLength = check.value;
+      else if (check.kind === 'max') out.maxLength = check.value;
+      else if (check.kind === 'length') out.minLength = out.maxLength = check.value;
+    }
+    return withDesc(out);
   }
   if (current instanceof z.ZodNumber) {
     const out: Record<string, unknown> = { type: 'number' };
@@ -160,7 +166,11 @@ function zodToJsonSchema(schema: z.ZodTypeAny): Record<string, unknown> {
     return withDesc({ type: 'string', enum: current._def.values });
   }
   if (current instanceof z.ZodArray) {
-    return withDesc({ type: 'array', items: zodToJsonSchema(current._def.type) });
+    const out: Record<string, unknown> = { type: 'array', items: zodToJsonSchema(current._def.type) };
+    if (current._def.minLength) out.minItems = current._def.minLength.value;
+    if (current._def.maxLength) out.maxItems = current._def.maxLength.value;
+    if (current._def.exactLength) out.minItems = out.maxItems = current._def.exactLength.value;
+    return withDesc(out);
   }
   if (current instanceof z.ZodObject) {
     const shape = current._def.shape() as Record<string, z.ZodTypeAny>;

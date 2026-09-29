@@ -192,3 +192,19 @@ describe('findExercise', () => {
     await expect(findExercise('skull crushers', { client, verify: okIf(() => true) })).resolves.toMatchObject({ media: [], rejectedMedia: 0 });
   });
 });
+
+describe('submitExerciseTool', () => {
+  it('carries string and list limits to the model', () => {
+    const s = submitExerciseTool.input_schema as { properties: Record<string, Record<string, any>> };
+    expect(s.properties.name).toMatchObject({ type: 'string', maxLength: 120 });
+    expect(s.properties.aliasOf).toMatchObject({ maxLength: 120 });
+    expect(s.properties.equipment).toMatchObject({ maxLength: 60 });
+    expect(s.properties.instructions).toMatchObject({ minItems: 2, maxItems: 8, items: { type: 'string', maxLength: 300 } });
+    expect(s.properties.muscleGroups).toMatchObject({ minItems: 1, maxItems: 6, items: { maxLength: 40 } });
+    expect(s.properties.mediaCandidates).toMatchObject({ maxItems: 8 });
+    expect(s.properties.mediaCandidates).not.toHaveProperty('minItems');
+  });
+  it('rejects more than 6 muscle groups', () => {
+    expect(exerciseLookupSchema.safeParse({ ...input, muscleGroups: Array(7).fill('Triceps') }).success).toBe(false);
+  });
+});
