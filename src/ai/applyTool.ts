@@ -1,0 +1,216 @@
+/**
+ * Turns one AI tool call into Redux actions, tiered per the design:
+ *   auto     — only today's workout, just described → apply now, Undo restores
+ *   confirm  — saved data or future numbers → Apply/Reject card
+ *   rejected — unknown ids, bad shapes, loads the engine refuses
+ * Pure: reads a snapshot, returns actions; the caller dispatches.
+ *
+ * Units: workout sets say 'lbs' | 'kg', tracked lifts and the engine say
+ * 'lb' | 'kg'. Everything here (checks, summaries) uses 'lb' | 'kg'.
+ */
+import type { UnknownAction } from '@reduxjs/toolkit';
+import type { ActiveWorkout, Exercise, WorkoutExercise, WorkoutSet } from '../types/exercise';
+import type { TrackedLift, WeightUnit } from '../types/trackedLifts';
+import { updateExercise, replaceExerciseMovement } from '../store/slices/workoutSlice';
+import { liftAdded, liftRemoved, liftUpdated } from '../store/slices/trackedLiftsSlice';
+import { checkProposedLoad } from '../lib/aiLoadCheck';
+import { formatLoad, formatTarget } from '../lib/trackedLifts';
+import { fromFlatLift, type FlatLift } from './liftFields';
+import type { AiToolCall } from './types';
+
+export interface PlanContext {
+  activeWorkout: ActiveWorkout | null;
+  trackedLifts: TrackedLift[];
+  library: Exercise[];
+}
+
+export type ToolPlan =
+  | { kind: 'auto'; id: string; summary: string; apply: UnknownAction[]; undo: UnknownAction[] }
+  | { kind: 'confirm'; id: string; summary: string; detail?: string; apply: UnknownAction[] }
+  | { kind: 'rejected'; id: string; reason: string };
+
+const unitOf = (set?: WorkoutSet): WeightUnit => (set?.unit === 'kg' ? 'kg' : 'lb');
+const str = (v: unknown): string | undefined => (typeof v === 'string' && v.trim() ? v.trim() : undefined);
+const num = (v: unknown): number | undefined => (typeof v === 'number' && Number.isFinite(v) ? v : undefined);
+/** A non-negative integer index, else undefined. */
+const index = (v: unknown): number | undefined => {
+  const n = num(v);
+  return n !== undefined && Number.isInteger(n) && n >= 0 ? n : undefined;
+};
+
+function findExercise(ctx: PlanContext, id: unknown): WorkoutExercise | undefined {
+  return ctx.activeWorkout?.exercises.find((e) => e.id === id);
+}
+
+/** The load the lifter is working with: next undone set, else the last set. */
+function referenceLoad(ex: WorkoutExercise): number | null {
+  const next = ex.sets.find((s) => !s.completed) ?? ex.sets[ex.sets.length - 1];
+  return next?.weight ?? null;
+}
+
+/** The unit a lift's numbers are in, when it has any. */
+function liftUnit(lift: TrackedLift): WeightUnit | undefined {
+  if (lift.load.kind === 'weight') return lift.load.unit;
+  if (lift.load.kind === 'bodyweight') return lift.load.plus?.unit;
+  return undefined;
+}
+
+/** The tracked lift's equipment step, unless it is in the other unit. */
+function stepFor(ctx: PlanContext, ex: WorkoutExercise, unit: WeightUnit): number | undefined {
+  const lift = ex.tracked ? ctx.trackedLifts.find((l) => l.id === ex.tracked!.liftId) : undefined;
+  if (!lift) return undefined;
+  const own = liftUnit(lift);
+  return own === undefined || own === unit ? lift.step : undefined;
+}
+
+function libraryMatch(ctx: PlanContext, name: string): Exercise | undefined {
+  const key = name.trim().toLowerCase();
+  return ctx.library.find((e) => e.name.toLowerCase() === key);
+}
+
+function setsAction(ex: WorkoutExercise, sets: WorkoutSet[]): UnknownAction {
+  return updateExercise({ exerciseId: ex.id, sets, restTime: ex.restTime ?? 120 });
+}
+
+const describeLift = (parsed: NonNullable<ReturnType<typeof fromFlatLift>>): string =>
+  [formatLoad(parsed.load), formatTarget(parsed.target)].filter(Boolean).join(', ');
+
+export function planToolCall(call: AiToolCall, ctx: PlanContext): ToolPlan {
+  const { id, input } = call;
+  const i = input as Record<string, unknown>;
+  const reject = (reason: string): ToolPlan => ({ kind: 'rejected', id, reason });
+
+  switch (call.name) {
+    case 'adjustSet': {
+      const ex = findExercise(ctx, i.exerciseId);
+      if (!ex) return reject('That exercise is not in this workout.');
+      const from = index(i.fromSetIndex);
+      if (from === undefined) return reject('That set is not valid.');
+      if (i.weight === undefined && i.reps === undefined) return reject('Nothing to change.');
+      if (!ex.sets.some((s, k) => k >= from && !s.completed)) return reject('No open sets to change.');
+
+      const unit = unitOf(ex.sets[0]);
+      let weight: number | undefined;
+      if (i.weight !== undefined) {
+        const check = checkProposedLoad(num(i.weight) ?? 0, referenceLoad(ex), unit, stepFor(ctx, ex, unit));
+        if (!check.ok) return reject(check.reason);
+        weight = check.value;
+      }
+      let reps: number | undefined;
+      if (i.reps !== undefined) {
+        reps = index(i.reps);
+        if (!reps) return reject('Reps must be a whole number above zero.');
+      }
+
+      const sets = ex.sets.map((s, k) =>
+        k >= from && !s.completed
+          ? {
+              ...s,
+              ...(weight !== undefined ? { weight } : {}),
+              ...(reps !== undefined ? { reps, repMin: undefined, repMax: undefined } : {}),
+            }
+          : s,
+      );
+      const what = [weight !== undefined && `${weight} ${unit}`, reps !== undefined && `${reps} reps`]
+        .filter(Boolean)
+        .join(' × ');
+      return {
+        kind: 'auto', id,
+        summary: `${ex.customTitle || ex.exercise.name}: remaining sets at ${what}`,
+        apply: [setsAction(ex, sets)],
+        undo: [setsAction(ex, ex.sets)],
+      };
+    }
+
+    case 'logSet': {
+      const ex = findExercise(ctx, i.exerciseId);
+      if (!ex) return reject('That exercise is not in this workout.');
+      const reps = index(i.reps);
+      if (reps === undefined) return reject('Reps must be a whole number.');
+      const idx = i.setIndex !== undefined ? index(i.setIndex) ?? -1 : ex.sets.findIndex((s) => !s.completed);
+      if (idx < 0 || idx >= ex.sets.length) return reject('No open set to log.');
+      const weight = num(i.weight);
+      if (weight !== undefined && weight < 0) return reject('Load cannot be negative.');
+      const rir = index(i.rir);
+      const unit = unitOf(ex.sets[idx]);
+      const sets = ex.sets.map((s, k) =>
+        k === idx
+          ? { ...s, reps, ...(weight !== undefined ? { weight } : {}), ...(rir !== undefined ? { rir } : {}), completed: true }
+          : s,
+      );
+      return {
+        kind: 'auto', id,
+        summary: `Logged set ${idx + 1}: ${reps} reps${weight !== undefined ? ` at ${weight} ${unit}` : ''}`,
+        apply: [setsAction(ex, sets)],
+        undo: [setsAction(ex, ex.sets)],
+      };
+    }
+
+    case 'swapExercise': {
+      const ex = findExercise(ctx, i.exerciseId);
+      if (!ex) return reject('That exercise is not in this workout.');
+      const name = str(i.replacementExerciseName);
+      if (!name) return reject('No replacement exercise was named.');
+      const replacement = libraryMatch(ctx, name);
+      if (!replacement) return reject(`"${name}" is not in the exercise library.`);
+      const apply: UnknownAction[] = [replaceExerciseMovement({ exerciseId: ex.id, exercise: replacement })];
+      const unit = unitOf(ex.sets[0]);
+      let weight: number | undefined;
+      if (i.weight !== undefined) {
+        // A different movement: no reference to compare with, but still > 0 and loadable.
+        const check = checkProposedLoad(num(i.weight) ?? 0, null, unit);
+        if (!check.ok) return reject(check.reason);
+        weight = check.value;
+        apply.push(setsAction(ex, ex.sets.map((s) => (s.completed ? s : { ...s, weight }))));
+      }
+      const ongoing = i.scope === 'ongoing';
+      if (ongoing && ex.tracked) {
+        apply.push(liftUpdated({ id: ex.tracked.liftId, name: replacement.name }));
+      }
+      return {
+        kind: 'confirm', id,
+        summary: `Swap ${ex.customTitle || ex.exercise.name} for ${replacement.name}${weight !== undefined ? ` at ${weight} ${unit}` : ''}${ongoing ? ' from now on' : ' today'}`,
+        detail: str(i.reason),
+        apply,
+      };
+    }
+
+    case 'updateBenchmark': {
+      const lift = ctx.trackedLifts.find((l) => l.id === i.liftId);
+      if (!lift) return reject('That tracked lift does not exist.');
+      // An omitted unit means the lift's own, not a silent switch to lb.
+      const parsed = fromFlatLift({ ...i, unit: i.unit ?? liftUnit(lift) } as unknown as FlatLift);
+      if (!parsed) return reject('That benchmark is missing a load or target.');
+      return {
+        kind: 'confirm', id,
+        summary: `${lift.name} benchmark → ${describeLift(parsed)}`,
+        detail: str(i.reason),
+        apply: [liftUpdated({ id: lift.id, ...parsed })],
+      };
+    }
+
+    case 'addTrackedLift': {
+      const name = str(i.name);
+      const category = str(i.category);
+      const parsed = fromFlatLift(i as unknown as FlatLift);
+      if (!name || !category || !parsed) return reject('That lift is missing a name, category or benchmark.');
+      const sets = index(i.sets);
+      return {
+        kind: 'confirm', id,
+        summary: `Track ${name} (${category}): ${describeLift(parsed)}`,
+        apply: [
+          liftAdded({ name, category, ...parsed, ...(sets ? { sets } : {}), progression: i.progression === true }),
+        ],
+      };
+    }
+
+    case 'removeTrackedLift': {
+      const lift = ctx.trackedLifts.find((l) => l.id === i.liftId);
+      if (!lift) return reject('That tracked lift does not exist.');
+      return { kind: 'confirm', id, summary: `Stop tracking ${lift.name}`, detail: str(i.reason), apply: [liftRemoved(lift.id)] };
+    }
+
+    default:
+      return reject(`Unknown tool ${String((call as { name: unknown }).name)}.`);
+  }
+}
