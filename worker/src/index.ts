@@ -14,6 +14,16 @@ import { findExercise } from './findExercise';
 /** Largest request body accepted (characters). */
 const MAX_BODY_CHARS = 1_000_000;
 
+/** Daily calls per user when AI_DAILY_LIMIT is unset or not a number. */
+const DEFAULT_DAILY_LIMIT = 150;
+
+/** AI_DAILY_LIMIT as a whole number; 0 turns AI off, junk falls back. */
+export function dailyLimit(raw: string | undefined): number {
+  const n = Number(raw);
+  if (!raw?.trim() || !Number.isFinite(n) || n < 0) return DEFAULT_DAILY_LIMIT;
+  return Math.floor(n);
+}
+
 export interface Env {
   ANTHROPIC_API_KEY: string;
   FIREBASE_PROJECT_ID: string;
@@ -92,7 +102,8 @@ export async function handleRequest(request: Request, env: Env, deps: Deps = def
     // Deterministic rejections happen before a daily slot is counted.
     if (parsed.data.action === 'chat') assertContextSize(parsed.data.context);
     if (!env.ANTHROPIC_API_KEY) throw new AiError('failed-precondition', 'The AI assistant is not configured.');
-    if (!(await deps.takeSlot(env.AI_USAGE, user.uid, Number(env.AI_DAILY_LIMIT) || 150))) {
+    const limit = dailyLimit(env.AI_DAILY_LIMIT);
+    if (limit === 0 || !(await deps.takeSlot(env.AI_USAGE, user.uid, limit))) {
       throw new AiError('resource-exhausted', 'Daily AI limit reached.');
     }
     const handler = deps.actions[parsed.data.action];

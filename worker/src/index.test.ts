@@ -43,6 +43,19 @@ describe('handleRequest', () => {
     expect((await handleRequest(post(chat), env, deps({ takeSlot: vi.fn().mockResolvedValue(false) }))).status).toBe(429);
     expect((await handleRequest(post({ action: 'nope' }), env, deps())).status).toBe(400);
   });
+  it('reads AI_DAILY_LIMIT: 0 turns AI off (429, no KV), junk or empty falls back to 150', async () => {
+    const off = deps();
+    expect((await handleRequest(post(chat), { ...env, AI_DAILY_LIMIT: '0' }, off)).status).toBe(429);
+    expect(off.takeSlot).not.toHaveBeenCalled();
+    for (const raw of ['abc', '', '-3', 'Infinity']) {
+      const d = deps();
+      await handleRequest(post(chat), { ...env, AI_DAILY_LIMIT: raw }, d);
+      expect(d.takeSlot).toHaveBeenCalledWith(env.AI_USAGE, 'u', 150);
+    }
+    const d = deps();
+    await handleRequest(post(chat), { ...env, AI_DAILY_LIMIT: ' 40 ' }, d);
+    expect(d.takeSlot).toHaveBeenCalledWith(env.AI_USAGE, 'u', 40);
+  });
   it('400 on the removed parse action, without taking a slot', async () => {
     const d = deps();
     expect((await handleRequest(post({ action: 'parse', text: 'bench 3x5' }), env, d)).status).toBe(400);
