@@ -10,26 +10,25 @@ import {
   readLiftEntry,
   type ReadLiftResult,
 } from '../../ai/aiClient';
+import { useAppDispatch, useAppSelector } from '../../store/hooks';
+import { aiDisabled } from '../../store/slices/aiSlice';
 
 /**
- * Once the backend says this user can't use AI (not allowed, not configured,
- * signed out), the field stays hidden for the rest of the session — across
- * sheet closes and reopens, not just this mount.
+ * "Describe it": free text → the lift form, via the readLift action. Never saves.
+ * Shares the app-wide AI-off state (`state.ai.disabledReason`) with the other
+ * entry points: hidden once it is set, and sets it on not-allowed / limit /
+ * unconfigured. A limit hit here keeps the field up just long enough to say so.
  */
-let hiddenForSession = false;
-
-/** Test hook: forget the session-wide hide. */
-export function resetDescribeFieldSession(): void {
-  hiddenForSession = false;
-}
-
-/** "Describe it": free text → the lift form, via the readLift action. Never saves. */
 export function LiftDescribeField({ onResult }: { onResult: (r: ReadLiftResult) => void }) {
   const id = useId();
+  const dispatch = useAppDispatch();
+  const aiOff = useAppSelector((s) => Boolean(s.ai?.disabledReason));
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
-  const [hidden, setHidden] = useState(hiddenForSession);
+  // Set when this field's own call hit the daily limit: show the note, then
+  // hide on the next mount like every other entry point.
+  const [limitHit, setLimitHit] = useState(false);
   // A reply that lands after unmount (sheet closed) must not touch anything.
   const alive = useRef(true);
   useEffect(() => {
@@ -39,7 +38,15 @@ export function LiftDescribeField({ onResult }: { onResult: (r: ReadLiftResult) 
     };
   }, []);
 
-  if (hidden || hiddenForSession || !isBackendAvailable() || !isSignedIn()) return null;
+  if (!isBackendAvailable() || !isSignedIn()) return null;
+  if (limitHit) {
+    return (
+      <p role="status" className="text-caption text-ink-muted">
+        AI limit reached for today.
+      </p>
+    );
+  }
+  if (aiOff) return null;
 
   const submit = async () => {
     if (!text.trim() || busy) return;
@@ -53,10 +60,9 @@ export function LiftDescribeField({ onResult }: { onResult: (r: ReadLiftResult) 
     } catch (e) {
       if (!alive.current) return;
       const code = e instanceof AiBackendError ? e.code : 'failed';
-      if (code === 'not-allowed' || code === 'unconfigured' || code === 'signed-out') {
-        hiddenForSession = true;
-        setHidden(true);
-      } else setNote(code === 'limit' ? 'AI limit reached for today.' : "Couldn't read that — fill the form below.");
+      if (code === 'limit') setLimitHit(true);
+      if (code === 'not-allowed' || code === 'limit' || code === 'unconfigured') dispatch(aiDisabled(code));
+      else setNote(code === 'signed-out' ? 'Sign in to use AI.' : "Couldn't read that — fill the form below.");
     } finally {
       if (alive.current) setBusy(false);
     }

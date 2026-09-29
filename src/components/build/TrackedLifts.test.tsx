@@ -5,10 +5,10 @@ import { Provider } from 'react-redux';
 import { configureStore } from '@reduxjs/toolkit';
 import trackedLifts from '../../store/slices/trackedLiftsSlice';
 import user from '../../store/slices/userSlice';
+import ai, { aiDisabled } from '../../store/slices/aiSlice';
 import { TrackedLifts } from './TrackedLifts';
 import { useTrackedLiftsSync } from '../../hooks/useTrackedLiftsSync';
 import * as aiClient from '../../ai/aiClient';
-import { resetDescribeFieldSession } from './LiftDescribeField';
 
 /** AppShell mounts the sync hook app-wide; stand in for it here. */
 function WithSync(props: React.ComponentProps<typeof TrackedLifts>) {
@@ -17,7 +17,7 @@ function WithSync(props: React.ComponentProps<typeof TrackedLifts>) {
 }
 
 function renderList(props: React.ComponentProps<typeof TrackedLifts> = {}) {
-  const store = configureStore({ reducer: { trackedLifts, user } });
+  const store = configureStore({ reducer: { trackedLifts, user, ai } });
   const { unmount } = render(
     <Provider store={store}>
       <WithSync {...props} />
@@ -185,7 +185,6 @@ describe('TrackedLiftEditor — Weight step', () => {
 describe('TrackedLiftEditor — Describe it', () => {
   beforeEach(() => {
     localStorage.clear();
-    resetDescribeFieldSession();
     vi.spyOn(aiClient, 'isSignedIn').mockReturnValue(true);
   });
   afterEach(() => vi.restoreAllMocks());
@@ -271,9 +270,17 @@ describe('TrackedLiftEditor — Describe it', () => {
   it('says the daily limit is reached', async () => {
     vi.spyOn(aiClient, 'isBackendAvailable').mockReturnValue(true);
     vi.spyOn(aiClient, 'readLiftEntry').mockRejectedValue(new aiClient.AiBackendError('x', 'limit'));
-    const { u, dialog } = await openAdd();
+    const { u, store, dialog } = await openAdd();
     await describeIt(u, dialog, 'squat');
     expect(await within(dialog).findByText(/AI limit reached for today/)).toBeInTheDocument();
+    expect(store.getState().ai.disabledReason).toBe('limit');
+    await u.keyboard('{Escape}');
+    await vi.waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    const again = await screen.findByRole('button', { name: /^Seal Row/ }).then(async (b) => {
+      await u.click(b);
+      return screen.findByRole('dialog');
+    });
+    expect(within(again).queryByLabelText('Describe it')).not.toBeInTheDocument();
   });
 
   it('falls back to a generic note on other errors', async () => {
@@ -284,12 +291,33 @@ describe('TrackedLiftEditor — Describe it', () => {
     expect(await within(dialog).findByText(/Couldn't read that — fill the form below/)).toBeInTheDocument();
   });
 
-  it.each(['not-allowed', 'signed-out', 'unconfigured'] as const)('hides the field on %s', async (code) => {
+  it.each(['not-allowed', 'unconfigured'] as const)('hides the field and turns AI off app-wide on %s', async (code) => {
     vi.spyOn(aiClient, 'isBackendAvailable').mockReturnValue(true);
     vi.spyOn(aiClient, 'readLiftEntry').mockRejectedValue(new aiClient.AiBackendError('x', code));
-    const { u, dialog } = await openAdd();
+    const { u, store, dialog } = await openAdd();
     await describeIt(u, dialog, 'squat');
     await vi.waitFor(() => expect(within(dialog).queryByLabelText('Describe it')).not.toBeInTheDocument());
+    expect(store.getState().ai.disabledReason).toBe(code);
+  });
+
+  it('asks to sign in on signed-out without turning AI off', async () => {
+    vi.spyOn(aiClient, 'isBackendAvailable').mockReturnValue(true);
+    vi.spyOn(aiClient, 'readLiftEntry').mockRejectedValue(new aiClient.AiBackendError('x', 'signed-out'));
+    const { u, store, dialog } = await openAdd();
+    await describeIt(u, dialog, 'squat');
+    expect(await within(dialog).findByText(/Sign in to use AI/)).toBeInTheDocument();
+    expect(within(dialog).getByLabelText('Describe it')).toBeInTheDocument();
+    expect(store.getState().ai.disabledReason).toBeUndefined();
+  });
+
+  it('is hidden when AI was turned off elsewhere', async () => {
+    vi.spyOn(aiClient, 'isBackendAvailable').mockReturnValue(true);
+    const { store, dialog } = await openAdd();
+    expect(within(dialog).getByLabelText('Describe it')).toBeInTheDocument();
+    act(() => {
+      store.dispatch(aiDisabled('not-allowed'));
+    });
+    expect(within(dialog).queryByLabelText('Describe it')).not.toBeInTheDocument();
   });
   const ready = () => vi.spyOn(aiClient, 'isBackendAvailable').mockReturnValue(true);
   const reading = (r: Partial<aiClient.ReadLiftResult>) =>
@@ -309,7 +337,7 @@ describe('TrackedLiftEditor — Describe it', () => {
     expect(within(dialog).queryByLabelText('Describe it')).not.toBeInTheDocument();
   });
 
-  it('stays hidden for the session after not-allowed, across close and reopen', async () => {
+  it('stays hidden after not-allowed, across close and reopen', async () => {
     ready();
     vi.spyOn(aiClient, 'readLiftEntry').mockRejectedValue(new aiClient.AiBackendError('x', 'not-allowed'));
     const { u, dialog } = await openAdd();
