@@ -149,6 +149,35 @@ describe('aiClient', () => {
       });
     });
 
+    it('keeps rpe, time and distance, and caps an entry at 20 sets', async () => {
+      const set = (over: Record<string, unknown>) => ({
+        exerciseName: 'X',
+        reps: null,
+        sets: null,
+        weight: null,
+        unit: null,
+        rpe: null,
+        timeSeconds: null,
+        distanceMeters: null,
+        notes: null,
+        ...over,
+      });
+      const f = ok({
+        action: 'parse',
+        result: {
+          exercises: [
+            { exerciseName: 'Run', sets: [set({ timeSeconds: 1500, distanceMeters: 5000 })] },
+            { exerciseName: 'Squat', sets: [set({ reps: 5, rpe: 8, sets: 500 })] },
+          ],
+        },
+      });
+      const res = await parse({ text: 'ran 5k in 25 min; squat 500x5 @8' }, deps(f));
+      const [run, squat] = res.workout.exercises;
+      expect(run.sets).toEqual([{ reps: 0, time: 1500, distance: 5000 }]);
+      expect(squat.sets).toHaveLength(20);
+      expect(squat.sets[0]).toEqual({ reps: 5, rpe: 8 });
+    });
+
     it('falls back on a Worker error', async () => {
       const res = await parse({ text: '3x10 Squats' }, deps(fail(502)));
       expect(res.source).toBe('fallback');

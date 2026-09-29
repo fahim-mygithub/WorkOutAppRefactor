@@ -45,7 +45,7 @@ import type { ParsedWorkout } from '@/parser/types';
 import { cn } from '@/lib/utils';
 
 // ---------------------------------------------------------------------------
-// AI client boundary (the /ai transport contract).
+// AI client boundary (the Worker transport contract).
 // ---------------------------------------------------------------------------
 
 /** A visualization tool-call — rendered read-only, never Apply/Reject. */
@@ -101,7 +101,7 @@ export interface AiChatSheetProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   /**
-   * The /ai transport. When `undefined` (or `available` is false), the surface
+   * The Worker transport. When `undefined` (or `available` is false), the surface
    * renders the graceful unavailable state + deterministic parse fallback.
    */
   client?: AiChatClient;

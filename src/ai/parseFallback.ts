@@ -5,8 +5,8 @@
  * (`src/parser/workoutParser.ts`, the same `WorkoutParser` that
  * `BuildPage.tsx` / `EnhancedTextInput.tsx` already drive) so that freeform
  * text -> structured sets works with NO backend at all. It is the safety net
- * the AI client falls back to when the `ai` callable is unavailable (no
- * Firebase Functions instance configured, offline, or any backend error).
+ * the AI client falls back to when the Worker is unavailable (no Worker URL
+ * configured, offline, signed out, or any backend error).
  *
  * It introduces no new parsing logic — it reuses the proven parser and reshapes
  * its output into the shared `AiParseResponse` contract.

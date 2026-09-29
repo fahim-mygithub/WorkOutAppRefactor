@@ -14,8 +14,9 @@ export default mergeConfig(
       environment: 'jsdom',
       setupFiles: ['./src/test/setup.ts'],
       css: true,
-      // worker/ is a separate package with its own vitest run.
-      exclude: [...configDefaults.exclude, 'worker/**'],
+      // worker/ is a separate package with its own vitest run; .worktrees/ holds
+      // other checkouts whose tests would resolve `@/` into this tree.
+      exclude: [...configDefaults.exclude, 'worker/**', '.worktrees/**'],
       coverage: {
         provider: 'v8',
         reporter: ['text', 'html'],

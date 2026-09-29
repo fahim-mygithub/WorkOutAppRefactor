@@ -83,6 +83,9 @@ interface WorkerParseResult {
         sets: number | null;
         weight: number | null;
         unit: 'lbs' | 'kg' | null;
+        rpe: number | null;
+        timeSeconds: number | null;
+        distanceMeters: number | null;
       }>;
     }>;
   };
@@ -127,17 +130,24 @@ export async function callAi<T>(payload: AiRequestPayload, deps?: AiClientDeps):
   }
 }
 
+/** Most identical sets one parsed entry may expand to. */
+const MAX_SETS_PER_ENTRY = 20;
+
 function toParsedWorkout(result: WorkerParseResult['result']): ParsedWorkout | null {
   if (!result || !Array.isArray(result.exercises)) return null;
   return {
     exercises: result.exercises.map((e) => ({
       name: e.exerciseName,
-      // One Worker entry can stand for several identical sets ("3x5" → sets: 3).
+      // One Worker entry can stand for several identical sets ("3x5" → sets: 3);
+      // capped so a runaway count can't flood the workout.
       sets: (e.sets ?? []).flatMap((s) =>
-        Array.from({ length: Math.max(1, s.sets ?? 1) }, () => ({
+        Array.from({ length: Math.max(1, Math.min(s.sets ?? 1, MAX_SETS_PER_ENTRY)) }, () => ({
           reps: s.reps ?? 0,
           weight: s.weight ?? undefined,
           unit: s.unit ?? undefined,
+          rpe: s.rpe ?? undefined,
+          time: s.timeSeconds ?? undefined, // seconds
+          distance: s.distanceMeters ?? undefined, // meters
         })),
       ),
     })),
