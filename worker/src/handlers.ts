@@ -101,15 +101,20 @@ export interface ChatResult {
   stopReason: string | null;
 }
 
-export function buildContextPreamble(context: ChatContext | undefined): string | null {
-  if (!context) return null;
-  // Rides in a user turn (not the cached system prompt) so it never
-  // invalidates the cached prefix.
-  const serialized = JSON.stringify(context);
-  if (serialized.length > MAX_CONTEXT_CHARS) {
+/** Throws invalid-argument when the serialized context is over the cap. The
+ *  router calls this before counting the request against the daily limit. */
+export function assertContextSize(context: ChatContext | undefined): void {
+  if (context && JSON.stringify(context).length > MAX_CONTEXT_CHARS) {
     throw new AiError('invalid-argument', 'Context too large.');
   }
-  return `CONTEXT (read-only, current app state):\n${serialized}`;
+}
+
+export function buildContextPreamble(context: ChatContext | undefined): string | null {
+  if (!context) return null;
+  assertContextSize(context);
+  // Rides in a user turn (not the cached system prompt) so it never
+  // invalidates the cached prefix.
+  return `CONTEXT (read-only, current app state):\n${JSON.stringify(context)}`;
 }
 
 export async function handleChat(

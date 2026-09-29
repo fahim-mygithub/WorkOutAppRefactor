@@ -42,6 +42,39 @@ describe('handleRequest', () => {
     expect((await handleRequest(post(chat), env, deps({ takeSlot: vi.fn().mockResolvedValue(false) }))).status).toBe(429);
     expect((await handleRequest(post({ action: 'nope' }), env, deps())).status).toBe(400);
   });
+  it('400 on an oversized chat context without taking a daily slot', async () => {
+    const d = deps();
+    const big = { ...chat, context: { activeWorkout: 'x'.repeat(40_001) } };
+    const r = await handleRequest(post(big), env, d);
+    expect(r.status).toBe(400);
+    expect(await r.json()).toEqual({ error: { code: 'invalid-argument', message: 'Context too large.' } });
+    expect(d.takeSlot).not.toHaveBeenCalled();
+  });
+  it('400 on a body over 1,000,000 chars or bad JSON, without taking a slot', async () => {
+    const d = deps();
+    const huge = new Request('https://w.test/', {
+      method: 'POST',
+      headers: { origin: 'https://app.test', authorization: 'Bearer t' },
+      body: 'x'.repeat(1_000_001),
+    });
+    expect((await handleRequest(huge, env, d)).status).toBe(400);
+    const bad = new Request('https://w.test/', {
+      method: 'POST',
+      headers: { origin: 'https://app.test', authorization: 'Bearer t' },
+      body: '{not json',
+    });
+    expect((await handleRequest(bad, env, d)).status).toBe(400);
+    expect(d.takeSlot).not.toHaveBeenCalled();
+  });
+  it('logs the action and Anthropic status when a handler fails', async () => {
+    const { APIError } = await import('@anthropic-ai/sdk');
+    const err = new APIError(529, undefined, 'overloaded', new Headers());
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const r = await handleRequest(post(chat), env, deps({ actions: { chat: vi.fn().mockRejectedValue(err) } }));
+    expect(r.status).toBe(502);
+    expect(spy).toHaveBeenCalledWith('ai worker failed', expect.objectContaining({ action: 'chat', status: 529 }));
+    spy.mockRestore();
+  });
   it('503 when the key is missing', async () => {
     expect((await handleRequest(post(chat), { ...env, ANTHROPIC_API_KEY: '' }, deps())).status).toBe(503);
   });

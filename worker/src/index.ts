@@ -4,11 +4,14 @@
  * Holds the Anthropic key (secret ANTHROPIC_API_KEY); never applies changes —
  * tool calls are returned to the client, which confirms or applies them.
  */
-import type Anthropic from '@anthropic-ai/sdk';
+import Anthropic from '@anthropic-ai/sdk';
 import { aiRequestSchema, type AiRequest } from './schemas';
 import { AiError, errorResponse, json } from './errors';
 import { isAllowed, takeDailySlot, verifyIdToken } from './access';
-import { handleChat, handleParse, makeClient } from './handlers';
+import { assertContextSize, handleChat, handleParse, makeClient } from './handlers';
+
+/** Largest request body accepted (characters). */
+const MAX_BODY_CHARS = 1_000_000;
 
 export interface Env {
   ANTHROPIC_API_KEY: string;
@@ -57,6 +60,7 @@ function corsHeaders(request: Request, env: Env): Record<string, string> {
 export async function handleRequest(request: Request, env: Env, deps: Deps = defaultDeps): Promise<Response> {
   const cors = corsHeaders(request, env);
   if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
+  let action: ActionName | undefined;
   try {
     if (request.method !== 'POST') throw new AiError('invalid-argument', 'POST only.');
     const token = request.headers.get('authorization')?.replace(/^Bearer\s+/i, '').trim();
@@ -65,8 +69,19 @@ export async function handleRequest(request: Request, env: Env, deps: Deps = def
     if (!isAllowed(user.email, env.AI_ALLOWED_EMAILS)) {
       throw new AiError('permission-denied', 'This account is not enabled for the AI assistant.');
     }
-    const parsed = aiRequestSchema.safeParse(await request.json().catch(() => null));
+    const text = await request.text();
+    if (text.length > MAX_BODY_CHARS) throw new AiError('invalid-argument', 'Request too large.');
+    let body: unknown;
+    try {
+      body = JSON.parse(text);
+    } catch {
+      throw new AiError('invalid-argument', 'Invalid request payload.');
+    }
+    const parsed = aiRequestSchema.safeParse(body);
     if (!parsed.success) throw new AiError('invalid-argument', 'Invalid request payload.');
+    action = parsed.data.action;
+    // Deterministic rejections happen before a daily slot is counted.
+    if (parsed.data.action === 'chat') assertContextSize(parsed.data.context);
     if (!env.ANTHROPIC_API_KEY) throw new AiError('failed-precondition', 'The AI assistant is not configured.');
     if (!(await deps.takeSlot(env.AI_USAGE, user.uid, Number(env.AI_DAILY_LIMIT) || 150))) {
       throw new AiError('resource-exhausted', 'Daily AI limit reached.');
@@ -76,7 +91,13 @@ export async function handleRequest(request: Request, env: Env, deps: Deps = def
     const result = await handler(parsed.data, makeClient(env.ANTHROPIC_API_KEY), env);
     return json({ action: parsed.data.action, ...(result as object) }, 200, cors);
   } catch (err) {
-    if (!(err instanceof AiError)) console.error('ai worker failed', err instanceof Error ? err.message : String(err));
+    if (!(err instanceof AiError)) {
+      console.error('ai worker failed', {
+        action,
+        status: err instanceof Anthropic.APIError ? err.status : undefined,
+        message: err instanceof Error ? err.message : String(err),
+      });
+    }
     return errorResponse(err, cors);
   }
 }
