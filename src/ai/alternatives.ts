@@ -35,12 +35,21 @@ const EQUIPMENT_WORDS: ReadonlySet<string> = new Set([
  * are dropped, so two unrelated single-arm lifts don't match on "arm".
  */
 const STOPWORDS: ReadonlySet<string> = new Set(['with', 'and', 'the', 'for']);
+
+/**
+ * Grip and stance descriptors: they vary a movement, they don't name one
+ * ("Neutral Pulldown" and "Neutral Grip Row" are different lifts). "hammer"
+ * is not here: a hammer curl is its own movement.
+ */
+const GRIP_WORDS: ReadonlySet<string> = new Set([
+  'neutral', 'narrow', 'wide', 'close', 'grip', 'underhand', 'overhand', 'pronated', 'supinated',
+]);
 const LIMB_MODIFIER = /\b(?:single|one|1)[\s-]+(?:arm|leg|legged|armed)\b/g;
 
-/** The movement words of a name: lower-case, 3+ letters, no kit or filler. */
+/** The movement words of a name: lower-case, 3+ letters, no kit, grips or filler. */
 function movementWords(name: string, kit: ReadonlySet<string>): Set<string> {
   const words = key(name).replace(LIMB_MODIFIER, ' ').split(/[^\p{L}\p{N}]+/u);
-  return new Set(words.filter((w) => w.length >= 3 && !kit.has(w) && !STOPWORDS.has(w)));
+  return new Set(words.filter((w) => w.length >= 3 && !kit.has(w) && !STOPWORDS.has(w) && !GRIP_WORDS.has(w)));
 }
 
 /** An exercise's muscle groups, lower-cased, minus equipment tags ("Barbell", "Cables"). */
@@ -53,8 +62,8 @@ function musclesOf(e: Exercise, equipment: ReadonlySet<string>): Set<string> {
  * Up to `limit` library names that share at least one muscle group or one
  * movement word with `exercise` and are not the exercise itself. Order: most
  * shared movement words ("bench", "press") first, then most shared muscles,
- * then other equipment before the same equipment, then common equipment
- * before niche kit, then shorter names, then by name.
+ * then common equipment before niche kit, then other equipment before the
+ * same equipment, then shorter names, then by name.
  */
 export function swapAlternatives(
   exercise: Exercise,
@@ -96,8 +105,8 @@ export function swapAlternatives(
     (a, b) =>
       b.shared - a.shared ||
       b.overlap - a.overlap ||
-      Number(a.sameEquipment) - Number(b.sameEquipment) ||
       Number(a.niche) - Number(b.niche) ||
+      Number(a.sameEquipment) - Number(b.sameEquipment) ||
       a.name.length - b.name.length ||
       a.name.localeCompare(b.name, 'en'),
   );

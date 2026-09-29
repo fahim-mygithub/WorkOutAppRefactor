@@ -55,7 +55,7 @@ describe('swapAlternatives', () => {
     expect(swapAlternatives({ id: 'x', name: 'Mystery' } as Exercise, library)).toEqual([]);
   });
 
-  it('at equal overlap, ranks other equipment, then common kit, then shorter names, before bands and bodyweight', () => {
+  it('at equal overlap, ranks common kit first (other equipment before the same), then shorter names; bands and bodyweight last', () => {
     const cableRow = ex('Cable Row', 'Cables', ['Lats', 'Upper back']);
     const rows = [
       ex('Band Row', 'Band', ['Lats', 'Upper back']),
@@ -66,9 +66,9 @@ describe('swapAlternatives', () => {
       ex('Cable Seated Row', 'Cables', ['Lats', 'Upper back']),
     ];
     expect(swapAlternatives(cableRow, rows)).toEqual([
-      'Machine Row', 'Dumbbell Row', 'Barbell Bent Over Row', // common kit, shortest first
+      'Machine Row', 'Dumbbell Row', 'Barbell Bent Over Row', // common kit, other equipment, shortest first
+      'Cable Seated Row', // common kit, same equipment
       'Band Row', 'Bodyweight Inverted Row', // niche kit
-      'Cable Seated Row', // same equipment last
     ]);
   });
 
@@ -104,6 +104,22 @@ describe('swapAlternatives', () => {
       ];
       expect(swapAlternatives(row, lib)).toEqual([]);
       expect(swapAlternatives(squat, lib)).toEqual([]);
+    });
+
+    it('does not count grip or stance descriptors as movement', () => {
+      const pulldown = ex('Neutral Pulldown', 'Machine', ['Lats']);
+      const lib = [
+        ex('Cable Neutral Grip Row', 'Cables', ['Mid back']),
+        ex('Barbell Close Grip Bench Press', 'Barbell', ['Triceps']),
+        ex('Narrow Pulldown', 'Machine', ['Biceps']),
+      ];
+      expect(swapAlternatives(pulldown, lib)).toEqual(['Narrow Pulldown']);
+    });
+
+    it('keeps hammer as a movement word', () => {
+      const hammer = ex('Dumbbell Hammer Curl', 'Dumbbells', ['Biceps']);
+      const lib = [ex('Barbell Curl', 'Barbell', ['Biceps']), ex('Cable Rope Hammer Curl', 'Cables', ['Biceps'])];
+      expect(swapAlternatives(hammer, lib)).toEqual(['Cable Rope Hammer Curl', 'Barbell Curl']);
     });
 
     it('counts leg or arm when it is the movement', () => {
