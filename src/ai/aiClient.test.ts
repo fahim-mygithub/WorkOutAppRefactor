@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { AiBackendError, chat, isBackendAvailable, parse } from '@/ai/aiClient';
+import { AiBackendError, chat, isBackendAvailable, parse, readLiftEntry } from '@/ai/aiClient';
 
 // We never hit Firebase or the network here. The client takes injected deps
 // (Worker URL, ID-token getter, fetch) so each test drives its own transport.
@@ -204,6 +204,25 @@ describe('aiClient', () => {
       const res = await parse({ text: '3x10 Squats' }, deps(ok({ action: 'parse' })));
       expect(res.source).toBe('fallback');
       expect(res.workout.exercises[0].name).toBe('Squats');
+    });
+  });
+
+  describe('readLiftEntry()', () => {
+    it('readLiftEntry returns the result', async () => {
+      const f = ok({ action: 'readLift', result: { name: 'Front Squat', loadKind: 'weight', weight: 250, unit: 'lb', targetKind: 'reps', reps: 5 } });
+      await expect(readLiftEntry('fs 250x5', deps(f))).resolves.toMatchObject({ name: 'Front Squat', reps: 5 });
+      expect(JSON.parse(f.mock.calls[0][1].body)).toEqual({ action: 'readLift', text: 'fs 250x5' });
+    });
+
+    it('throws a failed AiBackendError when the body has no result', async () => {
+      await expect(readLiftEntry('fs 250x5', deps(ok({ action: 'readLift' })))).rejects.toMatchObject({
+        name: 'AiBackendError',
+        code: 'failed',
+      });
+    });
+
+    it('passes Worker errors through with their code', async () => {
+      await expect(readLiftEntry('fs 250x5', deps(fail(429)))).rejects.toMatchObject({ code: 'limit' });
     });
   });
 

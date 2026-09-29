@@ -18,6 +18,8 @@
  */
 
 import { auth } from '../firebase/config';
+import type { TrackedLift } from '../types/trackedLifts';
+import type { FlatLift } from './liftFields';
 import { parseWithFallback } from './parseFallback';
 import type {
   AiChatRequest,
@@ -194,6 +196,29 @@ export async function chat(
     toolCalls: data?.toolCalls ?? [],
     source: 'backend',
   };
+}
+
+/** Worker `readLift` result (mirrors `readLiftResultSchema`): one lift entry
+ *  read from a description, plus at most one clarifying question. */
+export interface ReadLiftResult extends FlatLift {
+  name: string;
+  sets?: number | null;
+  rir?: number | null;
+  equipment?: TrackedLift['equipment'] | null;
+  step?: number | null;
+  question?: string | null;
+}
+
+/**
+ * Turn a lifter's description ("front squat 250 for 3x5") into a lift entry.
+ * Backend-only; throws `AiBackendError` when the Worker cannot serve it.
+ */
+export async function readLiftEntry(text: string, deps?: AiClientDeps): Promise<ReadLiftResult> {
+  const data = await callAi<{ result?: ReadLiftResult }>({ action: 'readLift', text }, deps);
+  if (!data?.result || typeof data.result !== 'object') {
+    throw new AiBackendError('AI returned no lift.', 'failed');
+  }
+  return data.result;
 }
 
 /**
