@@ -71,4 +71,44 @@ describe('swapAlternatives', () => {
       'Cable Seated Row', // same equipment last
     ]);
   });
+
+  describe('same movement first', () => {
+    const dbBench = ex('Dumbbell Bench Press', 'Dumbbells', ['Chest', 'Mid and Lower Chest', 'Triceps']);
+
+    it('ranks shared movement words above muscle overlap', () => {
+      const lib = [
+        ex('Machine Dips', 'Machine', ['Chest', 'Mid and Lower Chest', 'Triceps']),
+        ex('Band Pushup', 'Band', ['Band', 'Chest', 'Mid and Lower Chest', 'Triceps']),
+        ex('Machine Chest Press', 'Machine', ['Chest', 'Triceps']),
+        ex('Barbell Bench Press', 'Barbell', ['Barbell', 'Chest', 'Mid and Lower Chest']),
+      ];
+      expect(swapAlternatives(dbBench, lib)).toEqual([
+        'Barbell Bench Press', // bench + press
+        'Machine Chest Press', // press
+        'Machine Dips', // 3 muscles, common kit
+        'Band Pushup', // 3 muscles, niche kit
+      ]);
+    });
+
+    it('lets a shared movement word qualify a candidate with no shared muscle', () => {
+      expect(swapAlternatives(dbBench, [ex('Barbell Bench Press', 'Barbell', [])])).toEqual(['Barbell Bench Press']);
+    });
+
+    it('does not count equipment words, short words or single-arm/leg modifiers as movement', () => {
+      const row = ex('Dumbbell Single Arm Row', 'Dumbbells', ['Lats']);
+      const squat = ex('Smith Machine Squat', 'Smith-Machine', ['Quads']);
+      const lib = [
+        ex('Cable Single Arm Curl', 'Cables', ['Biceps']),
+        ex('Smith Machine Calf Raise', 'Smith-Machine', ['Calves']),
+        ex('EZ Bar Curl', 'EZ Bar', ['Biceps']),
+      ];
+      expect(swapAlternatives(row, lib)).toEqual([]);
+      expect(swapAlternatives(squat, lib)).toEqual([]);
+    });
+
+    it('counts leg or arm when it is the movement', () => {
+      const press = ex('Machine Leg Press', 'Machine', ['Quads']);
+      expect(swapAlternatives(press, [ex('Machine Leg Curl', 'Machine', ['Hamstrings'])])).toEqual(['Machine Leg Curl']);
+    });
+  });
 });

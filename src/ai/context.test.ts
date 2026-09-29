@@ -169,8 +169,9 @@ describe('buildAiContext', () => {
     const hinge = { ...workout, exercises: [{ ...workout.exercises[0], exercise: rdl }] } as ActiveWorkout;
     const ctx = buildAiContext({ screen: 'workout', units: 'lbs', activeWorkout: hinge, trackedLifts: [bench], library });
     expect(ctx.activeWorkout!.exercises[0].alternatives).toEqual(['Dumbbell Romanian Deadlift', 'My Band Hinge']);
-    // No muscle groups to match on → no key at all.
-    const plain = buildAiContext({ screen: 'workout', units: 'lbs', activeWorkout: workout, trackedLifts: [bench], library });
+    // No muscle groups or movement words to match on → no key at all.
+    const mystery = { ...workout, exercises: [{ ...workout.exercises[0], exercise: { id: 'x-m', name: 'Mystery' } }] } as ActiveWorkout;
+    const plain = buildAiContext({ screen: 'workout', units: 'lbs', activeWorkout: mystery, trackedLifts: [bench], library });
     expect(plain.activeWorkout!.exercises[0]).not.toHaveProperty('alternatives');
   });
 
