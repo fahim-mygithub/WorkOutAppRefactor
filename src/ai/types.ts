@@ -2,10 +2,10 @@
  * Shared request/response + tool types for the AI layer.
  *
  * These types mirror the contract of the Cloudflare Worker (`worker/`, a
- * SEPARATE package). The Worker is the ONLY place the
- * Anthropic API key lives; the client never talks to Anthropic directly. The
- * client either calls the `ai` callable (when a backend is reachable) or falls
- * back to the existing deterministic regex parser (when offline / no backend).
+ * SEPARATE package). The Worker is the ONLY place the Anthropic API key lives;
+ * the client never talks to Anthropic directly. The client either calls the
+ * Worker (when it is configured and reachable) or falls back to the existing
+ * deterministic regex parser (when offline / no backend).
  *
  * Model ids (authoritative — do not invent others):
  *   - parse surface       → 'claude-haiku-4-5-20251001'
@@ -23,7 +23,7 @@ import type { ParsedWorkout, ParseResult } from '../parser/types';
 // (deterministic) parse result.
 export type { ParsedExercise, ParsedSet, ParsedWorkout, ParseResult } from '../parser/types';
 
-/** The exact model id strings the function dispatches to, per surface. */
+/** The exact model id strings the Worker dispatches to, per surface. */
 export const AI_MODELS = {
   /** Structured freeform-text -> sets parsing. */
   parse: 'claude-haiku-4-5-20251001',
@@ -72,47 +72,58 @@ export interface AiChatMessage {
 }
 
 /**
- * Tool definitions the function exposes to the chat model. The CLIENT mirrors
- * these so it can (a) render proposed tool calls in an Apply/Reject UI and
- * (b) keep the request/response contract typed end to end. The client never
- * EXECUTES these against Anthropic — the function does.
+ * Tools the Worker exposes to the chat model. The CLIENT mirrors the names so
+ * it can plan each call (auto-apply with Undo, or Apply/Reject) and keep the
+ * contract typed end to end. The Worker validates each input against its Zod
+ * schema before returning it; the client re-checks every number it applies.
  */
-export type AiToolName = 'propose_workout' | 'query_chart';
+export type AiToolName =
+  | 'logSet'
+  | 'adjustSet'
+  | 'swapExercise'
+  | 'updateBenchmark'
+  | 'addTrackedLift'
+  | 'removeTrackedLift';
 
-export interface AiProposeWorkoutInput {
-  /** Suggested workout name, if the model proposes one. */
-  name?: string;
-  /** The proposed workout, in the same structured shape as a parse result. */
-  workout: ParsedWorkout;
-}
+/** Tool input as validated by the Worker; the planner narrows it per tool. */
+export type AiToolInput = Record<string, unknown>;
 
-export interface AiQueryChartInput {
-  /** Metric the user asked about, e.g. 'volume' | 'one_rep_max' | 'frequency'. */
-  metric: string;
-  /** Optional exercise name to scope the metric to. */
-  exerciseName?: string;
-  /** Optional time window in days. */
-  windowDays?: number;
-}
-
-export type AiToolInput = AiProposeWorkoutInput | AiQueryChartInput;
-
-/** A tool call the model wants the client to act on (Apply/Reject UX). */
+/** A tool call the model wants the client to act on. */
 export interface AiToolCall<TInput extends AiToolInput = AiToolInput> {
   id: string;
   name: AiToolName;
   input: TInput;
 }
 
+/** Read-only app state sent with a chat turn (the Worker caps its size). */
+export interface AiChatContext {
+  screen: 'workout' | 'build' | 'other';
+  units: 'lbs' | 'kg';
+  activeWorkout?: unknown;
+  trackedLifts?: unknown;
+  focusExerciseId?: string;
+}
+
+/** Why an AI call failed, so the UI can say something specific. */
+export type AiErrorCode =
+  | 'offline'
+  | 'unconfigured'
+  | 'signed-out'
+  | 'not-allowed'
+  | 'limit'
+  | 'failed';
+
 export interface AiChatRequest {
-  /** Full prior conversation (the function is stateless, like the API). */
+  /** Full prior conversation (the Worker is stateless, like the API). */
   messages: AiChatMessage[];
+  /** Optional read-only context about the current screen. */
+  context?: AiChatContext;
 }
 
 export interface AiChatResponse {
   /** Assistant prose reply (may be empty if the turn is purely a tool call). */
   reply: string;
-  /** Tool calls the model proposes; the UI confirms them before applying. */
+  /** Tool calls the model proposes; the client plans how to apply them. */
   toolCalls: AiToolCall[];
   /** Whether this came from the backend model or the offline fallback. */
   source: AiSource;
@@ -124,7 +135,7 @@ export interface AiChatResponse {
 
 /**
  * Build an `AiParseResponse` from a deterministic `ParseResult`. Used by the
- * fallback path; exported so the parse callable's success shape and the
+ * fallback path; exported so the Worker parse success shape and the
  * offline shape are constructed identically.
  */
 export function parseResultToResponse(

@@ -1,134 +1,168 @@
 /**
  * Client AI service.
  *
- * Talks to the `ai` Firebase callable Cloud Function (a SEPARATE `functions/`
- * package whose only job is to hold the Anthropic API key and call the official
- * @anthropic-ai/sdk with prompt caching). The key is NEVER on the client.
+ * Talks to the Cloudflare Worker (`worker/`, a SEPARATE package whose only job
+ * is to hold the Anthropic API key, check the caller and call the model). Each
+ * request is `POST <VITE_AI_URL>` with the signed-in user's Firebase ID token
+ * as a Bearer token and a JSON body discriminated on `action`. The key is NEVER
+ * on the client.
  *
  * Resilience model — the whole point of this module:
- *   - parse(): if the callable is unavailable (no backend configured, offline,
- *     or any error), it transparently falls back to the on-device deterministic
- *     parser (`parseFallback`). parse() therefore NEVER rejects for backend
- *     reasons — the user can always build a workout from text.
+ *   - parse(): if the Worker is unavailable (no URL configured, offline, signed
+ *     out, or any error), it transparently falls back to the on-device
+ *     deterministic parser (`parseFallback`). parse() therefore NEVER rejects
+ *     for backend reasons — the user can always build a workout from text.
  *   - chat(): requires the model; there is no deterministic substitute for
- *     conversation, so on no-backend/offline/error it throws `AiBackendError`
- *     and exposes `backendAvailable=false` so the UI can disable chat.
- *
- * Backend detection is lazy and cached: the first call resolves a callable via
- * `httpsCallable`, guarded so a missing/blocked Functions instance degrades
- * instead of crashing the app.
+ *     conversation, so it throws `AiBackendError` with an `AiErrorCode` the UI
+ *     can explain, and `isBackendAvailable()` lets the UI disable chat up front.
  */
 
-import { getFunctions, httpsCallable } from 'firebase/functions';
-import type { HttpsCallable } from 'firebase/functions';
-import app from '../firebase/config';
+import { auth } from '../firebase/config';
 import { parseWithFallback } from './parseFallback';
 import type {
   AiChatRequest,
   AiChatResponse,
+  AiErrorCode,
   AiParseRequest,
   AiParseResponse,
+  AiToolCall,
+  ParsedWorkout,
 } from './types';
 
-/** Error thrown when a backend-only operation (chat) has no reachable backend. */
+/** Injectable transport; every field defaults to the real app wiring. */
+export interface AiClientDeps {
+  /** Worker URL. Defaults to `VITE_AI_URL`; empty means AI is off. */
+  url?: string;
+  /** Firebase ID token of the signed-in user, or null when signed out. */
+  getToken?: () => Promise<string | null>;
+  fetch?: typeof fetch;
+}
+
+const defaults = (): Required<AiClientDeps> => ({
+  url: import.meta.env.VITE_AI_URL ?? '',
+  getToken: async () => (auth.currentUser ? auth.currentUser.getIdToken() : null),
+  fetch: (...args) => fetch(...args),
+});
+
+/** Error thrown when an AI call cannot be served; `code` says why. */
 export class AiBackendError extends Error {
-  constructor(message: string, public readonly cause?: unknown) {
+  constructor(
+    message: string,
+    public readonly code: AiErrorCode,
+    public readonly cause?: unknown,
+  ) {
     super(message);
     this.name = 'AiBackendError';
   }
 }
 
-/**
- * Wire payload for the single `ai` callable. The function dispatches on `op`.
- * Keeping one callable (vs two) keeps the Functions surface and CORS config
- * minimal; the discriminator keeps it typed.
- */
-type AiCallablePayload =
-  | ({ op: 'parse' } & AiParseRequest)
-  | ({ op: 'chat' } & AiChatRequest);
+/** Wire payload for the Worker; it dispatches on `action`. */
+export type AiRequestPayload =
+  | { action: 'parse'; text: string }
+  | ({ action: 'chat' } & AiChatRequest)
+  | { action: 'readLift'; text: string }
+  | { action: 'findExercise'; name: string };
 
-type AiCallableResult = AiParseResponse | AiChatResponse;
-
-/**
- * Whether a callable instance can be constructed. `null` = not yet probed.
- * Once probed, this is memoized so we don't re-resolve on every call.
- */
-let cachedCallable: HttpsCallable<AiCallablePayload, AiCallableResult> | null = null;
-let callableProbed = false;
-
-/** Allow tests to inject a callable factory; defaults to the real Firebase one. */
-export interface AiClientDeps {
-  /**
-   * Resolves the `ai` callable, or returns null if no backend is configured.
-   * Defaults to building one from the app's Firebase Functions instance.
-   */
-  resolveCallable?: () => HttpsCallable<AiCallablePayload, AiCallableResult> | null;
+/** Worker `chat` success body. */
+interface WorkerChatResult {
+  action: 'chat';
+  text?: string;
+  toolCalls?: AiToolCall[];
+  stopReason?: string | null;
 }
 
-function defaultResolveCallable(): HttpsCallable<
-  AiCallablePayload,
-  AiCallableResult
-> | null {
-  try {
-    const functions = getFunctions(app);
-    return httpsCallable<AiCallablePayload, AiCallableResult>(functions, 'ai');
-  } catch {
-    // No Functions instance / SDK not initialized → treat as no backend.
-    return null;
-  }
+/** Worker `parse` success body (mirrors `parseResultSchema`). */
+interface WorkerParseResult {
+  action: 'parse';
+  result?: {
+    exercises?: Array<{
+      exerciseName: string;
+      sets: Array<{
+        reps: number | null;
+        /** How many identical sets this entry stands for. */
+        sets: number | null;
+        weight: number | null;
+        unit: 'lbs' | 'kg' | null;
+      }>;
+    }>;
+  };
 }
 
-function getCallable(
-  deps?: AiClientDeps,
-): HttpsCallable<AiCallablePayload, AiCallableResult> | null {
-  if (deps?.resolveCallable) {
-    // Test/override path: never cache, so each test controls its own backend.
-    return deps.resolveCallable();
-  }
-  if (!callableProbed) {
-    cachedCallable = defaultResolveCallable();
-    callableProbed = true;
-  }
-  return cachedCallable;
-}
-
-/** Reset memoized backend probe state. Intended for tests. */
-export function resetAiClient(): void {
-  cachedCallable = null;
-  callableProbed = false;
-}
+const CODE_BY_STATUS: Record<number, AiErrorCode> = {
+  401: 'signed-out',
+  403: 'not-allowed',
+  429: 'limit',
+  503: 'unconfigured',
+};
 
 /** True if the device is reporting itself offline (best-effort; jsdom-safe). */
 function isOffline(): boolean {
   return typeof navigator !== 'undefined' && navigator.onLine === false;
 }
 
+/** POST one action to the Worker; resolves with its JSON body or throws. */
+export async function callAi<T>(payload: AiRequestPayload, deps?: AiClientDeps): Promise<T> {
+  const d = { ...defaults(), ...deps };
+  if (isOffline()) throw new AiBackendError('AI is unavailable while offline.', 'offline');
+  if (!d.url) throw new AiBackendError('AI is not configured.', 'unconfigured');
+  const token = await d.getToken();
+  if (!token) throw new AiBackendError('Sign in to use AI.', 'signed-out');
+  let res: Response;
+  try {
+    res = await d.fetch(d.url, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+  } catch (error) {
+    throw new AiBackendError('AI request failed.', 'failed', error);
+  }
+  if (!res.ok) {
+    throw new AiBackendError('AI request failed.', CODE_BY_STATUS[res.status] ?? 'failed');
+  }
+  try {
+    return (await res.json()) as T;
+  } catch (error) {
+    throw new AiBackendError('AI request failed.', 'failed', error);
+  }
+}
+
+function toParsedWorkout(result: WorkerParseResult['result']): ParsedWorkout | null {
+  if (!result || !Array.isArray(result.exercises)) return null;
+  return {
+    exercises: result.exercises.map((e) => ({
+      name: e.exerciseName,
+      // One Worker entry can stand for several identical sets ("3x5" → sets: 3).
+      sets: (e.sets ?? []).flatMap((s) =>
+        Array.from({ length: Math.max(1, s.sets ?? 1) }, () => ({
+          reps: s.reps ?? 0,
+          weight: s.weight ?? undefined,
+          unit: s.unit ?? undefined,
+        })),
+      ),
+    })),
+    supersets: [],
+  };
+}
+
 /**
  * Parse freeform workout text into structured sets.
  *
- * Calls the `ai` callable when a backend is reachable; otherwise (no backend,
- * offline, or any backend error) transparently returns the deterministic
- * offline parse. Resolves to an `AiParseResponse` whose `source` tells the
- * caller which path produced it. Never rejects for backend reasons.
+ * Calls the Worker when it is reachable; otherwise (no URL, offline, signed
+ * out, or any error) transparently returns the deterministic offline parse.
+ * `source` tells the caller which path produced it. Never rejects for backend
+ * reasons.
  */
 export async function parse(
   request: AiParseRequest,
   deps?: AiClientDeps,
 ): Promise<AiParseResponse> {
-  const callable = isOffline() ? null : getCallable(deps);
-
-  if (!callable) {
-    return parseWithFallback(request);
-  }
-
   try {
-    const { data } = await callable({ op: 'parse', ...request });
-    // Defensive: a malformed backend response also degrades to fallback.
-    const parsed = data as AiParseResponse;
-    if (!parsed || !parsed.workout) {
-      return parseWithFallback(request);
-    }
-    return { ...parsed, source: 'backend' };
+    const data = await callAi<WorkerParseResult>({ action: 'parse', text: request.text }, deps);
+    const workout = toParsedWorkout(data?.result);
+    // Defensive: a malformed Worker response also degrades to fallback.
+    if (!workout) return parseWithFallback(request);
+    return { workout, warnings: [], source: 'backend' };
   } catch {
     return parseWithFallback(request);
   }
@@ -138,42 +172,26 @@ export async function parse(
  * Conversational coaching with tool use.
  *
  * Backend-only: there is no offline substitute for the chat model. Throws
- * `AiBackendError` when no backend is reachable (no Functions configured,
- * offline, or a backend error) so the caller can disable the chat surface
- * rather than silently degrade.
+ * `AiBackendError` (with a code) when the Worker cannot serve the turn.
  */
 export async function chat(
   request: AiChatRequest,
   deps?: AiClientDeps,
 ): Promise<AiChatResponse> {
-  if (isOffline()) {
-    throw new AiBackendError('Chat is unavailable while offline.');
-  }
-
-  const callable = getCallable(deps);
-  if (!callable) {
-    throw new AiBackendError('Chat backend is not configured.');
-  }
-
-  try {
-    const { data } = await callable({ op: 'chat', ...request });
-    const result = data as AiChatResponse;
-    return {
-      reply: result?.reply ?? '',
-      toolCalls: result?.toolCalls ?? [],
-      source: 'backend',
-    };
-  } catch (error) {
-    throw new AiBackendError('Chat request failed.', error);
-  }
+  const data = await callAi<WorkerChatResult>({ action: 'chat', ...request }, deps);
+  return {
+    reply: data?.text ?? '',
+    toolCalls: data?.toolCalls ?? [],
+    source: 'backend',
+  };
 }
 
 /**
- * Whether a chat-capable backend is currently reachable. This is a synchronous,
- * best-effort signal (callable resolves + not offline) — it does NOT round-trip
- * to the server. parse() works regardless of this flag (it has a fallback).
+ * Whether the Worker is configured and the device is online. A synchronous,
+ * best-effort signal — it does NOT round-trip to the server, and it does not
+ * check sign-in. parse() works regardless of this flag (it has a fallback).
  */
 export function isBackendAvailable(deps?: AiClientDeps): boolean {
-  if (isOffline()) return false;
-  return getCallable(deps) !== null;
+  const d = { ...defaults(), ...deps };
+  return !isOffline() && Boolean(d.url);
 }

@@ -1,16 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import {
-  AiBackendError,
-  chat,
-  isBackendAvailable,
-  parse,
-  resetAiClient,
-} from '@/ai/aiClient';
-import type { AiChatResponse, AiParseResponse } from '@/ai/types';
+import { AiBackendError, chat, isBackendAvailable, parse } from '@/ai/aiClient';
 
-// We never hit real Firebase here. The client exposes a `deps.resolveCallable`
-// injection point; each test supplies its own fake callable (or null = no
-// backend) so we can drive the backend-available and fallback paths precisely.
+// We never hit Firebase or the network here. The client takes injected deps
+// (Worker URL, ID-token getter, fetch) so each test drives its own transport.
 
 function setOnline(online: boolean) {
   Object.defineProperty(navigator, 'onLine', {
@@ -20,202 +12,184 @@ function setOnline(online: boolean) {
   });
 }
 
-/** A fake httpsCallable that resolves with the given data. */
-function fakeCallable<T>(data: T) {
-  return vi.fn(async () => ({ data }));
-}
+const deps = (fetchImpl: typeof fetch, token: string | null = 't') => ({
+  url: 'https://w.test/',
+  getToken: async () => token,
+  fetch: fetchImpl,
+});
+const ok = (body: unknown) =>
+  vi.fn().mockResolvedValue(new Response(JSON.stringify(body), { status: 200 }));
+const fail = (status: number) =>
+  vi
+    .fn()
+    .mockResolvedValue(
+      new Response(JSON.stringify({ error: { code: 'x', message: 'm' } }), { status }),
+    );
 
-const backendWorkout: AiParseResponse = {
-  workout: {
-    exercises: [{ name: 'Backend Squats', sets: [{ reps: 5 }] }],
-    supersets: [],
-  },
-  warnings: [],
-  source: 'backend',
-};
+const req = { messages: [{ role: 'user' as const, content: 'yo' }] };
 
 describe('aiClient', () => {
-  beforeEach(() => {
-    resetAiClient();
-    setOnline(true);
-  });
-
+  beforeEach(() => setOnline(true));
   afterEach(() => {
     vi.restoreAllMocks();
-    resetAiClient();
     setOnline(true);
-  });
-
-  describe('parse()', () => {
-    it('uses the backend callable when one is available', async () => {
-      const callable = fakeCallable(backendWorkout);
-      const res = await parse(
-        { text: '5x5 Squats' },
-        { resolveCallable: () => callable as never },
-      );
-
-      expect(callable).toHaveBeenCalledWith({ op: 'parse', text: '5x5 Squats' });
-      expect(res.source).toBe('backend');
-      expect(res.workout.exercises[0].name).toBe('Backend Squats');
-    });
-
-    it('falls back to the deterministic parser when there is NO backend', async () => {
-      const res = await parse(
-        { text: '3x10 Squats' },
-        { resolveCallable: () => null },
-      );
-
-      expect(res.source).toBe('fallback');
-      expect(res.workout.exercises[0].name).toBe('Squats');
-      expect(res.workout.exercises[0].sets).toHaveLength(3);
-    });
-
-    it('falls back when the device is offline (never calls the backend)', async () => {
-      setOnline(false);
-      const callable = fakeCallable(backendWorkout);
-
-      const res = await parse(
-        { text: '3x10 Squats' },
-        { resolveCallable: () => callable as never },
-      );
-
-      expect(callable).not.toHaveBeenCalled();
-      expect(res.source).toBe('fallback');
-      expect(res.workout.exercises[0].name).toBe('Squats');
-    });
-
-    it('falls back when the backend call throws', async () => {
-      const callable = vi.fn(async () => {
-        throw new Error('network/internal');
-      });
-
-      const res = await parse(
-        { text: '3x10 Squats' },
-        { resolveCallable: () => callable as never },
-      );
-
-      expect(callable).toHaveBeenCalled();
-      expect(res.source).toBe('fallback');
-      expect(res.workout.exercises[0].name).toBe('Squats');
-    });
-
-    it('falls back when the backend returns a malformed response', async () => {
-      const callable = fakeCallable({ nonsense: true });
-
-      const res = await parse(
-        { text: '3x10 Squats' },
-        { resolveCallable: () => callable as never },
-      );
-
-      expect(res.source).toBe('fallback');
-      expect(res.workout.exercises[0].name).toBe('Squats');
-    });
-
-    it('forwards knownExerciseNames to the backend', async () => {
-      const callable = fakeCallable(backendWorkout);
-      await parse(
-        { text: '5x5 Squats', knownExerciseNames: ['Squats', 'Bench Press'] },
-        { resolveCallable: () => callable as never },
-      );
-
-      expect(callable).toHaveBeenCalledWith({
-        op: 'parse',
-        text: '5x5 Squats',
-        knownExerciseNames: ['Squats', 'Bench Press'],
-      });
-    });
   });
 
   describe('chat()', () => {
-    const chatReply: AiChatResponse = {
-      reply: 'Here is a plan.',
-      toolCalls: [],
-      source: 'backend',
-    };
-
-    it('returns the backend reply when a backend is available', async () => {
-      const callable = fakeCallable(chatReply);
-      const res = await chat(
-        { messages: [{ role: 'user', content: 'plan a push day' }] },
-        { resolveCallable: () => callable as never },
-      );
-
-      expect(callable).toHaveBeenCalledWith({
-        op: 'chat',
-        messages: [{ role: 'user', content: 'plan a push day' }],
+    it('sends the action with the ID token and maps the chat reply', async () => {
+      const f = ok({ action: 'chat', text: 'hi', toolCalls: [], stopReason: 'end_turn' });
+      await expect(chat(req, deps(f))).resolves.toMatchObject({
+        reply: 'hi',
+        toolCalls: [],
+        source: 'backend',
       });
-      expect(res.reply).toBe('Here is a plan.');
-      expect(res.source).toBe('backend');
+      const [url, init] = f.mock.calls[0];
+      expect(url).toBe('https://w.test/');
+      expect(init.method).toBe('POST');
+      expect(init.headers.authorization).toBe('Bearer t');
+      expect(JSON.parse(init.body)).toMatchObject({ action: 'chat', messages: req.messages });
     });
 
-    it('throws AiBackendError when there is NO backend (no offline fallback)', async () => {
-      await expect(
-        chat(
-          { messages: [{ role: 'user', content: 'hi' }] },
-          { resolveCallable: () => null },
-        ),
-      ).rejects.toBeInstanceOf(AiBackendError);
+    it('forwards the chat context', async () => {
+      const f = ok({ action: 'chat', text: '', toolCalls: [], stopReason: 'end_turn' });
+      await chat({ ...req, context: { screen: 'workout', units: 'kg' } }, deps(f));
+      expect(JSON.parse(f.mock.calls[0][1].body).context).toEqual({
+        screen: 'workout',
+        units: 'kg',
+      });
     });
 
-    it('throws AiBackendError when offline', async () => {
-      setOnline(false);
-      const callable = fakeCallable(chatReply);
-
-      await expect(
-        chat(
-          { messages: [{ role: 'user', content: 'hi' }] },
-          { resolveCallable: () => callable as never },
-        ),
-      ).rejects.toBeInstanceOf(AiBackendError);
-      expect(callable).not.toHaveBeenCalled();
+    it('maps statuses to codes', async () => {
+      await expect(chat(req, deps(fail(403)))).rejects.toMatchObject({ code: 'not-allowed' });
+      await expect(chat(req, deps(fail(429)))).rejects.toMatchObject({ code: 'limit' });
+      await expect(chat(req, deps(fail(503)))).rejects.toMatchObject({ code: 'unconfigured' });
+      await expect(chat(req, deps(fail(401)))).rejects.toMatchObject({ code: 'signed-out' });
+      await expect(chat(req, deps(fail(502)))).rejects.toMatchObject({ code: 'failed' });
+      await expect(chat(req, deps(fail(400)))).rejects.toBeInstanceOf(AiBackendError);
     });
 
-    it('wraps a backend failure in AiBackendError (with cause)', async () => {
+    it('wraps a network failure as failed, keeping the cause', async () => {
       const underlying = new Error('boom');
-      const callable = vi.fn(async () => {
-        throw underlying;
-      });
-
-      await expect(
-        chat(
-          { messages: [{ role: 'user', content: 'hi' }] },
-          { resolveCallable: () => callable as never },
-        ),
-      ).rejects.toMatchObject({
+      const f = vi.fn().mockRejectedValue(underlying);
+      await expect(chat(req, deps(f))).rejects.toMatchObject({
         name: 'AiBackendError',
+        code: 'failed',
         cause: underlying,
       });
     });
 
-    it('defaults reply/toolCalls when the backend omits them', async () => {
-      const callable = fakeCallable({});
-      const res = await chat(
-        { messages: [{ role: 'user', content: 'hi' }] },
-        { resolveCallable: () => callable as never },
-      );
+    it('is signed-out with no ID token, and never calls fetch', async () => {
+      const f = ok({});
+      await expect(chat(req, deps(f, null))).rejects.toMatchObject({ code: 'signed-out' });
+      expect(f).not.toHaveBeenCalled();
+    });
+
+    it('is unconfigured with no URL', async () => {
+      const f = ok({});
+      await expect(chat(req, { ...deps(f), url: '' })).rejects.toMatchObject({
+        code: 'unconfigured',
+      });
+      expect(f).not.toHaveBeenCalled();
+    });
+
+    it('is offline when the device is offline, and never calls fetch', async () => {
+      setOnline(false);
+      const f = ok({});
+      await expect(chat(req, deps(f))).rejects.toMatchObject({ code: 'offline' });
+      expect(f).not.toHaveBeenCalled();
+    });
+
+    it('defaults reply/toolCalls when the Worker omits them', async () => {
+      const res = await chat(req, deps(ok({ action: 'chat' })));
       expect(res.reply).toBe('');
       expect(res.toolCalls).toEqual([]);
     });
   });
 
-  describe('isBackendAvailable()', () => {
-    it('is true when a callable resolves and online', () => {
-      const callable = fakeCallable(backendWorkout);
-      expect(isBackendAvailable({ resolveCallable: () => callable as never })).toBe(
-        true,
+  describe('parse()', () => {
+    const workerParse = {
+      action: 'parse',
+      result: {
+        exercises: [
+          {
+            exerciseName: 'Bench',
+            sets: [
+              {
+                exerciseName: 'Bench',
+                reps: 5,
+                sets: 3,
+                weight: 185,
+                unit: 'lbs',
+                rpe: null,
+                timeSeconds: null,
+                distanceMeters: null,
+                notes: null,
+              },
+            ],
+          },
+        ],
+      },
+    };
+
+    it('maps the Worker result and sends only the parse action + text', async () => {
+      const f = ok(workerParse);
+      await expect(
+        parse({ text: 'bench 3x5 185', knownExerciseNames: ['Bench'] }, deps(f)),
+      ).resolves.toMatchObject({
+        source: 'backend',
+        workout: {
+          // "3x5" arrives as one entry with sets: 3 → three ParsedSets.
+          exercises: [{ name: 'Bench', sets: Array(3).fill({ reps: 5, weight: 185, unit: 'lbs' }) }],
+          supersets: [],
+        },
+      });
+      expect(JSON.parse(f.mock.calls[0][1].body)).toEqual({
+        action: 'parse',
+        text: 'bench 3x5 185',
+      });
+    });
+
+    it('falls back on a Worker error', async () => {
+      const res = await parse({ text: '3x10 Squats' }, deps(fail(502)));
+      expect(res.source).toBe('fallback');
+      expect(res.workout.exercises[0].name).toBe('Squats');
+      expect(res.workout.exercises[0].sets).toHaveLength(3);
+    });
+
+    it('falls back with no URL, when signed out, and when offline', async () => {
+      const f = ok(workerParse);
+      await expect(parse({ text: '3x10 Squats' }, { ...deps(f), url: '' })).resolves.toMatchObject(
+        { source: 'fallback' },
       );
-    });
-
-    it('is false when no callable resolves', () => {
-      expect(isBackendAvailable({ resolveCallable: () => null })).toBe(false);
-    });
-
-    it('is false when offline even if a callable resolves', () => {
+      await expect(parse({ text: '3x10 Squats' }, deps(f, null))).resolves.toMatchObject({
+        source: 'fallback',
+      });
       setOnline(false);
-      const callable = fakeCallable(backendWorkout);
-      expect(isBackendAvailable({ resolveCallable: () => callable as never })).toBe(
-        false,
-      );
+      await expect(parse({ text: '3x10 Squats' }, deps(f))).resolves.toMatchObject({
+        source: 'fallback',
+      });
+      expect(f).not.toHaveBeenCalled();
+    });
+
+    it('falls back when the Worker returns a malformed body', async () => {
+      const res = await parse({ text: '3x10 Squats' }, deps(ok({ action: 'parse' })));
+      expect(res.source).toBe('fallback');
+      expect(res.workout.exercises[0].name).toBe('Squats');
+    });
+  });
+
+  describe('isBackendAvailable()', () => {
+    it('is true with a URL while online', () => {
+      expect(isBackendAvailable(deps(ok({})))).toBe(true);
+    });
+
+    it('is unavailable with no URL', () => {
+      expect(isBackendAvailable({ url: '', getToken: async () => 't', fetch })).toBe(false);
+    });
+
+    it('is false when offline', () => {
+      setOnline(false);
+      expect(isBackendAvailable(deps(ok({})))).toBe(false);
     });
   });
 });

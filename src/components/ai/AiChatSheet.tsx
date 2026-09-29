@@ -6,18 +6,18 @@
 //   - MUTATION tool-calls render as [Apply]/[Reject] cards (ApplyRejectCard).
 //     The AI never mutates state directly — the user confirms each change.
 //   - VISUALIZATION tool-calls (charts) render READ-ONLY (no Apply/Reject).
-//   - When the AI backend is unavailable (no /ai function deployed, or no
-//     ANTHROPIC_API_KEY in Functions config) it shows a graceful state AND
+//   - When the AI backend is unavailable (no Worker URL configured, or no
+//     ANTHROPIC_API_KEY secret on the Worker) it shows a graceful state AND
 //     still offers the working DETERMINISTIC parse (freeform text -> sets) via
 //     the existing client-side WorkoutParser. So the surface is useful even
 //     before the backend ships.
 //
 // Isolation / security:
 //   - This component NEVER imports @anthropic-ai/sdk and NEVER sees the API key.
-//     The key lives in Functions config only. All Claude access goes through an
-//     injected `client` (the /ai transport). Model ids
-//     (parse=claude-haiku-4-5-20251001, chat=claude-sonnet-4-6) and prompt
-//     caching live server-side in the function, not here.
+//     The key lives in the Worker only. All Claude access goes through an
+//     injected `client` (the Worker transport). Model ids
+//     (parse=claude-haiku-4-5-20251001, chat=claude-sonnet-5-5) and prompt
+//     caching live server-side in the Worker, not here.
 //   - The client is injected so this file compiles and tests without any
 //     network/SDK dependency, and so the page that mounts it owns the wiring.
 //
@@ -59,7 +59,7 @@ export interface AiVisualization {
   spec: unknown;
 }
 
-/** One assistant turn returned by the /ai function. */
+/** One assistant turn returned by the AI Worker. */
 export interface AiAssistantTurn {
   /** Free-text assistant prose (may be empty if it only emitted tool-calls). */
   text: string;
@@ -70,9 +70,9 @@ export interface AiAssistantTurn {
 }
 
 /**
- * The injected transport to the deployed `/ai` Firebase callable. Implemented
- * by the page that mounts this component (it owns the firebase/functions
- * wiring). Kept minimal so the component has no firebase/SDK import.
+ * The injected transport to the AI Worker. Implemented by the page that
+ * mounts this component (it owns the `aiClient` wiring). Kept minimal so the
+ * component has no firebase/SDK import.
  */
 export interface AiChatClient {
   /** Send the conversation; resolve with the next assistant turn. */
@@ -108,7 +108,7 @@ export interface AiChatSheetProps {
   /**
    * Explicit availability override. Defaults to `client != null`. Pass `false`
    * to force the graceful/fallback state even if a client object is present
-   * (e.g. a feature flag, or the function probe failed).
+   * (e.g. a feature flag, or no Worker URL is configured).
    */
   available?: boolean;
   /**
