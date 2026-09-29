@@ -45,4 +45,19 @@ describe('InSessionSuggestion', () => {
     expect(screen.queryByRole('button', { name: /use/i })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: /keep/i })).toBeInTheDocument();
   });
+
+  it('offers Ask coach when wired', async () => {
+    const user = userEvent.setup();
+    const onAskCoach = vi.fn();
+    const onApply = vi.fn();
+    render(<InSessionSuggestion decision={reduce} onApply={onApply} onKeep={vi.fn()} onAskCoach={onAskCoach} />);
+    await user.click(screen.getByRole('button', { name: /ask coach/i }));
+    expect(onAskCoach).toHaveBeenCalledOnce();
+    expect(onApply).not.toHaveBeenCalled();
+  });
+
+  it('has no Ask coach without the handler', () => {
+    render(<InSessionSuggestion decision={reduce} onApply={vi.fn()} onKeep={vi.fn()} />);
+    expect(screen.queryByRole('button', { name: /ask coach/i })).not.toBeInTheDocument();
+  });
 });

@@ -4,7 +4,7 @@
 // current), one "last time" line, then the big-stepper set input.
 import React, { useState } from 'react';
 import { useReducedMotion } from 'framer-motion';
-import { Pencil, BookOpen, Dumbbell, History, Link2, Check, Replace } from 'lucide-react';
+import { Pencil, BookOpen, Dumbbell, History, Link2, Check, Replace, MessageCircle } from 'lucide-react';
 import type { WorkoutExercise, WorkoutSet } from '../../../types/exercise';
 import type { ExerciseHistory } from '../../../types/exerciseHistory';
 import type { InSessionDecision } from '@/types/progression';
@@ -35,6 +35,11 @@ interface ExercisePlayCardProps {
   suggestion?: InSessionDecision | null;
   onApplySuggestion?: (weight: number) => void;
   onKeepSuggestion?: () => void;
+  /** Ask coach about the miss behind the current suggestion (AI usable only). */
+  onAskCoach?: () => void;
+  /** Open the coach about this exercise with no seed — the user types
+   *  ("can't do this", "find an alternative"). AI usable only. */
+  onAskCoachGeneral?: () => void;
 }
 
 /** A single looping muted clip that fills its box, with a glyph placeholder behind
@@ -106,6 +111,8 @@ export const ExercisePlayCard: React.FC<ExercisePlayCardProps> = ({
   suggestion,
   onApplySuggestion,
   onKeepSuggestion,
+  onAskCoach,
+  onAskCoachGeneral,
 }) => {
   const reduced = useReducedMotion() ?? false;
   const [showInstructions, setShowInstructions] = useState(false);
@@ -113,6 +120,7 @@ export const ExercisePlayCard: React.FC<ExercisePlayCardProps> = ({
   const instructions = exercise.exercise.instructions ?? [];
   const title = exercise.customTitle || exercise.exercise.name;
   const sets = exercise.sets ?? [];
+  const showSuggestion = Boolean(suggestion && onApplySuggestion && onKeepSuggestion);
 
   const lastSets = previousPerformance?.sets ?? [];
   const lastLine = lastSets
@@ -244,8 +252,22 @@ export const ExercisePlayCard: React.FC<ExercisePlayCardProps> = ({
             decision={suggestion}
             onApply={onApplySuggestion}
             onKeep={onKeepSuggestion}
+            onAskCoach={onAskCoach}
           />
         </div>
+      )}
+      {/* The quiet always-there way in: one caption-size link, hidden while the
+          suggestion (which carries its own Ask coach) is up. The flex clip
+          above absorbs its height. */}
+      {onAskCoachGeneral && !showSuggestion && (
+        <button
+          type="button"
+          onClick={onAskCoachGeneral}
+          className="-my-1 inline-flex shrink-0 items-center gap-1.5 self-center rounded-full px-2 py-1 text-caption font-semibold text-ink-muted transition-colors duration-snap hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+        >
+          <MessageCircle size={13} aria-hidden="true" />
+          Ask coach
+        </button>
       )}
 
       {/* Instructions popup — the clip(s) shown in full (uncropped) and stacked,
