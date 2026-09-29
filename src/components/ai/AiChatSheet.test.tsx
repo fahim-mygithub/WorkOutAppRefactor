@@ -204,7 +204,60 @@ describe('AiChatSheet — available / backend mode', () => {
     const sent = sendMessage.mock.calls[1][0].messages;
     expect(sent.map((m) => m.role)).toEqual(['user', 'assistant', 'user']);
     for (const m of sent) expect(m.text.trim().length).toBeGreaterThan(0);
-    expect(sent[1].text).toBe('(proposed changes)');
+    expect(sent[1].text).toBe('Proposed: Add Squat 5x5');
+  });
+
+  it.each([
+    [
+      'proposals',
+      {
+        text: '',
+        proposals: [
+          { id: 'p1', tool: 'add_exercise', summary: 'Add Squat 5x5', input: {} },
+          { id: 'p2', tool: 'add_exercise', summary: 'Add Row 3x8', input: {} },
+        ],
+      },
+      'Proposed: Add Squat 5x5; Add Row 3x8',
+    ],
+    [
+      'notices',
+      {
+        text: '',
+        notices: [
+          { id: 'a', text: 'Bench: remaining sets at 205 lb', tone: 'applied' as const },
+          { id: 'b', text: 'Suggestion discarded: too far.', tone: 'discarded' as const },
+        ],
+      },
+      'Bench: remaining sets at 205 lb; Suggestion discarded: too far.',
+    ],
+    [
+      'charts',
+      { text: '', visualizations: [{ id: 'v', kind: 'line', title: 'Volume', spec: {} }] },
+      '(showed a chart)',
+    ],
+    ['nothing', { text: '' }, '(no reply)'],
+  ])('describes an empty assistant turn with only %s', async (_label, firstTurn, expected) => {
+    const user = userEvent.setup();
+    const sendMessage = vi
+      .fn<AiChatClient['sendMessage']>()
+      .mockResolvedValueOnce(firstTurn as AiAssistantTurn)
+      .mockResolvedValueOnce({ text: 'Ok.' });
+    render(<AiChatSheet open onOpenChange={() => {}} client={{ sendMessage }} />);
+    await screen.findByRole('dialog');
+    await user.type(screen.getByLabelText('Message'), 'one');
+    await user.click(screen.getByRole('button', { name: /send/i }));
+    await waitFor(() => expect(screen.queryByTestId('ai-pending')).not.toBeInTheDocument());
+    await user.type(screen.getByLabelText('Message'), 'two');
+    await user.click(screen.getByRole('button', { name: /send/i }));
+    await screen.findByText('Ok.');
+    expect(sendMessage.mock.calls[1][0].messages[1].text).toBe(expected);
+  });
+
+  it('announces transcript updates politely', async () => {
+    render(<AiChatSheet open onOpenChange={() => {}} client={makeClient({ text: 'hi' })} />);
+    const log = await screen.findByRole('log');
+    expect(log).toHaveAttribute('aria-live', 'polite');
+    expect(log).toHaveAttribute('data-testid', 'ai-chat-transcript');
   });
 });
 

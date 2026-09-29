@@ -157,19 +157,27 @@ const FALLBACK_HINT = "AI isn't available right now.";
 
 /**
  * The Worker rejects chat messages with empty content, and an assistant turn
- * can be empty when it only emitted tool calls. Give those turns a short
- * placeholder so the history keeps its user/assistant alternation.
+ * can be empty when it only emitted tool calls. Describe what those turns did
+ * (proposals, notices, charts) so the model keeps its context and the history
+ * keeps its user/assistant alternation.
  */
+function describeEmptyTurn(m: AiChatMessage): string {
+  const parts: string[] = [];
+  if (m.proposals?.length) {
+    parts.push(`Proposed: ${m.proposals.map((p) => p.summary).join('; ')}`);
+  }
+  if (m.notices?.length) {
+    parts.push(m.notices.map((n) => n.text).join('; '));
+  }
+  if (parts.length > 0) return parts.join('; ');
+  if (m.visualizations?.length) return '(showed a chart)';
+  return '(no reply)';
+}
+
 function toBackendHistory(messages: AiChatMessage[]): AiChatMessage[] {
-  return messages.map((m) => {
-    if (m.text.trim().length > 0) return m;
-    const text = m.proposals?.length
-      ? '(proposed changes)'
-      : m.visualizations?.length
-        ? '(showed a chart)'
-        : '(no reply)';
-    return { ...m, text };
-  });
+  return messages.map((m) =>
+    m.text.trim().length > 0 ? m : { ...m, text: describeEmptyTurn(m) },
+  );
 }
 
 export function AiChatSheet({
@@ -319,6 +327,8 @@ export function AiChatSheet({
         {/* Message transcript — the scroll region. */}
         <div
           data-testid="ai-chat-transcript"
+          role="log"
+          aria-live="polite"
           className="mt-4 flex-1 space-y-4 overflow-y-auto"
         >
           {!isAvailable ? (

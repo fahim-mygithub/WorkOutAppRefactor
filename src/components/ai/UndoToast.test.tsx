@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { render, screen, act } from '@testing-library/react';
+import { render, screen, act, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { UndoToast, UNDO_MS } from './UndoToast';
 
@@ -32,6 +32,52 @@ describe('UndoToast', () => {
     act(() => vi.advanceTimersByTime(1));
     expect(onDone).toHaveBeenCalledTimes(1);
     expect(UNDO_MS).toBe(8000);
+  });
+
+  it('keeps the message as the status, without the Undo label', () => {
+    render(<UndoToast message="Remaining sets at 205 lb" onUndo={() => {}} onDone={() => {}} />);
+    expect(screen.getByRole('status')).toHaveTextContent(/^Remaining sets at 205 lb$/);
+  });
+
+  it('waits while focused and restarts the full 8s on blur', () => {
+    vi.useFakeTimers();
+    const onDone = vi.fn();
+    render(<UndoToast message="x" onUndo={() => {}} onDone={onDone} />);
+    const undo = screen.getByRole('button', { name: 'Undo' });
+    act(() => vi.advanceTimersByTime(4000));
+    act(() => undo.focus());
+    act(() => vi.advanceTimersByTime(UNDO_MS));
+    expect(onDone).not.toHaveBeenCalled();
+    act(() => undo.blur());
+    act(() => vi.advanceTimersByTime(UNDO_MS - 1));
+    expect(onDone).not.toHaveBeenCalled();
+    act(() => vi.advanceTimersByTime(1));
+    expect(onDone).toHaveBeenCalledTimes(1);
+  });
+
+  it('waits while hovered and restarts the full 8s on mouse leave', () => {
+    vi.useFakeTimers();
+    const onDone = vi.fn();
+    render(<UndoToast message="x" onUndo={() => {}} onDone={onDone} />);
+    const toast = screen.getByTestId('undo-toast');
+    fireEvent.mouseEnter(toast);
+    act(() => vi.advanceTimersByTime(UNDO_MS * 2));
+    expect(onDone).not.toHaveBeenCalled();
+    fireEvent.mouseLeave(toast);
+    act(() => vi.advanceTimersByTime(UNDO_MS));
+    expect(onDone).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps waiting when the mouse leaves but focus is still inside', () => {
+    vi.useFakeTimers();
+    const onDone = vi.fn();
+    render(<UndoToast message="x" onUndo={() => {}} onDone={onDone} />);
+    const toast = screen.getByTestId('undo-toast');
+    fireEvent.mouseEnter(toast);
+    act(() => screen.getByRole('button', { name: 'Undo' }).focus());
+    fireEvent.mouseLeave(toast);
+    act(() => vi.advanceTimersByTime(UNDO_MS));
+    expect(onDone).not.toHaveBeenCalled();
   });
 
   it('does not restart the timer when re-rendered with a new onDone', () => {
