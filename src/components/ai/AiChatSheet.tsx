@@ -144,6 +144,11 @@ export interface AiChatSheetProps {
    * empty transcript (e.g. "I missed my last rep" from Ask coach). Sent once.
    */
   initialMessage?: string;
+  /**
+   * Rendered inside the sheet, after the composer (e.g. an Undo toast). The
+   * sheet is modal, so anything outside it is inert while it is open.
+   */
+  overlay?: React.ReactNode;
   className?: string;
 }
 
@@ -190,6 +195,7 @@ export function AiChatSheet({
   onFallbackParse,
   renderVisualization,
   initialMessage,
+  overlay,
   className,
 }: AiChatSheetProps) {
   const isAvailable = available ?? client != null;
@@ -484,6 +490,7 @@ export function AiChatSheet({
             </Button>
           )}
         </form>
+        {overlay}
       </SheetContent>
     </Sheet>
   );

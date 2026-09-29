@@ -19,7 +19,7 @@ const NO_EXERCISES: Exercise[] = [];
  * The exercise library from the store, loading it once if nothing has yet.
  * Needs no auth context, so it works inside sheets and bare test stores.
  */
-function useExerciseLibrary(): Exercise[] {
+export function useExerciseLibrary(): Exercise[] {
   const dispatch = useAppDispatch();
   const hasSlice = useAppSelector((s) => Boolean(s.exercise));
   const exercises = useAppSelector((s) => s.exercise?.exercises ?? NO_EXERCISES);

@@ -11,13 +11,20 @@
 import type { UnknownAction } from '@reduxjs/toolkit';
 import type { ActiveWorkout, Exercise, WorkoutExercise, WorkoutSet } from '../types/exercise';
 import type { TrackedLift, TrackedLoad, TrackedTarget, WeightUnit } from '../types/trackedLifts';
-import { replaceExerciseMovement, setsPatched, type SetPatch } from '../store/slices/workoutSlice';
+import {
+  replaceExerciseMovement,
+  setsPatched,
+  startRestTimer,
+  stopRestTimer,
+  type SetPatch,
+} from '../store/slices/workoutSlice';
 import { prescribedFloor } from '../lib/progression/setPrescription';
 import { liftAdded, liftRemoved, liftUpdated } from '../store/slices/trackedLiftsSlice';
 import { checkProposedLoad } from '../lib/aiLoadCheck';
 import { formatLoad, formatTarget } from '../lib/trackedLifts';
 import { fromFlatLift, type FlatLift } from './liftFields';
 import type { AiToolCall } from './types';
+import type { AiAssistantTurn } from '../components/ai/AiChatSheet';
 
 export interface PlanContext {
   activeWorkout: ActiveWorkout | null;
@@ -163,11 +170,22 @@ export function planToolCall(call: AiToolCall, ctx: PlanContext): ToolPlan {
         failed: reps < prescribedFloor(set),
       };
       const pair = patchPair(set, changes, { completed: set.completed, reps: set.reps, weight: set.weight });
+      const apply: UnknownAction[] = [setsPatched({ exerciseId: ex.id, patches: [pair.apply] })];
+      const undo: UnknownAction[] = [setsPatched({ exerciseId: ex.id, patches: [pair.undo] })];
+      // Logging the player's current set moves on like the player does: a rest
+      // (which advances the set when it ends). Supersets rotate exercises
+      // instead, which the player owns, so they are left alone.
+      const w = ctx.activeWorkout!;
+      const isCurrent = w.exercises[w.currentExerciseIndex] === ex && w.currentSetIndex === idx;
+      if (isCurrent && !set.completed && !ex.isSuperset && ex.restTime) {
+        apply.push(startRestTimer({ duration: ex.restTime }));
+        undo.push(stopRestTimer());
+      }
       return {
         kind: 'auto', id,
         summary: `${set.completed ? 'Corrected' : 'Logged'} set ${idx + 1}: ${reps} reps${weight !== undefined ? ` at ${weight} ${unit}` : ''}`,
-        apply: [setsPatched({ exerciseId: ex.id, patches: [pair.apply] })],
-        undo: [setsPatched({ exerciseId: ex.id, patches: [pair.undo] })],
+        apply,
+        undo,
       };
     }
 
@@ -253,4 +271,28 @@ export function planToolCall(call: AiToolCall, ctx: PlanContext): ToolPlan {
     default:
       return reject(`Unknown tool ${String((call as { name: unknown }).name)}.`);
   }
+}
+
+/**
+ * One assistant turn for the chat sheet: auto plans become "applied" notices,
+ * confirm plans Apply/Reject proposals, rejected plans "discarded" notices.
+ */
+export function toAssistantTurn(
+  reply: string,
+  plans: ReadonlyArray<{ call: AiToolCall; plan: ToolPlan }>,
+): Required<Pick<AiAssistantTurn, 'text' | 'proposals' | 'notices'>> {
+  const proposals: NonNullable<AiAssistantTurn['proposals']> = [];
+  const notices: NonNullable<AiAssistantTurn['notices']> = [];
+  for (const { call, plan } of plans) {
+    if (plan.kind === 'auto') notices.push({ id: plan.id, tone: 'applied', text: plan.summary });
+    else if (plan.kind === 'rejected') {
+      notices.push({ id: plan.id, tone: 'discarded', text: `Suggestion discarded: ${plan.reason}` });
+    } else {
+      proposals.push({
+        id: plan.id, tool: call.name, summary: plan.summary,
+        ...(plan.detail ? { detail: plan.detail } : {}),
+      });
+    }
+  }
+  return { text: reply, proposals, notices };
 }

@@ -4,6 +4,7 @@ import { useAppViewport } from '../hooks/useAppViewport';
 import { useScheduleSync } from '../hooks/useScheduleSync';
 import { useTrackedLiftsSync } from '../hooks/useTrackedLiftsSync';
 import { NewBestSheet } from './build/NewBestSheet';
+import { AskAiHost } from './ai/AskAiHost';
 import { APP_SCROLL_ID } from '../lib/scroll';
 
 export interface AppShellProps {
@@ -70,6 +71,7 @@ export const AppShell: React.FC<AppShellProps> = ({
       </main>
       {showNav && !isKeyboardOpen && <BottomNavigation />}
       {showNav && <NewBestSheet />}
+      {showNav && <AskAiHost />}
     </div>
   );
 };

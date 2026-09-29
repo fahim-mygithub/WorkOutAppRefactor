@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import type { UnknownAction } from '@reduxjs/toolkit';
-import { planToolCall, type PlanContext, type ToolPlan } from './applyTool';
-import reducer, { startWorkout, completeSet, type WorkoutState } from '../store/slices/workoutSlice';
+import { planToolCall, toAssistantTurn, type PlanContext, type ToolPlan } from './applyTool';
+import reducer, { startWorkout, completeSet, jumpToSet, type WorkoutState } from '../store/slices/workoutSlice';
 import type { ActiveWorkout, WorkoutExercise } from '../types/exercise';
 
 const workout = {
@@ -273,5 +273,64 @@ describe('planToolCall', () => {
 
   it('rejects workout tools when no workout is active', () => {
     expect(planToolCall({ id: 'z', name: 'logSet', input: { exerciseId: 'e1', reps: 3 } }, { ...ctx, activeWorkout: null }).kind).toBe('rejected');
+  });
+
+  // --- logSet on the player's current set advances like normal logging ------------
+
+  it('logSet on the current set starts the rest timer; undo stops it', () => {
+    const s0 = run(startState(), [jumpToSet({ exerciseIndex: 0, setIndex: 2 })]);
+    const plan = auto(planToolCall({ id: 'a1', name: 'logSet', input: { exerciseId: 'e1', reps: 3, weight: 225 } }, ctxFor(s0)));
+    const s1 = run(s0, plan.apply);
+    expect(setsIn(s1)[2].completed).toBe(true);
+    expect(s1.restTimer).toMatchObject({ isActive: true, duration: 180 });
+    const s2 = run(s1, plan.undo);
+    expect(setsIn(s2)).toEqual(setsIn(s0));
+    expect(s2.restTimer.isActive).toBe(false);
+  });
+
+  it('logSet on another set, or in a superset, leaves the rest timer alone', () => {
+    const s0 = run(startState(), [jumpToSet({ exerciseIndex: 0, setIndex: 3 })]);
+    const other = auto(planToolCall({ id: 'a2', name: 'logSet', input: { exerciseId: 'e1', setIndex: 2, reps: 3 } }, ctxFor(s0)));
+    expect(run(s0, other.apply).restTimer.isActive).toBe(false);
+    const superset = workout.exercises.map((e) => ({ ...e, isSuperset: true, supersetId: 'ss' }));
+    const s1 = run(startState(superset), [jumpToSet({ exerciseIndex: 0, setIndex: 2 })]);
+    const inSuperset = auto(planToolCall({ id: 'a3', name: 'logSet', input: { exerciseId: 'e1', reps: 3 } }, ctxFor(s1)));
+    expect(run(s1, inSuperset.apply).restTimer.isActive).toBe(false);
+  });
+});
+
+describe('toAssistantTurn', () => {
+  const call = (id: string, name: 'adjustSet' | 'updateBenchmark' | 'logSet') => ({ id, name, input: {} });
+
+  it('maps auto plans to applied notices', () => {
+    const turn = toAssistantTurn('Done.', [
+      { call: call('t1', 'adjustSet'), plan: { kind: 'auto', id: 't1', summary: 'Bench: remaining sets at 205 lb', apply: [], undo: [] } },
+    ]);
+    expect(turn).toEqual({
+      text: 'Done.',
+      proposals: [],
+      notices: [{ id: 't1', tone: 'applied', text: 'Bench: remaining sets at 205 lb' }],
+    });
+  });
+
+  it('maps confirm plans to proposals with the tool name', () => {
+    const turn = toAssistantTurn('', [
+      { call: call('t2', 'updateBenchmark'), plan: { kind: 'confirm', id: 't2', summary: 'Bench benchmark → 255 lb', detail: 'three misses', apply: [] } },
+    ]);
+    expect(turn.proposals).toEqual([
+      { id: 't2', tool: 'updateBenchmark', summary: 'Bench benchmark → 255 lb', detail: 'three misses' },
+    ]);
+    expect(turn.notices).toEqual([]);
+  });
+
+  it('maps rejected plans to discarded notices, keeping order', () => {
+    const turn = toAssistantTurn('Hmm.', [
+      { call: call('t3', 'logSet'), plan: { kind: 'rejected', id: 't3', reason: 'No open set to log.' } },
+      { call: call('t4', 'adjustSet'), plan: { kind: 'auto', id: 't4', summary: 'x', apply: [], undo: [] } },
+    ]);
+    expect(turn.notices).toEqual([
+      { id: 't3', tone: 'discarded', text: 'Suggestion discarded: No open set to log.' },
+      { id: 't4', tone: 'applied', text: 'x' },
+    ]);
   });
 });
