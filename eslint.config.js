@@ -43,6 +43,8 @@ export default tseslint.config(
       'scripts/**',
       '*.config.{js,ts}',
       '*.config.*.{js,ts}',
+      // Separate package (Cloudflare Worker) with its own tooling.
+      'worker/**',
 
       // --- Non-green src directories (NOT yet gated) ---
       'src/config/**',

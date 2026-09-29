@@ -1,0 +1,15 @@
+name = "workout-ai"
+main = "src/index.ts"
+compatibility_date = "2026-09-01"
+compatibility_flags = ["nodejs_compat"]
+
+[vars]
+FIREBASE_PROJECT_ID = "workout-pwa-nf0sf"
+ALLOWED_ORIGINS = "https://fahim-mygithub.github.io,http://localhost:5290"
+APP_ORIGIN = "https://fahim-mygithub.github.io/"
+AI_ALLOWED_EMAILS = ""
+AI_DAILY_LIMIT = "150"
+
+[[kv_namespaces]]
+binding = "AI_USAGE"
+id = "REPLACE_AT_DEPLOY"

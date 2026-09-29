@@ -1,0 +1,22 @@
+{
+  "name": "workout-ai-worker",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.71.2",
+    "jose": "^5.10.0",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20260929.1",
+    "typescript": "~5.8.3",
+    "vitest": "^3.2.7",
+    "wrangler": "^4.143.1"
+  }
+}

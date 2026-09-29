@@ -1,4 +1,4 @@
-import { defineConfig, mergeConfig } from 'vitest/config';
+import { configDefaults, defineConfig, mergeConfig } from 'vitest/config';
 import viteConfig from './vite.config';
 
 // vite.config exports a callback (it branches on command/mode for esbuild
@@ -14,6 +14,8 @@ export default mergeConfig(
       environment: 'jsdom',
       setupFiles: ['./src/test/setup.ts'],
       css: true,
+      // worker/ is a separate package with its own vitest run.
+      exclude: [...configDefaults.exclude, 'worker/**'],
       coverage: {
         provider: 'v8',
         reporter: ['text', 'html'],
