@@ -1,0 +1,23 @@
+[
+  { "text": "1RM bench 265", "expect": { "loadKind": "weight", "weight": 265, "unit": "lb", "targetKind": "repMax", "reps": 1 } },
+  { "text": "front squat 250 for 3x5 barely", "expect": { "loadKind": "weight", "weight": 250, "targetKind": "reps", "reps": 5, "sets": 3, "rir": 0 } },
+  { "text": "lat pulldown pin 12 for 10", "expect": { "loadKind": "level", "level": "Pin 12", "targetKind": "reps", "reps": 10 } },
+  { "text": "cable row 120 lb stack for 12", "expect": { "loadKind": "weight", "weight": 120, "unit": "lb", "targetKind": "reps", "reps": 12, "step": 10 } },
+  { "text": "6 kg med ball slams 3x15", "expect": { "loadKind": "level", "targetKind": "reps", "reps": 15, "sets": 3 } },
+  { "text": "plank 90 seconds", "expect": { "loadKind": "bodyweight", "targetKind": "time", "seconds": 90 } },
+  { "text": "RDL 3x8 at 100 kg", "expect": { "loadKind": "weight", "weight": 100, "unit": "kg", "targetKind": "reps", "reps": 8, "sets": 3 } },
+  { "text": "weighted pull-up +45 for 5", "expect": { "loadKind": "bodyweight", "weight": 45, "targetKind": "reps", "reps": 5 } },
+  { "text": "green band pull-aparts 20", "expect": { "loadKind": "level", "level": "Band: green", "equipment": "band", "targetKind": "reps", "reps": 20 } },
+  { "text": "goblet squat 70 lb dumbbell 3x12", "expect": { "loadKind": "weight", "weight": 70, "unit": "lb", "equipment": "dumbbell", "targetKind": "reps", "reps": 12, "sets": 3 } },
+  { "text": "hip thrust 5RM 315", "expect": { "loadKind": "weight", "weight": 315, "targetKind": "repMax", "reps": 5 } },
+  { "text": "dips bodyweight 3x10", "expect": { "loadKind": "bodyweight", "targetKind": "reps", "reps": 10, "sets": 3 } },
+  { "text": "tempo squats 3-1-3 185x6", "expect": { "loadKind": "weight", "weight": 185, "targetKind": "reps", "reps": 6, "tempo": "3-1-3" } },
+  { "text": "incline dumbbell press 60s for 8-12", "expect": { "loadKind": "weight", "weight": 60, "equipment": "dumbbell", "targetKind": "reps", "reps": 8, "repsMax": 12 } },
+  { "text": "deadlift 405 for 3, had 2 left", "expect": { "loadKind": "weight", "weight": 405, "targetKind": "reps", "reps": 3, "rir": 2 } },
+  { "text": "kettlebell swings 24 kg 3x20", "expect": { "loadKind": "weight", "weight": 24, "unit": "kg", "equipment": "kettlebell", "targetKind": "reps", "reps": 20, "sets": 3 } },
+  { "text": "dead hang 45 seconds", "expect": { "loadKind": "bodyweight", "targetKind": "time", "seconds": 45 } },
+  { "text": "leg press 3x10 at 360", "expect": { "loadKind": "weight", "weight": 360, "equipment": "machine", "targetKind": "reps", "reps": 10, "sets": 3 } },
+  { "text": "bench press", "expect": { "question": true } },
+  { "text": "squats heavy", "expect": { "question": true } },
+  { "text": "curls 3 sets", "expect": { "sets": 3, "question": true } }
+]
