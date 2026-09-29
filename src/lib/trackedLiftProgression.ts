@@ -37,10 +37,15 @@ export const SESSIONS_PER_GOAL = 2;
 
 const LB_PER_KG = 2.20462;
 
-/** Round to the loadable increment: the equipment `step`, else 5 lb or 2.5 kg. */
+/** The loadable increment: a positive, finite equipment `step`, else 5 lb or 2.5 kg. */
+function loadStep(unit: WeightUnit, step?: number): number {
+  return step !== undefined && Number.isFinite(step) && step > 0 ? step : unit === 'kg' ? 2.5 : 5;
+}
+
+/** Round to the loadable increment (clean to 4 decimals, so 0.1 steps stay 0.7, not 0.7000000000000001). */
 export function roundLoad(value: number, unit: WeightUnit, step?: number): number {
-  const inc = step && step > 0 ? step : unit === 'kg' ? 2.5 : 5;
-  return Math.round(value / inc) * inc;
+  const inc = loadStep(unit, step);
+  return Number((Math.round(value / inc) * inc).toFixed(4));
 }
 
 export function convertWeight(value: number, from: WeightUnit, to: WeightUnit): number {
@@ -170,7 +175,7 @@ export function prescribe(lift: TrackedLift, goal: SessionGoal): TrackedParsedEx
     }
     // The attempt always goes after the benchmark: at least one loadable step
     // above it, even when submaximal logged sets read low (no RIR tapped).
-    const step = lift.step && lift.step > 0 ? lift.step : load.unit === 'kg' ? 2.5 : 5;
+    const step = loadStep(load.unit, lift.step);
     const bench = benchmarkE1RM(lift);
     const attempt = Math.max(
       at(ATTEMPT_FRACTION),

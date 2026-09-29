@@ -13,6 +13,10 @@ describe('checkProposedLoad', () => {
     expect(checkProposedLoad(150, 225, 'lb')).toMatchObject({ ok: false });
     expect(checkProposedLoad(300, 225, 'lb')).toMatchObject({ ok: false });
   });
+  it('includes the 30% boundary', () => {
+    expect(checkProposedLoad(130, 100, 'lb', 10)).toEqual({ ok: true, value: 130, snapped: false });
+    expect(checkProposedLoad(70, 100, 'lb')).toEqual({ ok: true, value: 70, snapped: false });
+  });
   it('only rounds when there is no reference', () => {
     expect(checkProposedLoad(47, null, 'kg')).toEqual({ ok: true, value: 47.5, snapped: true });
   });

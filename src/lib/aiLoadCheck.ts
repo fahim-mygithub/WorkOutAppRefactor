@@ -1,7 +1,8 @@
 /**
  * The engine's gate on AI-proposed loads: within ±30% of the reference (what
  * the lifter is or was about to lift) and on the equipment's step. A small
- * miss (off-step) snaps; anything else is rejected with a reason.
+ * miss (off-step) snaps; anything else is rejected with a reason. The band
+ * applies to the proposed value, so snapping can move it up to step/2 beyond.
  */
 import { roundLoad } from './trackedLiftProgression';
 import type { WeightUnit } from '../types/trackedLifts';
@@ -19,7 +20,7 @@ export function checkProposedLoad(
   step?: number,
 ): LoadCheck {
   if (!(proposed > 0)) return { ok: false, reason: 'Load must be above zero.' };
-  if (reference != null && reference > 0 && Math.abs(proposed / reference - 1) > MAX_CHANGE) {
+  if (reference != null && reference > 0 && Math.abs(proposed / reference - 1) > MAX_CHANGE + 1e-9) {
     return { ok: false, reason: `${proposed} ${unit} is too far from ${reference} ${unit}.` };
   }
   const value = roundLoad(proposed, unit, step);

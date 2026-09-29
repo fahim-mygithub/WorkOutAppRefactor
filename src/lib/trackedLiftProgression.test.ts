@@ -242,3 +242,14 @@ describe('equipment step', () => {
     }
   });
 });
+
+describe('fractional and invalid steps', () => {
+  it('returns clean numbers for non-binary steps', () => {
+    expect(roundLoad(0.7, 'kg', 0.1)).toBe(0.7);
+    expect(roundLoad(1.2, 'kg', 0.2)).toBe(1.2);
+  });
+  it('ignores a non-finite step', () => {
+    expect(roundLoad(226, 'lb', NaN)).toBe(225);
+    expect(roundLoad(226, 'lb', Infinity)).toBe(225);
+  });
+});
