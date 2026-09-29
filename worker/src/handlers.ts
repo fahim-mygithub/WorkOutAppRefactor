@@ -1,10 +1,9 @@
 /**
- * The `parse` and `chat` actions (ported from the never-deployed Firebase
- * function). The Anthropic client is passed in so the router owns the key and
- * tests can inject a fake.
+ * The `chat` and `readLift` actions (findExercise lives in findExercise.ts).
+ * The Anthropic client is passed in so the router owns the key and tests can
+ * inject a fake.
  *
- *   parse: free text -> structured sets (FAST_MODEL)
- *   chat:  tool-use; tool calls are validated and returned, never applied here.
+ *   chat:     tool-use; tool calls are validated and returned, never applied here.
  *   readLift: a described lift -> one tracked-lift entry (FAST_MODEL, forced
  *             submitLift tool so the shape is fixed)
  *
@@ -13,15 +12,12 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { AiError } from './errors';
 import { FAST_MODEL, SMART_MODEL } from './models';
-import { CHAT_SYSTEM_PROMPT, PARSE_SYSTEM_PROMPT, READ_LIFT_SYSTEM_PROMPT } from './prompts';
+import { CHAT_SYSTEM_PROMPT, READ_LIFT_SYSTEM_PROMPT } from './prompts';
 import {
-  parseOutputJsonSchema,
-  parseResultSchema,
   READ_LIFT_OPTIONAL_KEYS,
   readLiftResultSchema,
   type ChatContext,
   type ChatMessage,
-  type ParseResult,
   type ReadLiftResult,
 } from './schemas';
 import { buildToolDefs, toToolDef, toolValidators, type ToolName } from './tools';
@@ -31,63 +27,6 @@ const MAX_CONTEXT_CHARS = 40_000;
 
 export function makeClient(apiKey: string): Anthropic {
   return new Anthropic({ apiKey });
-}
-
-// ---------------------------------------------------------------------------
-// parse action
-// ---------------------------------------------------------------------------
-
-/** Strip optional markdown code fences and return the JSON substring. */
-export function extractJson(text: string): string {
-  const trimmed = text.trim();
-  const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
-  if (fenced) return fenced[1].trim();
-  // Otherwise take from the first { to the last } to be forgiving of preambles.
-  const first = trimmed.indexOf('{');
-  const last = trimmed.lastIndexOf('}');
-  if (first !== -1 && last !== -1 && last > first) {
-    return trimmed.slice(first, last + 1);
-  }
-  return trimmed;
-}
-
-export async function handleParse(client: Anthropic, text: string): Promise<ParseResult> {
-  // The JSON Schema is appended to the (cached) system prompt so the prefix
-  // stays byte-stable across requests; the user's text is the only volatile
-  // content. Zod (parseResultSchema) is the authoritative guard.
-  const response = await client.messages.create({
-    model: FAST_MODEL,
-    max_tokens: 2048,
-    system: [
-      {
-        type: 'text',
-        text:
-          `${PARSE_SYSTEM_PROMPT}\n\nReturn ONLY a JSON object (no prose, no code fences) ` +
-          `matching this JSON Schema:\n${JSON.stringify(parseOutputJsonSchema)}`,
-        cache_control: { type: 'ephemeral' },
-      },
-    ],
-    messages: [{ role: 'user', content: text }],
-  });
-
-  const block = response.content.find((b) => b.type === 'text');
-  if (!block || block.type !== 'text') {
-    throw new AiError('internal', 'Parse model returned no text content.');
-  }
-
-  let raw: unknown;
-  try {
-    raw = JSON.parse(extractJson(block.text));
-  } catch {
-    throw new AiError('internal', 'Parse model returned invalid JSON.');
-  }
-
-  const result = parseResultSchema.safeParse(raw);
-  if (!result.success) {
-    console.warn('parse output failed schema validation', JSON.stringify(result.error.issues));
-    throw new AiError('internal', 'Parse output did not match the expected schema.');
-  }
-  return result.data;
 }
 
 // ---------------------------------------------------------------------------

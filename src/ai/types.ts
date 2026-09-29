@@ -3,62 +3,13 @@
  *
  * These types mirror the contract of the Cloudflare Worker (`worker/`, a
  * SEPARATE package). The Worker is the ONLY place the Anthropic API key lives;
- * the client never talks to Anthropic directly. The client either calls the
- * Worker (when it is configured and reachable) or falls back to the existing
- * deterministic regex parser (when offline / no backend).
- *
- * Model ids (authoritative — do not invent others):
- *   - parse surface       → 'claude-haiku-4-5-20251001'
- *   - chat-with-tools     → 'claude-sonnet-5-5'
- *
- * The Worker uses the official @anthropic-ai/sdk with prompt caching
- * (cache_control on the system prompt). None of that leaks to the client — the
- * client only sees the request/response shapes below.
+ * the client never talks to Anthropic directly; it calls the Worker only.
+ * Models, prompts and prompt caching live in the Worker (`worker/src/models.ts`)
+ * and never leak to the client — it only sees the request/response shapes below.
  */
 
-import type { ParsedWorkout, ParseResult } from '../parser/types';
-
-// Re-export the parser's canonical shapes so AI consumers have a single import
-// surface and the AI parse result stays structurally identical to the offline
-// (deterministic) parse result.
-export type { ParsedExercise, ParsedSet, ParsedWorkout, ParseResult } from '../parser/types';
-
-/** The exact model id strings the Worker dispatches to, per surface. */
-export const AI_MODELS = {
-  /** Structured freeform-text -> sets parsing. */
-  parse: 'claude-haiku-4-5-20251001',
-  /** Conversational coaching with tool use. */
-  chat: 'claude-sonnet-5-5',
-} as const;
-
-export type AiModelId = (typeof AI_MODELS)[keyof typeof AI_MODELS];
-
-/** Where a given AI result was produced. Lets the UI label "offline" results. */
+/** Where a given AI result was produced (every Worker action is 'backend'). */
 export type AiSource = 'backend' | 'fallback';
-
-// ---------------------------------------------------------------------------
-// Parse surface (freeform workout text -> structured sets)
-// ---------------------------------------------------------------------------
-
-export interface AiParseRequest {
-  /** Freeform workout text the user typed in the Build flow. */
-  text: string;
-  /**
-   * Optional known exercise names, used to bias the model toward the user's
-   * existing exercise database (and used by the offline fallback for fuzzy
-   * validation). Kept small — names only, not full exercise objects.
-   */
-  knownExerciseNames?: string[];
-}
-
-export interface AiParseResponse {
-  /** Structured workout, identical in shape to the deterministic parser. */
-  workout: ParsedWorkout;
-  /** Non-fatal notes (e.g. "treated line 3 as exercise name with default sets"). */
-  warnings: string[];
-  /** Whether this came from the backend model or the offline fallback. */
-  source: AiSource;
-}
 
 // ---------------------------------------------------------------------------
 // Chat-with-tools surface
@@ -125,7 +76,7 @@ export interface AiChatResponse {
   reply: string;
   /** Tool calls the model proposes; the client plans how to apply them. */
   toolCalls: AiToolCall[];
-  /** Whether this came from the backend model or the offline fallback. */
+  /** Where this came from; always 'backend' (chat has no offline fallback). */
   source: AiSource;
 }
 
@@ -137,7 +88,7 @@ export interface AiChatResponse {
 export interface AiToolProposal {
   /** Tool-call id (stable; from the assistant turn). Used as React key. */
   id: string;
-  /** Tool name, e.g. 'add_exercise' / 'log_set' / 'create_workout'. */
+  /** Tool name, e.g. 'swapExercise' / 'updateBenchmark' (an `AiToolName`). */
   tool: string;
   /** Human-readable one-line summary of what will happen if applied. */
   summary: string;
@@ -178,24 +129,4 @@ export interface AiAssistantTurn {
   visualizations?: AiVisualization[];
   /** Applied / discarded notices -> small lines under the prose. */
   notices?: AiNotice[];
-}
-
-// ---------------------------------------------------------------------------
-// Internal helpers
-// ---------------------------------------------------------------------------
-
-/**
- * Build an `AiParseResponse` from a deterministic `ParseResult`. Used by the
- * fallback path; exported so the Worker parse success shape and the
- * offline shape are constructed identically.
- */
-export function parseResultToResponse(
-  result: ParseResult,
-  source: AiSource,
-): AiParseResponse {
-  return {
-    workout: result.workout ?? { exercises: [], supersets: [] },
-    warnings: result.warnings,
-    source,
-  };
 }

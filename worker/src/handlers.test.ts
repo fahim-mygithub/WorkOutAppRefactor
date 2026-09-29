@@ -1,35 +1,18 @@
 // worker/src/handlers.test.ts
 import { describe, it, expect, vi } from 'vitest';
 import type Anthropic from '@anthropic-ai/sdk';
-import { buildContextPreamble, extractJson, handleChat, handleParse } from './handlers';
-import { FAST_MODEL, SMART_MODEL } from './models';
+import { buildContextPreamble, handleChat } from './handlers';
+import { SMART_MODEL } from './models';
 
 const fakeClient = (content: unknown[], stop_reason = 'end_turn') => {
   const create = vi.fn().mockResolvedValue({ content, stop_reason });
   return { client: { messages: { create } } as unknown as Anthropic, create };
 };
 
-describe('extractJson', () => {
-  it('strips fences and preambles', () => {
-    expect(extractJson('```json\n{"a":1}\n```')).toBe('{"a":1}');
-    expect(extractJson('Sure: {"a":1} done')).toBe('{"a":1}');
-  });
-});
-
 describe('buildContextPreamble', () => {
   it('rejects oversized context', () => {
     expect(buildContextPreamble({ screen: 'workout' })).toContain('"screen":"workout"');
     expect(() => buildContextPreamble({ activeWorkout: 'x'.repeat(40_001) })).toThrow('Context too large.');
-  });
-});
-
-describe('handleParse', () => {
-  it('validates the model JSON', async () => {
-    const { client, create } = fakeClient([{ type: 'text', text: '{"exercises":[]}' }]);
-    expect(await handleParse(client, 'bench 3x5')).toEqual({ exercises: [] });
-    expect(create.mock.calls[0][0].model).toBe(FAST_MODEL);
-    const bad = fakeClient([{ type: 'text', text: 'nope' }]);
-    await expect(handleParse(bad.client, 'x')).rejects.toMatchObject({ code: 'internal' });
   });
 });
 

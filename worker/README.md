@@ -3,7 +3,7 @@
 Cloudflare Worker that backs the WorkoutApp AI coach. It is the only place the
 Anthropic API key lives. It verifies the caller's Firebase ID token, checks an
 email allow-list and a daily limit (Workers KV), and serves the `chat`,
-`parse`, `readLift` and `findExercise` actions.
+`readLift` and `findExercise` actions.
 
 Separate package — not part of the root app build, lint or test run.
 

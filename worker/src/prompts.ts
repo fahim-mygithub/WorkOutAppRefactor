@@ -25,17 +25,6 @@ Missed reps:
 
 Style: lead with the recommendation, one or two sentences, then the tool calls. Stay within training. If the context lacks what you need, say what is missing.`;
 
-export const PARSE_SYSTEM_PROMPT = `You convert a lifter's free-text log of a workout into structured sets.
-
-Extract every exercise and its sets. Interpret common shorthand:
-- "3x5" means 3 sets of 5 reps. "5/3/1" means three sets of 5, 3, then 1 reps.
-- "@185", "185 lb", "185#" are weights in pounds; "84kg" is kilograms.
-- "RPE 8" or "@8" is rated perceived exertion.
-- Cardio like "ran 5k in 25:00" maps to distanceMeters and timeSeconds.
-- "to failure", "AMRAP", "drop set" go in notes.
-
-Use null for any field the text does not specify. Do not invent weights, reps, or units. Group sets under the exercise they belong to. Return only the structured result.`;
-
 export const READ_LIFT_SYSTEM_PROMPT = `You turn a lifter's description of a lift into a tracked-lift entry for a workout app. Answer by calling the submitLift tool.
 
 Fields: name (standard exercise name, e.g. "Front Squat", "Lat Pulldown"), loadKind (weight | bodyweight | level), weight + unit (lb|kg), level (named step for med balls, bands, machine pins: "Pin 12", "Band: red", "Med ball 6 kg"), targetKind (reps | repMax | time | none), reps, repsMax, seconds, tempo, sets, rir, equipment, step, question.

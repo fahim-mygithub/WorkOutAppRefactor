@@ -7,29 +7,15 @@
  * as a Bearer token and a JSON body discriminated on `action`. The key is NEVER
  * on the client.
  *
- * Resilience model — the whole point of this module:
- *   - parse(): if the Worker is unavailable (no URL configured, offline, signed
- *     out, or any error), it transparently falls back to the on-device
- *     deterministic parser (`parseFallback`). parse() therefore NEVER rejects
- *     for backend reasons — the user can always build a workout from text.
- *   - chat(): requires the model; there is no deterministic substitute for
- *     conversation, so it throws `AiBackendError` with an `AiErrorCode` the UI
- *     can explain, and `isBackendAvailable()` lets the UI disable chat up front.
+ * Every action needs the model: there is no offline substitute, so each call
+ * throws `AiBackendError` with an `AiErrorCode` the UI can explain, and
+ * `isBackendAvailable()` lets the UI hide AI entry points up front.
  */
 
 import { auth } from '../firebase/config';
 import type { TrackedLift } from '../types/trackedLifts';
 import type { FlatLift } from './liftFields';
-import { parseWithFallback } from './parseFallback';
-import type {
-  AiChatRequest,
-  AiChatResponse,
-  AiErrorCode,
-  AiParseRequest,
-  AiParseResponse,
-  AiToolCall,
-  ParsedWorkout,
-} from './types';
+import type { AiChatRequest, AiChatResponse, AiErrorCode, AiToolCall } from './types';
 
 /** Injectable transport; every field defaults to the real app wiring. */
 export interface AiClientDeps {
@@ -60,7 +46,6 @@ export class AiBackendError extends Error {
 
 /** Wire payload for the Worker; it dispatches on `action`. */
 export type AiRequestPayload =
-  | { action: 'parse'; text: string }
   | ({ action: 'chat' } & AiChatRequest)
   | { action: 'readLift'; text: string }
   | { action: 'findExercise'; name: string };
@@ -71,26 +56,6 @@ interface WorkerChatResult {
   text?: string;
   toolCalls?: AiToolCall[];
   stopReason?: string | null;
-}
-
-/** Worker `parse` success body (mirrors `parseResultSchema`). */
-interface WorkerParseResult {
-  action: 'parse';
-  result?: {
-    exercises?: Array<{
-      exerciseName: string;
-      sets: Array<{
-        reps: number | null;
-        /** How many identical sets this entry stands for. */
-        sets: number | null;
-        weight: number | null;
-        unit: 'lbs' | 'kg' | null;
-        rpe: number | null;
-        timeSeconds: number | null;
-        distanceMeters: number | null;
-      }>;
-    }>;
-  };
 }
 
 const CODE_BY_STATUS: Record<number, AiErrorCode> = {
@@ -129,54 +94,6 @@ export async function callAi<T>(payload: AiRequestPayload, deps?: AiClientDeps):
     return (await res.json()) as T;
   } catch (error) {
     throw new AiBackendError('AI request failed.', 'failed', error);
-  }
-}
-
-/** Most identical sets one parsed entry may expand to. */
-const MAX_SETS_PER_ENTRY = 20;
-
-function toParsedWorkout(result: WorkerParseResult['result']): ParsedWorkout | null {
-  if (!result || !Array.isArray(result.exercises)) return null;
-  return {
-    exercises: result.exercises.map((e) => ({
-      name: e.exerciseName,
-      // One Worker entry can stand for several identical sets ("3x5" → sets: 3);
-      // capped so a runaway count can't flood the workout.
-      sets: (e.sets ?? []).flatMap((s) =>
-        Array.from({ length: Math.max(1, Math.min(s.sets ?? 1, MAX_SETS_PER_ENTRY)) }, () => ({
-          reps: s.reps ?? 0,
-          weight: s.weight ?? undefined,
-          unit: s.unit ?? undefined,
-          rpe: s.rpe ?? undefined,
-          time: s.timeSeconds ?? undefined, // seconds
-          distance: s.distanceMeters ?? undefined, // meters
-        })),
-      ),
-    })),
-    supersets: [],
-  };
-}
-
-/**
- * Parse freeform workout text into structured sets.
- *
- * Calls the Worker when it is reachable; otherwise (no URL, offline, signed
- * out, or any error) transparently returns the deterministic offline parse.
- * `source` tells the caller which path produced it. Never rejects for backend
- * reasons.
- */
-export async function parse(
-  request: AiParseRequest,
-  deps?: AiClientDeps,
-): Promise<AiParseResponse> {
-  try {
-    const data = await callAi<WorkerParseResult>({ action: 'parse', text: request.text }, deps);
-    const workout = toParsedWorkout(data?.result);
-    // Defensive: a malformed Worker response also degrades to fallback.
-    if (!workout) return parseWithFallback(request);
-    return { workout, warnings: [], source: 'backend' };
-  } catch {
-    return parseWithFallback(request);
   }
 }
 
@@ -255,7 +172,7 @@ export async function findExerciseOnline(
 /**
  * Whether the Worker is configured and the device is online. A synchronous,
  * best-effort signal — it does NOT round-trip to the server, and it does not
- * check sign-in. parse() works regardless of this flag (it has a fallback).
+ * check sign-in.
  */
 export function isBackendAvailable(deps?: AiClientDeps): boolean {
   const d = { ...defaults(), ...deps };

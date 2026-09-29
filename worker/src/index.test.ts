@@ -43,6 +43,12 @@ describe('handleRequest', () => {
     expect((await handleRequest(post(chat), env, deps({ takeSlot: vi.fn().mockResolvedValue(false) }))).status).toBe(429);
     expect((await handleRequest(post({ action: 'nope' }), env, deps())).status).toBe(400);
   });
+  it('400 on the removed parse action, without taking a slot', async () => {
+    const d = deps();
+    expect((await handleRequest(post({ action: 'parse', text: 'bench 3x5' }), env, d)).status).toBe(400);
+    expect(d.takeSlot).not.toHaveBeenCalled();
+    expect(Object.keys(defaultActions).sort()).toEqual(['chat', 'findExercise', 'readLift']);
+  });
   it('400 on an oversized chat context without taking a daily slot', async () => {
     const d = deps();
     const big = { ...chat, context: { activeWorkout: 'x'.repeat(40_001) } };

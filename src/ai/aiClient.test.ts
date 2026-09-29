@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { AiBackendError, chat, findExerciseOnline, isBackendAvailable, parse, readLiftEntry } from '@/ai/aiClient';
+import { AiBackendError, chat, findExerciseOnline, isBackendAvailable, readLiftEntry } from '@/ai/aiClient';
 
 // We never hit Firebase or the network here. The client takes injected deps
 // (Worker URL, ID-token getter, fetch) so each test drives its own transport.
@@ -103,107 +103,6 @@ describe('aiClient', () => {
       const res = await chat(req, deps(ok({ action: 'chat' })));
       expect(res.reply).toBe('');
       expect(res.toolCalls).toEqual([]);
-    });
-  });
-
-  describe('parse()', () => {
-    const workerParse = {
-      action: 'parse',
-      result: {
-        exercises: [
-          {
-            exerciseName: 'Bench',
-            sets: [
-              {
-                exerciseName: 'Bench',
-                reps: 5,
-                sets: 3,
-                weight: 185,
-                unit: 'lbs',
-                rpe: null,
-                timeSeconds: null,
-                distanceMeters: null,
-                notes: null,
-              },
-            ],
-          },
-        ],
-      },
-    };
-
-    it('maps the Worker result and sends only the parse action + text', async () => {
-      const f = ok(workerParse);
-      await expect(
-        parse({ text: 'bench 3x5 185', knownExerciseNames: ['Bench'] }, deps(f)),
-      ).resolves.toMatchObject({
-        source: 'backend',
-        workout: {
-          // "3x5" arrives as one entry with sets: 3 → three ParsedSets.
-          exercises: [{ name: 'Bench', sets: Array(3).fill({ reps: 5, weight: 185, unit: 'lbs' }) }],
-          supersets: [],
-        },
-      });
-      expect(JSON.parse(f.mock.calls[0][1].body)).toEqual({
-        action: 'parse',
-        text: 'bench 3x5 185',
-      });
-    });
-
-    it('keeps rpe, time and distance, and caps an entry at 20 sets', async () => {
-      const set = (over: Record<string, unknown>) => ({
-        exerciseName: 'X',
-        reps: null,
-        sets: null,
-        weight: null,
-        unit: null,
-        rpe: null,
-        timeSeconds: null,
-        distanceMeters: null,
-        notes: null,
-        ...over,
-      });
-      const f = ok({
-        action: 'parse',
-        result: {
-          exercises: [
-            { exerciseName: 'Run', sets: [set({ timeSeconds: 1500, distanceMeters: 5000 })] },
-            { exerciseName: 'Squat', sets: [set({ reps: 5, rpe: 8, sets: 500 })] },
-          ],
-        },
-      });
-      const res = await parse({ text: 'ran 5k in 25 min; squat 500x5 @8' }, deps(f));
-      const [run, squat] = res.workout.exercises;
-      expect(run.sets).toEqual([{ reps: 0, time: 1500, distance: 5000 }]);
-      expect(squat.sets).toHaveLength(20);
-      expect(squat.sets[0]).toEqual({ reps: 5, rpe: 8 });
-    });
-
-    it('falls back on a Worker error', async () => {
-      const res = await parse({ text: '3x10 Squats' }, deps(fail(502)));
-      expect(res.source).toBe('fallback');
-      expect(res.workout.exercises[0].name).toBe('Squats');
-      expect(res.workout.exercises[0].sets).toHaveLength(3);
-    });
-
-    it('falls back with no URL, when signed out, and when offline', async () => {
-      const f = ok(workerParse);
-      await expect(parse({ text: '3x10 Squats' }, { ...deps(f), url: '' })).resolves.toMatchObject(
-        { source: 'fallback' },
-      );
-      await expect(parse({ text: '3x10 Squats' }, deps(f, null))).resolves.toMatchObject({
-        source: 'fallback',
-      });
-      setOnline(false);
-      await expect(parse({ text: '3x10 Squats' }, deps(f))).resolves.toMatchObject({
-        source: 'fallback',
-      });
-      expect(f).not.toHaveBeenCalled();
-    });
-
-    it('falls back when the Worker returns a malformed body', async () => {
-      const res = await parse({ text: '3x10 Squats' }, deps(ok({ action: 'parse' })));
-      expect(res.source).toBe('fallback');
-      expect(res.workout.exercises[0].name).toBe('Squats');
     });
   });
 
