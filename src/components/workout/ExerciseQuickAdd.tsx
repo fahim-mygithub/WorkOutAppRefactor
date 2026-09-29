@@ -1,43 +1,24 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { Check, Dumbbell, Plus, Search } from 'lucide-react';
-import { useAppDispatch, useAppSelector } from '../../store/hooks';
-import { setExercises } from '../../store/slices/exerciseSlice';
-import { loadExercises } from '../../utils/loadExercises';
+import React, { useMemo, useState } from 'react';
+import { Check, Dumbbell, Plus, Search, Sparkles } from 'lucide-react';
+import { useAppSelector } from '../../store/hooks';
+import { isBackendAvailable, isSignedIn } from '../../ai/aiClient';
 import { transformVideoUrl } from '../../utils/videoHelpers';
 import type { Exercise } from '../../types/exercise';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
+import { Sheet, SheetContent, SheetDescription, SheetTitle } from '../ui/sheet';
+import { ExerciseLookupCard } from '../ai/ExerciseLookupCard';
+import { useExerciseLibrary } from './useExerciseLibrary';
+
+export { useExerciseLibrary };
 
 /** The builder's entry for a newly added exercise: one set of 10, 2 min rest. */
 export function newBuilderExercise(exercise: Exercise) {
   return { name: exercise.name, sets: [{ reps: 10, rest: 120 }] };
 }
 
-const NO_EXERCISES: Exercise[] = [];
-
-/**
- * The exercise library from the store, loading it once if nothing has yet.
- * Needs no auth context, so it works inside sheets and bare test stores.
- */
-export function useExerciseLibrary(): Exercise[] {
-  const dispatch = useAppDispatch();
-  const hasSlice = useAppSelector((s) => Boolean(s.exercise));
-  const exercises = useAppSelector((s) => s.exercise?.exercises ?? NO_EXERCISES);
-  const lastUpdated = useAppSelector((s) => s.exercise?.lastUpdated);
-
-  useEffect(() => {
-    if (!hasSlice || exercises.length > 0 || lastUpdated) return;
-    let cancelled = false;
-    loadExercises().then((loaded) => {
-      if (!cancelled && loaded.length > 0) dispatch(setExercises(loaded));
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [dispatch, hasSlice, exercises.length, lastUpdated]);
-
-  return exercises;
-}
+/** Shortest search that may be looked up with AI. */
+const MIN_LOOKUP_LENGTH = 3;
 
 /**
  * A small still of the exercise: the first frame of its front-view clip (the
@@ -109,6 +90,9 @@ export const ExerciseQuickAdd: React.FC<ExerciseQuickAddProps> = ({
   const searchTerm = controlled ? value : localTerm;
   // Opens on focus/typing, closes on blur, Escape or (controlled) a pick.
   const [open, setOpen] = useState(false);
+  // The term being looked up with AI (its sheet is open), or null.
+  const [lookupTerm, setLookupTerm] = useState<string | null>(null);
+  const aiOff = useAppSelector((s) => Boolean(s.ai?.disabledReason));
 
   const matches = useMemo(() => {
     const term = searchTerm.trim().toLowerCase();
@@ -150,7 +134,14 @@ export const ExerciseQuickAdd: React.FC<ExerciseQuickAddProps> = ({
   };
 
   const listId = `${id}-results`;
-  const showList = open && matches.length > 0;
+  const trimmed = searchTerm.trim();
+  const showLookup =
+    matches.length === 0 &&
+    trimmed.length >= MIN_LOOKUP_LENGTH &&
+    !aiOff &&
+    isBackendAvailable() &&
+    isSignedIn();
+  const showList = open && (matches.length > 0 || showLookup);
   const PickIcon = controlled ? Check : Plus;
 
   return (
@@ -208,9 +199,53 @@ export const ExerciseQuickAdd: React.FC<ExerciseQuickAddProps> = ({
                 </button>
               </li>
             ))}
+            {showLookup && (
+              <li>
+                <button
+                  type="button"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => {
+                    setLookupTerm(trimmed);
+                    setOpen(false);
+                  }}
+                  className="flex min-h-touch-min w-full items-center gap-3 px-4 py-2.5 text-left text-body-sm text-ink transition-colors duration-snap hover:bg-surface-subtle focus-visible:bg-surface-subtle focus-visible:outline-none"
+                >
+                  <span
+                    aria-hidden="true"
+                    className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-surface-subtle"
+                  >
+                    <Sparkles className="h-5 w-5 text-accent" />
+                  </span>
+                  <span className="min-w-0 flex-1 truncate font-semibold">
+                    Look up “{trimmed}” with AI
+                  </span>
+                </button>
+              </li>
+            )}
           </ul>
         )}
       </div>
+
+      <Sheet
+        open={lookupTerm !== null}
+        onOpenChange={(next) => {
+          if (!next) setLookupTerm(null);
+        }}
+      >
+        <SheetContent>
+          <SheetTitle className="text-title">Look it up</SheetTitle>
+          <SheetDescription>AI searches the web for it. Nothing is saved until you Apply.</SheetDescription>
+          <div className="mt-4">
+            {lookupTerm !== null && (
+              <ExerciseLookupCard
+                term={lookupTerm}
+                onAdd={pick}
+                onClose={() => setLookupTerm(null)}
+              />
+            )}
+          </div>
+        </SheetContent>
+      </Sheet>
     </div>
   );
 };
