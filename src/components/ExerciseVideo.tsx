@@ -72,23 +72,20 @@ export const ExerciseVideo: React.FC<ExerciseVideoProps> = ({
     }
   };
 
+  // Stable key so the load effect doesn't re-run every render (callers pass a
+  // fresh fallback array each time).
+  const fallbackKey = fallbackVideoUrls.join('|');
+
+  // Restart from the primary source whenever the requested video changes.
   useEffect(() => {
-    // Reset states when video URL props change (not currentVideoUrl state)
-    if (videoUrl !== videoRef.current?.dataset.lastVideoUrl) {
-      const { primary: newPrimary } = getVideoWithFallbacks(videoUrl, fallbackVideoUrls);
-      
-      setCurrentVideoUrl(newPrimary);
-      setRetryCount(0);
-      setHasError(false);
-      setIsLoading(true);
-      setErrorMessage('');
-      
-      if (videoRef.current) {
-        videoRef.current.dataset.lastVideoUrl = videoUrl;
-      }
-      return; // Exit early, let the effect run again with new currentVideoUrl
-    }
-    
+    setCurrentVideoUrl(getVideoWithFallbacks(videoUrl).primary);
+    setRetryCount(0);
+    setHasError(false);
+    setIsLoading(true);
+    setErrorMessage('');
+  }, [videoUrl]);
+
+  useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
 
@@ -157,7 +154,7 @@ export const ExerciseVideo: React.FC<ExerciseVideoProps> = ({
       video.removeEventListener('play', handlePlay);
       video.removeEventListener('pause', handlePause);
     };
-  }, [autoPlay, currentVideoUrl, videoUrl, fallbackVideoUrls, exerciseName, retryCount]); // Need retryCount for fallback mechanism
+  }, [autoPlay, currentVideoUrl, fallbackKey, retryCount]); // retryCount drives the fallback mechanism
 
   const togglePlay = () => {
     const video = videoRef.current;
