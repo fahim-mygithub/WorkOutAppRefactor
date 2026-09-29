@@ -221,6 +221,37 @@ export async function readLiftEntry(text: string, deps?: AiClientDeps): Promise<
   return data.result;
 }
 
+/** Worker `findExercise` result: an exercise missing from the library, with
+ *  demo media the Worker already verified (direct https .mp4/.webm/.gif). */
+export interface FindExerciseResult {
+  name: string;
+  /** Library name when this is a synonym (skull crusher → Lying Triceps Extension). */
+  aliasOf?: string;
+  muscleGroups: string[];
+  equipment: string;
+  difficulty: 'Beginner' | 'Intermediate' | 'Advanced';
+  instructions: string[];
+  media: string[];
+  /** How many media candidates failed verification. */
+  rejectedMedia: number;
+}
+
+/**
+ * Look up an exercise the library doesn't have (web search on the Worker; can
+ * take tens of seconds). Backend-only; throws `AiBackendError` when the Worker
+ * cannot serve it.
+ */
+export async function findExerciseOnline(
+  name: string,
+  deps?: AiClientDeps,
+): Promise<FindExerciseResult> {
+  const data = await callAi<{ result?: FindExerciseResult }>({ action: 'findExercise', name }, deps);
+  if (!data?.result || typeof data.result !== 'object') {
+    throw new AiBackendError('AI found no exercise.', 'failed');
+  }
+  return data.result;
+}
+
 /**
  * Whether the Worker is configured and the device is online. A synchronous,
  * best-effort signal — it does NOT round-trip to the server, and it does not

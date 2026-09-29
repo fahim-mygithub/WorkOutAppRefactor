@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { AiBackendError, chat, isBackendAvailable, parse, readLiftEntry } from '@/ai/aiClient';
+import { AiBackendError, chat, findExerciseOnline, isBackendAvailable, parse, readLiftEntry } from '@/ai/aiClient';
 
 // We never hit Firebase or the network here. The client takes injected deps
 // (Worker URL, ID-token getter, fetch) so each test drives its own transport.
@@ -223,6 +223,35 @@ describe('aiClient', () => {
 
     it('passes Worker errors through with their code', async () => {
       await expect(readLiftEntry('fs 250x5', deps(fail(429)))).rejects.toMatchObject({ code: 'limit' });
+    });
+  });
+
+  describe('findExerciseOnline()', () => {
+    const found = {
+      name: 'Zercher Carry',
+      muscleGroups: ['Core', 'Upper Back'],
+      equipment: 'Barbell',
+      difficulty: 'Advanced',
+      instructions: ['Set the bar in your elbows.', 'Walk.'],
+      media: ['https://m.test/zc.mp4'],
+      rejectedMedia: 2,
+    };
+
+    it('sends the name and returns the result', async () => {
+      const f = ok({ action: 'findExercise', result: found });
+      await expect(findExerciseOnline('zercher carry', deps(f))).resolves.toEqual(found);
+      expect(JSON.parse(f.mock.calls[0][1].body)).toEqual({ action: 'findExercise', name: 'zercher carry' });
+    });
+
+    it('throws a failed AiBackendError when the body has no result', async () => {
+      await expect(findExerciseOnline('x', deps(ok({ action: 'findExercise' })))).rejects.toMatchObject({
+        name: 'AiBackendError',
+        code: 'failed',
+      });
+    });
+
+    it('passes Worker errors through with their code', async () => {
+      await expect(findExerciseOnline('x', deps(fail(403)))).rejects.toMatchObject({ code: 'not-allowed' });
     });
   });
 
