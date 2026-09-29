@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import type { ActiveWorkout, WorkoutExercise } from '../types/exercise';
 import type { TrackedLift } from '../types/trackedLifts';
-import { buildAiContext } from './context';
+import type { Exercise } from '../types/exercise';
+import { buildAiContext, CONTEXT_BUDGET } from './context';
 import type { AiChatContext } from './types';
 
 const bench: TrackedLift = {
@@ -155,6 +156,49 @@ describe('buildAiContext', () => {
     // Other lifts keep at least their id, name and benchmark.
     expect(ctx.trackedLifts[0]).toMatchObject({ id: 'lift-0-abcdef123456', name: 'Tracked lift number 0', benchmark: expect.any(String) });
     expect(ctx.trackedLifts[0].recentSessions).toBeUndefined();
+  });
+
+  it('offers library alternatives per workout exercise, including custom ones', () => {
+    const rdl = { id: 'x-rdl', name: 'Barbell Romanian Deadlift', equipment: 'Barbell', muscleGroups: ['Glutes', 'Hamstrings'] } as Exercise;
+    const library = [
+      rdl,
+      { id: 'x-db', name: 'Dumbbell Romanian Deadlift', equipment: 'Dumbbells', muscleGroups: ['Glutes', 'Hamstrings'] },
+      { id: 'x-bp', name: 'Barbell Bench Press', equipment: 'Barbell', muscleGroups: ['Chest'] },
+      { id: 'c1', name: 'My Band Hinge', equipment: 'Band', muscleGroups: ['Hamstrings'] },
+    ] as Exercise[];
+    const hinge = { ...workout, exercises: [{ ...workout.exercises[0], exercise: rdl }] } as ActiveWorkout;
+    const ctx = buildAiContext({ screen: 'workout', units: 'lbs', activeWorkout: hinge, trackedLifts: [bench], library });
+    expect(ctx.activeWorkout!.exercises[0].alternatives).toEqual(['Dumbbell Romanian Deadlift', 'My Band Hinge']);
+    // No muscle groups to match on → no key at all.
+    const plain = buildAiContext({ screen: 'workout', units: 'lbs', activeWorkout: workout, trackedLifts: [bench], library });
+    expect(plain.activeWorkout!.exercises[0]).not.toHaveProperty('alternatives');
+  });
+
+  it('drops alternatives from non-focus exercises first when over budget', () => {
+    const library = Array.from({ length: 12 }, (_, k) => ({
+      id: `lib-${k}`, name: `A rather long library exercise name number ${k} with extra words to fill`,
+      equipment: `Kit ${k}`, muscleGroups: ['Chest'],
+    })) as Exercise[];
+    const lifts: TrackedLift[] = Array.from({ length: 40 }, (_, k) => ({
+      id: `lift-${k}-abcdef123456`, name: `Tracked lift number ${k}`, category: 'Push',
+      load: { kind: 'weight', value: 200 + k, unit: 'lb' }, target: { kind: 'reps', min: 5, max: 8 },
+    }));
+    // Many tracked exercises in today's workout, so lift trimming alone cannot fit the budget.
+    const exercises: WorkoutExercise[] = Array.from({ length: 40 }, (_, e) => ({
+      id: `exercise-${e}`, exercise: { id: `own-${e}`, name: `Exercise ${e}`, equipment: 'Barbell', muscleGroups: ['Chest'] } as never,
+      tracked: { liftId: `lift-${e}-abcdef123456`, goal: 'volume' },
+      sets: Array.from({ length: 5 }, (_, s) => ({ id: `set-${e}-${s}`, reps: 10, weight: 137.5, unit: 'lbs' as const, completed: false })),
+    }));
+    const activeWorkout = { id: 'w', name: 'Upper', exercises, currentExerciseIndex: 0, currentSetIndex: 0, startTime: '', duration: 0, isActive: true };
+    const full = buildAiContext({ screen: 'workout', units: 'lbs', activeWorkout, trackedLifts: lifts });
+    const withAlts = buildAiContext({ screen: 'workout', units: 'lbs', focusExerciseId: 'exercise-3', activeWorkout, trackedLifts: lifts, library });
+    // Alternatives would push it over; the focus exercise keeps its own.
+    expect(JSON.stringify(full).length).toBeLessThan(CONTEXT_BUDGET);
+    expect(JSON.stringify(withAlts).length).toBeLessThanOrEqual(CONTEXT_BUDGET);
+    const focus = withAlts.activeWorkout!.exercises.find((e) => e.id === 'exercise-3')!;
+    expect(focus.alternatives).toHaveLength(8);
+    expect(JSON.stringify(full).length + 40 * JSON.stringify(focus.alternatives).length).toBeGreaterThan(CONTEXT_BUDGET);
+    expect(withAlts.activeWorkout!.exercises.filter((e) => e.alternatives)).toHaveLength(1);
   });
 
   it('leaves a context under budget untrimmed', () => {

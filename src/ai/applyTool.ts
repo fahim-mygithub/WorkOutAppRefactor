@@ -64,9 +64,30 @@ function stepFor(ctx: PlanContext, ex: WorkoutExercise, unit: WeightUnit): numbe
   return own === undefined || own === unit ? lift.step : undefined;
 }
 
+/** Lower-case words with punctuation dropped: "Pull-Up " → "pull up". */
+const normalName = (s: string): string => s.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+
+/**
+ * The library exercise a model-given name means: an exact match (ignoring
+ * case, spacing and punctuation), else the shortest name that contains every
+ * word of it (words of 2+ letters), else none. The model often drops the
+ * equipment prefix the library uses ("Romanian Deadlift" → "Barbell
+ * Romanian Deadlift").
+ */
 function libraryMatch(ctx: PlanContext, name: string): Exercise | undefined {
-  const key = name.trim().toLowerCase();
-  return ctx.library.find((e) => e.name.toLowerCase() === key);
+  const key = normalName(name);
+  if (!key) return undefined;
+  const exact = ctx.library.find((e) => normalName(e.name) === key);
+  if (exact) return exact;
+  const words = key.split(' ').filter((w) => w.length >= 2);
+  if (words.length === 0) return undefined;
+  let best: Exercise | undefined;
+  for (const e of ctx.library) {
+    const own = new Set(normalName(e.name).split(' '));
+    if (!words.every((w) => own.has(w))) continue;
+    if (!best || e.name.length < best.name.length || (e.name.length === best.name.length && e.name < best.name)) best = e;
+  }
+  return best;
 }
 
 /**

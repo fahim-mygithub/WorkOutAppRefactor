@@ -17,4 +17,10 @@ describe('CHAT_SYSTEM_PROMPT', () => {
       CHAT_SYSTEM_PROMPT.indexOf('Cannot do the exercise at all'),
     );
   });
+
+  it('points swapExercise at the per-exercise alternatives in the context', () => {
+    expect(CHAT_SYSTEM_PROMPT).toContain(
+      "For swapExercise, use a name from that exercise's `alternatives` in the context when one fits.",
+    );
+  });
 });

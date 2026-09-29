@@ -21,7 +21,7 @@ import { AiBackendError, chat, isBackendAvailable, isSignedIn } from '../../ai/a
 import { buildAiContext } from '../../ai/context';
 import { planToolCall, toAssistantTurn } from '../../ai/applyTool';
 import type { AiErrorCode, AiToolCall } from '../../ai/types';
-import { useExerciseLibrary } from '../workout/ExerciseQuickAdd';
+import { useExerciseLibrary } from '../workout/useExerciseLibrary';
 import { AiChatSheet, type AiChatClient } from './AiChatSheet';
 import { UndoToast } from './UndoToast';
 
@@ -46,7 +46,12 @@ export function AskAiHost() {
   const { pathname } = useLocation();
   const { open, seed, disabledReason } = useAppSelector((s) => s.ai);
   const resting = useAppSelector((s) => s.workout.restTimer.isActive);
-  useExerciseLibrary(); // the planner resolves swaps against the library
+  // Built-in + custom exercises: the context offers swap alternatives from it
+  // and the planner resolves swaps against it. Read through a ref so the chat
+  // client and a late Apply see the latest list.
+  const library = useExerciseLibrary();
+  const libraryRef = React.useRef(library);
+  libraryRef.current = library;
 
   // A fresh sheet (and transcript) per opening, so each seed is sent. Bumped
   // during render (not in an effect) so the old sheet never sees the new seed.
@@ -65,7 +70,7 @@ export function AskAiHost() {
     return planToolCall(call, {
       activeWorkout: now.workout.activeWorkout,
       trackedLifts: now.trackedLifts.lifts,
-      library: now.exercise.exercises,
+      library: libraryRef.current,
     });
   }, [store]);
 
@@ -79,6 +84,7 @@ export function AskAiHost() {
         activeWorkout,
         trackedLifts: s.trackedLifts.lifts,
         focusExerciseId: s.ai.focusExerciseId,
+        library: libraryRef.current,
       });
       let res;
       try {

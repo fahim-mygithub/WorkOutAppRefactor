@@ -82,6 +82,35 @@ describe('planToolCall', () => {
     expect(planToolCall({ id: 't7', name: 'swapExercise', input: { exerciseId: 'e1', replacementExerciseName: 'Moon Press', scope: 'today', reason: 'x' } }, ctx).kind).toBe('rejected');
   });
 
+  describe('swapExercise name resolution', () => {
+    const library = [
+      { id: 'x-rdl', name: 'Barbell Romanian Deadlift' },
+      { id: 'x-srdl', name: 'Barbell Snatch Grip Romanian Deadlift' },
+      { id: 'x-lp', name: 'Machine Leg Press' },
+      { id: 'x-hlp', name: 'Machine Horizontal Leg Press' },
+      { id: 'x-pu', name: 'Pull-Up' },
+    ] as never;
+    const swapTo = (name: string) =>
+      planToolCall({ id: 'sw', name: 'swapExercise', input: { exerciseId: 'e1', replacementExerciseName: name, scope: 'today' } }, { ...ctx, library });
+    const replacementOf = (plan: ToolPlan) => (confirm(plan).apply[0].payload as { exercise: { name: string } }).exercise.name;
+
+    it('matches exact names ignoring case, spacing and punctuation', () => {
+      expect(replacementOf(swapTo('  barbell romanian deadlift '))).toBe('Barbell Romanian Deadlift');
+      expect(replacementOf(swapTo('pull up'))).toBe('Pull-Up');
+    });
+
+    it('falls back to the shortest library name containing every word', () => {
+      expect(replacementOf(swapTo('Romanian Deadlift'))).toBe('Barbell Romanian Deadlift');
+      expect(replacementOf(swapTo('leg press'))).toBe('Machine Leg Press');
+      expect(confirm(swapTo('Romanian Deadlift')).summary).toMatch(/for Barbell Romanian Deadlift today$/);
+    });
+
+    it('rejects a name no library exercise contains', () => {
+      expect(swapTo('Quantum Leg Deadlift')).toEqual({ kind: 'rejected', id: 'sw', reason: '"Quantum Leg Deadlift" is not in the exercise library.' });
+      expect(swapTo('a').kind).toBe('rejected');
+    });
+  });
+
   // --- stale state: apply/undo touch only what they changed --------------------
 
   it('adjustSet undo after logging another set keeps the newly logged set', () => {

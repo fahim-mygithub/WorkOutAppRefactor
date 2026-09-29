@@ -7,18 +7,41 @@ import { configureStore } from '@reduxjs/toolkit';
 import workout, { startWorkout, completeSet, startRestTimer, endWorkout } from '../../store/slices/workoutSlice';
 import trackedLifts, { trackedLiftsHydrated, liftUpdated } from '../../store/slices/trackedLiftsSlice';
 import exercise, { setExercises } from '../../store/slices/exerciseSlice';
+import customExercise from '../../store/slices/customExerciseSlice';
 import user from '../../store/slices/userSlice';
 import ai, { askAiOpened, askAiClosed } from '../../store/slices/aiSlice';
 import * as aiClient from '../../ai/aiClient';
+import type { AiContext } from '../../ai/context';
 import type { WorkoutExercise, Exercise } from '../../types/exercise';
 import type { TrackedLift } from '../../types/trackedLifts';
 import { AskAiHost } from './AskAiHost';
 
-const bench = { id: 'x-bench', name: 'Barbell Bench Press' } as Exercise;
-const dbBench = { id: 'x-db', name: 'Dumbbell Bench Press' } as Exercise;
+const bench = { id: 'x-bench', name: 'Barbell Bench Press', equipment: 'Barbell', muscleGroups: ['Chest', 'Triceps'] } as Exercise;
+const dbBench = { id: 'x-db', name: 'Dumbbell Bench Press', equipment: 'Dumbbells', muscleGroups: ['Chest', 'Triceps'] } as Exercise;
 
 function makeStore() {
-  return configureStore({ reducer: { workout, trackedLifts, exercise, user, ai } });
+  return configureStore({ reducer: { workout, trackedLifts, exercise, customExercise, user, ai } });
+}
+
+/** Saved custom exercises, as the loader thunk delivers them. */
+function addCustom(store: ReturnType<typeof makeStore>, ...names: string[]) {
+  store.dispatch({
+    type: 'customExercise/loadCustomExercises/fulfilled',
+    payload: {
+      exercises: names.map((name, k) => ({
+        id: `c${k}`, name, muscleGroup: 'Chest', equipment: 'Machine', createdAt: new Date(0), updatedAt: new Date(0),
+      })),
+      lastSynced: '',
+    },
+  });
+}
+
+async function send(text: string) {
+  const u = userEvent.setup();
+  await u.click(screen.getByRole('button', { name: 'Ask AI' }));
+  await u.type(screen.getByLabelText('Message'), text);
+  await u.click(screen.getByRole('button', { name: 'Send' }));
+  return u;
 }
 
 function makeStoreWithWorkoutAndLift(tracked = false) {
@@ -186,6 +209,22 @@ describe('AskAiHost', () => {
     await u.click(screen.getByRole('button', { name: 'Apply' }));
     expect(await screen.findByText("Couldn't apply: things changed since this was suggested.")).toBeInTheDocument();
     expect(store.getState().trackedLifts.lifts[0].load).toEqual({ kind: 'weight', value: 265, unit: 'lb' });
+  });
+
+  it('sends swap alternatives from the merged library and swaps to a custom exercise', async () => {
+    const chat = vi.spyOn(aiClient, 'chat').mockResolvedValue({
+      reply: 'Try the machine.', source: 'backend',
+      toolCalls: [{ id: 't7', name: 'swapExercise', input: { exerciseId: 'e1', replacementExerciseName: 'chest press', scope: 'today', reason: 'no bench' } }],
+    });
+    const store = makeStoreWithWorkoutAndLift();
+    addCustom(store, 'My Chest Press Machine');
+    renderHost(store);
+    const u = await send('bench is taken');
+    expect((chat.mock.calls[0][0].context as AiContext).activeWorkout!.exercises[0]).toMatchObject({
+      alternatives: ['Dumbbell Bench Press', 'My Chest Press Machine'],
+    });
+    await u.click(await screen.findByRole('button', { name: 'Apply' }));
+    expect(store.getState().workout.activeWorkout!.exercises[0].exercise.name).toBe('My Chest Press Machine');
   });
 
   it('says the limit plainly and disables AI', async () => {

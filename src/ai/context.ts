@@ -6,7 +6,8 @@
  * exercise `id` → `exerciseId`, set `index` → `setIndex` / `fromSetIndex`,
  * tracked lift `id` → `liftId`.
  */
-import type { ActiveWorkout } from '../types/exercise';
+import type { ActiveWorkout, Exercise } from '../types/exercise';
+import { swapAlternatives } from './alternatives';
 import type { SessionGoal, TrackedLift, TrackedSetLog, WeightUnit } from '../types/trackedLifts';
 import { currentEstimate, prescribe, progressionStatus, roundLoad } from '../lib/trackedLiftProgression';
 import { formatLoad, formatTarget } from '../lib/trackedLifts';
@@ -36,6 +37,8 @@ export interface AiContextExercise {
   trackedLiftId?: string;
   goal?: SessionGoal;
   sets: AiContextSet[];
+  /** Library names that work the same muscles: what swapExercise can resolve. */
+  alternatives?: string[];
 }
 
 /** A tracked lift; lifts outside today's workout may be cut to id, name and benchmark. */
@@ -91,8 +94,14 @@ export function buildAiContext(input: {
   activeWorkout: ActiveWorkout | null;
   trackedLifts: TrackedLift[];
   focusExerciseId?: string;
+  /** The merged exercise library (built-in + custom), for swap alternatives. */
+  library?: readonly Exercise[];
 }): AiContext {
-  const { activeWorkout } = input;
+  const { activeWorkout, library = [] } = input;
+  const alternativesFor = (e: ActiveWorkout['exercises'][number]) => {
+    const names = library.length && e.exercise ? swapAlternatives(e.exercise, library) : [];
+    return names.length ? { alternatives: names } : {};
+  };
   const ctx: AiContext = {
     screen: input.screen,
     units: input.units,
@@ -107,6 +116,7 @@ export function buildAiContext(input: {
               ...(e.sets[0]?.unit ? { unit: e.sets[0].unit } : {}),
               ...(e.tracked ? { trackedLiftId: e.tracked.liftId, goal: e.tracked.goal } : {}),
               sets: e.sets.map((s, index) => ({ index, ...pick(s, SET_KEYS), completed: s.completed })),
+              ...alternativesFor(e),
             })),
           },
         }
@@ -154,21 +164,44 @@ export function buildAiContext(input: {
   return fitBudget(ctx, keep);
 }
 
+const fits = (ctx: AiContext): boolean => JSON.stringify(ctx).length <= CONTEXT_BUDGET;
+
+/** The context with `alternatives` removed from the exercises `drop` selects. */
+function withoutAlternatives(ctx: AiContext, drop: (e: AiContextExercise) => boolean): AiContext {
+  if (!ctx.activeWorkout) return ctx;
+  return {
+    ...ctx,
+    activeWorkout: {
+      ...ctx.activeWorkout,
+      exercises: ctx.activeWorkout.exercises.map((e) => {
+        if (!e.alternatives || !drop(e)) return e;
+        const rest = { ...e };
+        delete rest.alternatives;
+        return rest;
+      }),
+    },
+  };
+}
+
 /**
- * Trim the other lifts in stages until the JSON fits `CONTEXT_BUDGET`:
- * drop their recent sessions, then their prescriptions, then all but
- * id, name and benchmark.
+ * Trim in stages until the JSON fits `CONTEXT_BUDGET`: the other lifts lose
+ * their recent sessions, then their prescriptions, then all but id, name and
+ * benchmark; then non-focus exercises lose their swap alternatives, and
+ * finally the focus exercise does too.
  */
 function fitBudget(ctx: AiContext, keep: ReadonlySet<string>): AiContext {
-  const stages: ((l: AiContextLift) => AiContextLift)[] = [
+  const liftStages: ((l: AiContextLift) => AiContextLift)[] = [
     (l) => ({ ...l, recentSessions: undefined }),
     (l) => ({ ...l, next: undefined }),
     ({ id, name, benchmark }) => ({ id, name, benchmark }),
   ];
   let out = ctx;
-  for (const stage of stages) {
-    if (JSON.stringify(out).length <= CONTEXT_BUDGET) break;
+  for (const stage of liftStages) {
+    if (fits(out)) return out;
     out = { ...out, trackedLifts: out.trackedLifts.map((l) => (keep.has(l.id) ? l : stage(l))) };
   }
-  return out;
+  if (fits(out)) return out;
+  out = withoutAlternatives(out, (e) => e.id !== ctx.focusExerciseId);
+  if (fits(out)) return out;
+  return withoutAlternatives(out, () => true);
 }
