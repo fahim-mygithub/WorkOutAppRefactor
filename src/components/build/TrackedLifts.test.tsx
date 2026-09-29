@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Provider } from 'react-redux';
@@ -7,6 +7,7 @@ import trackedLifts from '../../store/slices/trackedLiftsSlice';
 import user from '../../store/slices/userSlice';
 import { TrackedLifts } from './TrackedLifts';
 import { useTrackedLiftsSync } from '../../hooks/useTrackedLiftsSync';
+import * as aiClient from '../../ai/aiClient';
 
 /** AppShell mounts the sync hook app-wide; stand in for it here. */
 function WithSync(props: React.ComponentProps<typeof TrackedLifts>) {
@@ -143,5 +144,146 @@ describe('TrackedLifts', () => {
     // flagged rows (Bench, Front Squat from the template, now Seal Row) show their cycle status
     expect(screen.getAllByText(/^Volume 0\/2 · Strength 0\/2/)).toHaveLength(3);
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+});
+
+describe('TrackedLiftEditor — Weight step', () => {
+  beforeEach(() => localStorage.clear());
+
+  it('shows Weight step only for a weight load, validates it and saves it', async () => {
+    const u = userEvent.setup();
+    const store = renderList();
+    await u.click(await screen.findByRole('button', { name: 'Add a lift to Legs' }));
+    const dialog = await screen.findByRole('dialog');
+    const save = within(dialog).getByRole('button', { name: 'Add lift' });
+    await u.type(within(dialog).getByLabelText('Lift'), 'Hack Squat');
+    await u.type(within(dialog).getByLabelText('Weight'), '200');
+    await u.type(within(dialog).getByLabelText('Reps'), '8');
+    const step = within(dialog).getByLabelText('Weight step');
+    expect(step).toHaveAttribute('placeholder', '5');
+    await u.type(step, '60');
+    expect(save).toBeDisabled(); // > 50
+    await u.clear(step);
+    await u.type(step, '-1');
+    expect(save).toBeDisabled();
+    await u.clear(step);
+    await u.type(step, '10');
+    expect(save).toBeEnabled();
+
+    await u.click(within(dialog).getByRole('radio', { name: 'kg' }));
+    expect(within(dialog).getByLabelText('Weight step')).toHaveAttribute('placeholder', '2.5');
+    await u.click(within(dialog).getByRole('radio', { name: 'lb' }));
+    await u.click(within(dialog).getByRole('radio', { name: 'Level' }));
+    expect(within(dialog).queryByLabelText('Weight step')).not.toBeInTheDocument();
+    await u.click(within(dialog).getByRole('radio', { name: 'Weight' }));
+    await u.click(save);
+    expect(store.getState().trackedLifts.lifts.at(-1)).toMatchObject({ name: 'Hack Squat', step: 10 });
+  });
+});
+
+describe('TrackedLiftEditor — Describe it', () => {
+  beforeEach(() => localStorage.clear());
+  afterEach(() => vi.restoreAllMocks());
+
+  async function openAdd() {
+    const u = userEvent.setup();
+    const store = renderList();
+    await u.click(await screen.findByRole('button', { name: 'Add a lift to Legs' }));
+    const dialog = await screen.findByRole('dialog');
+    return { u, store, dialog };
+  }
+
+  const describeIt = async (u: ReturnType<typeof userEvent.setup>, dialog: HTMLElement, text: string) => {
+    await u.type(within(dialog).getByLabelText('Describe it'), text);
+    await u.click(within(dialog).getByRole('button', { name: 'Fill' }));
+  };
+
+  it('is hidden when the AI backend is not available', async () => {
+    vi.spyOn(aiClient, 'isBackendAvailable').mockReturnValue(false);
+    const { dialog } = await openAdd();
+    expect(within(dialog).queryByLabelText('Describe it')).not.toBeInTheDocument();
+  });
+
+  it('fills the form from a description, never saves, and carries step + equipment on save', async () => {
+    vi.spyOn(aiClient, 'isBackendAvailable').mockReturnValue(true);
+    const read = vi.spyOn(aiClient, 'readLiftEntry').mockResolvedValue({
+      name: 'Front Squat', loadKind: 'weight', weight: 250, unit: 'lb', targetKind: 'reps', reps: 5, sets: 3,
+      step: 5, equipment: 'barbell', question: null,
+    });
+    const { u, store, dialog } = await openAdd();
+    const before = store.getState().trackedLifts.lifts.length;
+    await describeIt(u, dialog, 'front squat 250 for 3x5');
+
+    expect(read).toHaveBeenCalledWith('front squat 250 for 3x5');
+    expect(await within(dialog).findByText(/check and save/i)).toBeInTheDocument();
+    expect(within(dialog).getByLabelText('Lift')).toHaveValue('Front Squat');
+    expect(within(dialog).getByLabelText('Weight')).toHaveValue('250');
+    expect(within(dialog).getByLabelText('Reps')).toHaveValue('5');
+    expect(within(dialog).getByLabelText(/^Sets/)).toHaveValue('3');
+    expect(within(dialog).getByLabelText('Weight step')).toHaveValue('5');
+    expect(store.getState().trackedLifts.lifts).toHaveLength(before); // never saves
+
+    await u.click(within(dialog).getByRole('button', { name: 'Add lift' }));
+    expect(store.getState().trackedLifts.lifts.at(-1)).toMatchObject({
+      name: 'Front Squat',
+      category: 'Legs',
+      load: { kind: 'weight', value: 250, unit: 'lb' },
+      target: { kind: 'reps', min: 5 },
+      sets: 3,
+      step: 5,
+      equipment: 'barbell',
+    });
+  });
+
+  it('shows the question under the field and still fills', async () => {
+    vi.spyOn(aiClient, 'isBackendAvailable').mockReturnValue(true);
+    vi.spyOn(aiClient, 'readLiftEntry').mockResolvedValue({
+      name: 'Dumbbell Press', loadKind: 'weight', weight: 60, unit: null as unknown as undefined,
+      targetKind: 'reps', reps: 10, question: 'Is 60 per hand?',
+    });
+    const { u, dialog } = await openAdd();
+    await describeIt(u, dialog, 'db press 60 x10');
+    expect(await within(dialog).findByText('Is 60 per hand?')).toBeInTheDocument();
+    expect(within(dialog).getByLabelText('Lift')).toHaveValue('Dumbbell Press');
+    expect(within(dialog).getByLabelText('Weight')).toHaveValue('60');
+    expect(within(dialog).getByRole('radio', { name: 'lb' })).toHaveAttribute('aria-checked', 'true');
+  });
+
+  it('keeps the typed name when the result has an empty name', async () => {
+    vi.spyOn(aiClient, 'isBackendAvailable').mockReturnValue(true);
+    vi.spyOn(aiClient, 'readLiftEntry').mockResolvedValue({
+      name: '', loadKind: 'bodyweight', targetKind: 'reps', reps: 12, question: null,
+    });
+    const { u, dialog } = await openAdd();
+    await u.type(within(dialog).getByLabelText('Lift'), 'Pistol Squat');
+    await describeIt(u, dialog, 'twelve reps');
+    expect(await within(dialog).findByText(/check and save/i)).toBeInTheDocument();
+    expect(within(dialog).getByLabelText('Lift')).toHaveValue('Pistol Squat');
+    expect(within(dialog).getByRole('radio', { name: 'Bodyweight' })).toHaveAttribute('aria-checked', 'true');
+    expect(within(dialog).getByLabelText('Reps')).toHaveValue('12');
+  });
+
+  it('says the daily limit is reached', async () => {
+    vi.spyOn(aiClient, 'isBackendAvailable').mockReturnValue(true);
+    vi.spyOn(aiClient, 'readLiftEntry').mockRejectedValue(new aiClient.AiBackendError('x', 'limit'));
+    const { u, dialog } = await openAdd();
+    await describeIt(u, dialog, 'squat');
+    expect(await within(dialog).findByText(/AI limit reached for today/)).toBeInTheDocument();
+  });
+
+  it('falls back to a generic note on other errors', async () => {
+    vi.spyOn(aiClient, 'isBackendAvailable').mockReturnValue(true);
+    vi.spyOn(aiClient, 'readLiftEntry').mockRejectedValue(new Error('boom'));
+    const { u, dialog } = await openAdd();
+    await describeIt(u, dialog, 'squat');
+    expect(await within(dialog).findByText(/Couldn't read that — fill the form below/)).toBeInTheDocument();
+  });
+
+  it.each(['not-allowed', 'signed-out', 'unconfigured'] as const)('hides the field on %s', async (code) => {
+    vi.spyOn(aiClient, 'isBackendAvailable').mockReturnValue(true);
+    vi.spyOn(aiClient, 'readLiftEntry').mockRejectedValue(new aiClient.AiBackendError('x', code));
+    const { u, dialog } = await openAdd();
+    await describeIt(u, dialog, 'squat');
+    await vi.waitFor(() => expect(within(dialog).queryByLabelText('Describe it')).not.toBeInTheDocument());
   });
 });

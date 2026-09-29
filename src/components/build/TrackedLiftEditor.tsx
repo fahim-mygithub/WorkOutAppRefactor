@@ -11,6 +11,8 @@ import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { cn } from '../../lib/utils';
 import { ExerciseQuickAdd } from '../workout/ExerciseQuickAdd';
+import type { ReadLiftResult } from '../../ai/aiClient';
+import { LiftDescribeField } from './LiftDescribeField';
 
 /**
  * TrackedLiftEditor — the bottom sheet for adding or editing one tracked lift.
@@ -39,7 +41,14 @@ interface FormState {
   seconds: string;
   tempo: string;
   sets: string;
+  /** Weight step (smallest load change); blank = the default. */
+  step: string;
+  /** Not a visible field: carried from the lift or a description, saved as-is. */
+  equipment: TrackedLift['equipment'];
 }
+
+/** Largest weight step the form accepts. */
+const MAX_STEP = 50;
 
 const NEW_CATEGORY = '__new__';
 
@@ -59,6 +68,8 @@ function toForm(lift: TrackedLift | null, fallbackCategory: string, unit: Weight
     seconds: '',
     tempo: '',
     sets: lift?.sets !== undefined ? String(lift.sets) : '',
+    step: lift?.step !== undefined ? String(lift.step) : '',
+    equipment: lift?.equipment,
   };
   if (lift) {
     const { load, target } = lift;
@@ -94,7 +105,7 @@ const positiveInt = (s: string): number | null => {
 };
 
 /** Parse the form into a lift (minus id), or null when something is invalid. */
-type EditableLift = Pick<TrackedLift, 'name' | 'category' | 'load' | 'target' | 'sets'>;
+export type EditableLift = Pick<TrackedLift, 'name' | 'category' | 'load' | 'target' | 'sets' | 'step' | 'equipment'>;
 
 function fromForm(f: FormState): EditableLift | null {
   const name = f.name.trim();
@@ -149,7 +160,45 @@ function fromForm(f: FormState): EditableLift | null {
     sets = n;
   }
 
-  return { name, category, load, target, sets };
+  // Only a weight load has a step field; blank = the default (5 lb / 2.5 kg).
+  let step: number | undefined;
+  if (f.loadKind === 'weight' && f.step.trim() !== '') {
+    const n = positive(f.step);
+    if (n === null || n > MAX_STEP) return null;
+    step = n;
+  }
+
+  return { name, category, load, target, sets, step, equipment: f.equipment };
+}
+
+const LOAD_KINDS: readonly LoadKind[] = ['weight', 'bodyweight', 'level'];
+const TARGET_KINDS: readonly TargetKind[] = ['reps', 'repMax', 'time', 'none'];
+/** A positive finite number as a form string, else null (model output may hold nulls). */
+const num = (v: number | null | undefined): string | null =>
+  typeof v === 'number' && Number.isFinite(v) && v > 0 ? String(v) : null;
+const text = (v: string | null | undefined): string | null => (typeof v === 'string' && v.trim() ? v.trim() : null);
+
+/** Merge a "Describe it" result into the form: what it read wins, the rest is kept. */
+function applyReadLift(f: FormState, r: ReadLiftResult): FormState {
+  const targetKind = TARGET_KINDS.includes(r.targetKind) ? r.targetKind : f.targetKind;
+  const reps = num(r.reps);
+  return {
+    ...f,
+    name: text(r.name) ?? f.name,
+    loadKind: LOAD_KINDS.includes(r.loadKind) ? r.loadKind : f.loadKind,
+    weight: num(r.weight) ?? f.weight,
+    unit: r.unit === 'lb' || r.unit === 'kg' ? r.unit : f.unit,
+    level: text(r.level) ?? f.level,
+    targetKind,
+    repsMin: targetKind === 'reps' && reps ? reps : f.repsMin,
+    repsMax: num(r.repsMax) ?? f.repsMax,
+    repMax: targetKind === 'repMax' && reps ? reps : f.repMax,
+    seconds: num(r.seconds) ?? f.seconds,
+    tempo: text(r.tempo) ?? f.tempo,
+    sets: num(r.sets) ?? f.sets,
+    step: num(r.step) ?? f.step,
+    equipment: r.equipment ?? f.equipment,
+  };
 }
 
 // --- small local controls ----------------------------------------------------
@@ -279,6 +328,8 @@ export function TrackedLiftEditor({
             if (parsed) onSave(parsed);
           }}
         >
+          <LiftDescribeField onResult={(r) => setForm((f) => applyReadLift(f, r))} />
+
           {/* Searches the exercise library like the Build tab; any typed name still works. */}
           <ExerciseQuickAdd
             id={`${id}-name`}
@@ -322,6 +373,17 @@ export function TrackedLiftEditor({
                 </Field>
                 {unitToggle}
               </div>
+            )}
+            {form.loadKind === 'weight' && (
+              <Field label="Weight step" htmlFor={`${id}-step`}>
+                <Input
+                  id={`${id}-step`}
+                  inputMode="decimal"
+                  value={form.step}
+                  onChange={(e) => set('step', e.target.value)}
+                  placeholder={form.unit === 'kg' ? '2.5' : '5'}
+                />
+              </Field>
             )}
             {form.loadKind === 'bodyweight' && (
               <div className="flex items-end gap-3">
