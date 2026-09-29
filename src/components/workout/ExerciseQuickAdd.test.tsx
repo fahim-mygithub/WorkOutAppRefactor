@@ -9,7 +9,13 @@ import type { Exercise } from '../../types/exercise';
 import { ExerciseQuickAdd } from './ExerciseQuickAdd';
 
 const lib = [
-  { id: 'bb-bench', name: 'Barbell Bench Press', muscleGroup: 'Chest', equipment: 'Barbell' },
+  {
+    id: 'bb-bench',
+    name: 'Barbell Bench Press',
+    muscleGroup: 'Chest',
+    equipment: 'Barbell',
+    videoLinks: ['https://cdn.test/bench-front.mp4#t=0.1', 'https://cdn.test/bench-side.mp4#t=0.1'],
+  },
   { id: 'db-bench', name: 'Dumbbell Bench Press', muscleGroup: 'Chest', equipment: 'Dumbbell' },
   { id: 'squat', name: 'Barbell Back Squat', muscleGroup: 'Quads', equipment: 'Barbell' },
 ] as Exercise[];
@@ -80,5 +86,17 @@ describe('ExerciseQuickAdd as a name field', () => {
     await u.click(screen.getByRole('button', { name: /Back Squat/ }));
     expect(onAdd).toHaveBeenCalledWith(expect.objectContaining({ id: 'squat' }));
     expect(input).toHaveValue('');
+  });
+
+  it('shows a still of the front clip beside each suggestion, and a placeholder without one', async () => {
+    const u = userEvent.setup();
+    const { container } = renderWith(<NameField onPick={() => {}} />);
+    await u.type(screen.getByLabelText('Lift'), 'bench');
+
+    const videos = container.querySelectorAll('li video');
+    expect(videos).toHaveLength(1); // Dumbbell Bench Press has no clip
+    expect(videos[0]).toHaveAttribute('src', 'https://cdn.test/bench-front.mp4#t=0.1');
+    // Decorative: the row's accessible name stays just the text.
+    expect(screen.getByRole('button', { name: /Barbell Bench Press/ })).toBeInTheDocument();
   });
 });

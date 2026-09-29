@@ -1,8 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Check, Plus, Search } from 'lucide-react';
+import { Check, Dumbbell, Plus, Search } from 'lucide-react';
 import { useAppDispatch, useAppSelector } from '../../store/hooks';
 import { setExercises } from '../../store/slices/exerciseSlice';
 import { loadExercises } from '../../utils/loadExercises';
+import { transformVideoUrl } from '../../utils/videoHelpers';
 import type { Exercise } from '../../types/exercise';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
@@ -36,6 +37,42 @@ function useExerciseLibrary(): Exercise[] {
   }, [dispatch, hasSlice, exercises.length, lastUpdated]);
 
   return exercises;
+}
+
+/**
+ * A small still of the exercise: the first frame of its front-view clip (the
+ * `#t=0.1` fragment seeks past the black lead-in frame). A glyph sits behind it
+ * and the frame fades in once decoded, so a slow or undecodable clip degrades
+ * to the placeholder instead of a black box. Metadata-only preload keeps five
+ * open rows cheap.
+ */
+function ExerciseThumb({ exercise }: { exercise: Exercise }) {
+  const [loaded, setLoaded] = useState(false);
+  const raw = exercise.videoLinks?.[0];
+  const url = raw ? transformVideoUrl(raw) : '';
+
+  return (
+    <span
+      aria-hidden="true"
+      className="relative flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-surface-subtle"
+    >
+      <Dumbbell className="h-5 w-5 text-ink-subtle" />
+      {url && (
+        <video
+          src={url}
+          muted
+          playsInline
+          preload="metadata"
+          tabIndex={-1}
+          onLoadedData={() => setLoaded(true)}
+          className={
+            'absolute inset-0 h-full w-full object-cover transition-opacity duration-smooth ' +
+            (loaded ? 'opacity-100' : 'opacity-0')
+          }
+        />
+      )}
+    </span>
+  );
 }
 
 interface ExerciseQuickAddProps {
@@ -158,15 +195,16 @@ export const ExerciseQuickAdd: React.FC<ExerciseQuickAddProps> = ({
                   // Keep focus in the input so its blur doesn't close the list first.
                   onMouseDown={(e) => e.preventDefault()}
                   onClick={() => pick(exercise)}
-                  className="flex min-h-touch-min w-full items-center gap-3 px-4 py-2 text-left text-body-sm text-ink transition-colors duration-snap hover:bg-surface-subtle focus-visible:bg-surface-subtle focus-visible:outline-none"
+                  className="flex min-h-touch-min w-full items-center gap-3 px-4 py-2.5 text-left text-body-sm text-ink transition-colors duration-snap hover:bg-surface-subtle focus-visible:bg-surface-subtle focus-visible:outline-none"
                 >
-                  <PickIcon className="h-4 w-4 shrink-0 text-ink-muted" aria-hidden="true" />
+                  <ExerciseThumb exercise={exercise} />
                   <span className="min-w-0 flex-1">
                     <span className="block truncate font-semibold">{exercise.name}</span>
                     <span className="block truncate text-caption text-ink-muted">
                       {exercise.muscleGroup}
                     </span>
                   </span>
+                  <PickIcon className="h-4 w-4 shrink-0 text-ink-muted" aria-hidden="true" />
                 </button>
               </li>
             ))}
