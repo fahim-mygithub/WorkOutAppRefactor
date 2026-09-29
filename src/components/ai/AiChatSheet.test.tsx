@@ -1,3 +1,4 @@
+import * as React from 'react';
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -15,15 +16,12 @@ function makeClient(turn: AiAssistantTurn): AiChatClient {
 }
 
 describe('AiChatSheet — unavailable / fallback mode', () => {
-  it('shows the graceful unavailable state with the deploy hint when no client', async () => {
+  it('shows the graceful unavailable state without leaking setup details', async () => {
     render(<AiChatSheet open onOpenChange={() => {}} />);
     expect(await screen.findByRole('dialog')).toBeInTheDocument();
     expect(screen.getByText('AI assistant unavailable')).toBeInTheDocument();
-    expect(
-      screen.getByText(
-        /AI assistant needs the \/ai function deployed \+ ANTHROPIC_API_KEY/i,
-      ),
-    ).toBeInTheDocument();
+    expect(screen.getByText("AI isn't available right now.")).toBeInTheDocument();
+    expect(screen.queryByText(/ANTHROPIC_API_KEY/)).not.toBeInTheDocument();
   });
 
   it('labels the submit button "Parse to sets" when unavailable', async () => {
@@ -181,5 +179,89 @@ describe('AiChatSheet — available / backend mode', () => {
   it('does not render when closed', () => {
     render(<AiChatSheet open={false} onOpenChange={() => {}} />);
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('never sends an assistant turn with empty text back to the backend', async () => {
+    const user = userEvent.setup();
+    const sendMessage = vi
+      .fn<AiChatClient['sendMessage']>()
+      .mockResolvedValueOnce({
+        text: '',
+        proposals: [
+          { id: 'tc-1', tool: 'add_exercise', summary: 'Add Squat 5x5', input: {} },
+        ],
+      })
+      .mockResolvedValueOnce({ text: 'Ok.' });
+    render(<AiChatSheet open onOpenChange={() => {}} client={{ sendMessage }} />);
+    await screen.findByRole('dialog');
+    await user.type(screen.getByLabelText('Message'), 'add squat');
+    await user.click(screen.getByRole('button', { name: /send/i }));
+    await screen.findByText('Add Squat 5x5');
+    await user.type(screen.getByLabelText('Message'), 'thanks');
+    await user.click(screen.getByRole('button', { name: /send/i }));
+    await screen.findByText('Ok.');
+
+    const sent = sendMessage.mock.calls[1][0].messages;
+    expect(sent.map((m) => m.role)).toEqual(['user', 'assistant', 'user']);
+    for (const m of sent) expect(m.text.trim().length).toBeGreaterThan(0);
+    expect(sent[1].text).toBe('(proposed changes)');
+  });
+});
+
+describe('AiChatSheet — seed message and notices', () => {
+  it('sends the initial message once on open', async () => {
+    const sendMessage = vi.fn().mockResolvedValue({ text: 'Drop to 205.' });
+    render(
+      <React.StrictMode>
+        <AiChatSheet
+          open
+          onOpenChange={() => {}}
+          client={{ sendMessage }}
+          initialMessage="I missed my last rep"
+        />
+      </React.StrictMode>,
+    );
+    expect(await screen.findByText('Drop to 205.')).toBeInTheDocument();
+    expect(screen.getByText('I missed my last rep')).toBeInTheDocument();
+    expect(sendMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it('waits until the sheet opens before sending the initial message', async () => {
+    const sendMessage = vi.fn().mockResolvedValue({ text: 'Drop to 205.' });
+    const { rerender } = render(
+      <AiChatSheet
+        open={false}
+        onOpenChange={() => {}}
+        client={{ sendMessage }}
+        initialMessage="I missed my last rep"
+      />,
+    );
+    expect(sendMessage).not.toHaveBeenCalled();
+    rerender(
+      <AiChatSheet
+        open
+        onOpenChange={() => {}}
+        client={{ sendMessage }}
+        initialMessage="I missed my last rep"
+      />,
+    );
+    expect(await screen.findByText('Drop to 205.')).toBeInTheDocument();
+    expect(sendMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it('renders applied and discarded notices', async () => {
+    const sendMessage = vi.fn().mockResolvedValue({
+      text: 'Done.',
+      notices: [
+        { id: 'a', text: 'Bench: remaining sets at 205 lb', tone: 'applied' },
+        { id: 'b', text: 'Suggestion discarded: 120 lb is too far from 225 lb.', tone: 'discarded' },
+      ],
+    });
+    const u = userEvent.setup();
+    render(<AiChatSheet open onOpenChange={() => {}} client={{ sendMessage }} />);
+    await u.type(screen.getByLabelText('Message'), 'help');
+    await u.click(screen.getByRole('button', { name: 'Send' }));
+    expect(await screen.findByText(/remaining sets at 205 lb/)).toBeInTheDocument();
+    expect(screen.getByText(/Suggestion discarded/)).toBeInTheDocument();
   });
 });

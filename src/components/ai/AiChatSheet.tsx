@@ -30,7 +30,7 @@ import {
   SheetTitle,
   SheetDescription,
 } from '@/components/ui/sheet';
-import { ArrowUp } from 'lucide-react';
+import { ArrowUp, Check, CircleSlash } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { IconButton } from '@/components/ui/icon-button';
 import { Textarea } from '@/components/ui/textarea';
@@ -59,6 +59,16 @@ export interface AiVisualization {
   spec: unknown;
 }
 
+/**
+ * A short line under the assistant prose saying what happened to a tool call:
+ * applied on its own (auto tier) or discarded (failed the engine's checks).
+ */
+export interface AiNotice {
+  id: string;
+  text: string;
+  tone: 'applied' | 'discarded';
+}
+
 /** One assistant turn returned by the AI Worker. */
 export interface AiAssistantTurn {
   /** Free-text assistant prose (may be empty if it only emitted tool-calls). */
@@ -67,6 +77,8 @@ export interface AiAssistantTurn {
   proposals?: AiToolProposal[];
   /** Visualization tool-calls -> read-only render. */
   visualizations?: AiVisualization[];
+  /** Applied / discarded notices -> small lines under the prose. */
+  notices?: AiNotice[];
 }
 
 /**
@@ -95,6 +107,7 @@ export interface AiChatMessage {
   text: string;
   proposals?: AiToolProposal[];
   visualizations?: AiVisualization[];
+  notices?: AiNotice[];
 }
 
 export interface AiChatSheetProps {
@@ -126,6 +139,11 @@ export interface AiChatSheetProps {
   onFallbackParse?: (workout: ParsedWorkout, rawText: string) => void;
   /** Optional renderer for visualization tool-calls (charts). */
   renderVisualization?: (viz: AiVisualization) => React.ReactNode;
+  /**
+   * A first message to send on the user's behalf when the sheet opens with an
+   * empty transcript (e.g. "I missed my last rep" from Ask coach). Sent once.
+   */
+  initialMessage?: string;
   className?: string;
 }
 
@@ -135,8 +153,24 @@ function nextId(prefix: string): string {
   return `${prefix}-${_idSeq}`;
 }
 
-const FALLBACK_HINT =
-  'AI assistant needs the /ai function deployed + ANTHROPIC_API_KEY';
+const FALLBACK_HINT = "AI isn't available right now.";
+
+/**
+ * The Worker rejects chat messages with empty content, and an assistant turn
+ * can be empty when it only emitted tool calls. Give those turns a short
+ * placeholder so the history keeps its user/assistant alternation.
+ */
+function toBackendHistory(messages: AiChatMessage[]): AiChatMessage[] {
+  return messages.map((m) => {
+    if (m.text.trim().length > 0) return m;
+    const text = m.proposals?.length
+      ? '(proposed changes)'
+      : m.visualizations?.length
+        ? '(showed a chart)'
+        : '(no reply)';
+    return { ...m, text };
+  });
+}
 
 export function AiChatSheet({
   open,
@@ -147,6 +181,7 @@ export function AiChatSheet({
   onRejectProposal,
   onFallbackParse,
   renderVisualization,
+  initialMessage,
   className,
 }: AiChatSheetProps) {
   const isAvailable = available ?? client != null;
@@ -196,7 +231,9 @@ export function AiChatSheet({
       setPending(true);
       setError(null);
       try {
-        const turn = await client.sendMessage({ messages: history });
+        const turn = await client.sendMessage({
+          messages: toBackendHistory(history),
+        });
         setMessages((prev) => [
           ...prev,
           {
@@ -205,6 +242,7 @@ export function AiChatSheet({
             text: turn.text,
             proposals: turn.proposals,
             visualizations: turn.visualizations,
+            notices: turn.notices,
           },
         ]);
       } catch (err) {
@@ -217,6 +255,21 @@ export function AiChatSheet({
     },
     [client, messages],
   );
+
+  // Send the seed once per opening. The ref guards StrictMode's double effect;
+  // it resets on close so a later opening with a fresh transcript can seed.
+  const seedSentRef = React.useRef(false);
+  React.useEffect(() => {
+    if (!open) {
+      seedSentRef.current = false;
+      return;
+    }
+    const seed = initialMessage?.trim();
+    if (seedSentRef.current || !seed || !isAvailable || !client) return;
+    if (messages.length > 0) return;
+    seedSentRef.current = true;
+    void sendToBackend(seed);
+  }, [open, initialMessage, isAvailable, client, messages.length, sendToBackend]);
 
   const runFallbackParse = React.useCallback(
     (text: string) => {
@@ -275,7 +328,7 @@ export function AiChatSheet({
                   AI assistant unavailable
                 </p>
                 <p className="mt-1 text-body-sm text-ink-muted">
-                  {FALLBACK_HINT}.
+                  {FALLBACK_HINT}
                 </p>
                 <p className="mt-2 text-body-sm text-ink-muted">
                   You can still type a workout in freeform (e.g.{' '}
@@ -301,6 +354,31 @@ export function AiChatSheet({
                 >
                   {msg.text}
                 </div>
+              ) : null}
+
+              {/* What happened to auto-applied / discarded tool calls. */}
+              {msg.notices?.length ? (
+                <ul className="space-y-1">
+                  {msg.notices.map((notice) => (
+                    <li
+                      key={notice.id}
+                      data-tone={notice.tone}
+                      className={cn(
+                        'flex items-start gap-1.5 text-caption',
+                        notice.tone === 'applied'
+                          ? 'text-accent-2'
+                          : 'text-ink-muted',
+                      )}
+                    >
+                      {notice.tone === 'applied' ? (
+                        <Check className="mt-px h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                      ) : (
+                        <CircleSlash className="mt-px h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                      )}
+                      <span>{notice.text}</span>
+                    </li>
+                  ))}
+                </ul>
               ) : null}
 
               {/* Mutation tool-calls -> Apply/Reject cards. */}
