@@ -7,7 +7,7 @@
  *
  * Prints a pass/fail table and a summary; always exits 0 (informational).
  */
-import { compareLift, compareTools, type LiftExpectation } from '../src/evalCompare';
+import { compareLift, compareTools, type LiftExpectation, type ToolExpectation } from '../src/evalCompare';
 import { handleChat, handleReadLift, makeClient } from '../src/handlers';
 import { chatContextSchema } from '../src/schemas';
 import liftEntries from './lift-entries.json';
@@ -18,13 +18,11 @@ interface LiftCase {
   expect: LiftExpectation;
 }
 
-interface ChatCase {
+interface ChatCase extends ToolExpectation {
   name: string;
   /** Key into `contexts`. */
   context: string;
   message: string;
-  expectTools?: string[];
-  forbidTools?: string[];
 }
 
 interface Row {
@@ -61,7 +59,7 @@ async function runChatCases(client: ReturnType<typeof makeClient>): Promise<Row[
       const context = chatContextSchema.parse(contexts[c.context]);
       const result = await handleChat(client, [{ role: 'user', content: c.message }], context);
       const called = result.toolCalls.map((t) => t.name);
-      const diffs = compareTools(called, c.expectTools, c.forbidTools);
+      const diffs = compareTools(called, c);
       const tail = `called [${called.join(', ')}]`;
       rows.push({ name, pass: diffs.length === 0, diff: diffs.length ? `${diffs.join('; ')}; ${tail}` : tail });
     } catch (err) {

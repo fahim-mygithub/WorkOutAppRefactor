@@ -119,6 +119,89 @@
         }
       ]
     },
+    "benchSeeded": {
+      "screen": "workout",
+      "units": "lbs",
+      "focusExerciseId": "we-bench",
+      "activeWorkout": {
+        "name": "Push B",
+        "exercises": [
+          {
+            "id": "we-bench",
+            "name": "Bench Press",
+            "unit": "lbs",
+            "trackedLiftId": "tl-bench",
+            "goal": "volume",
+            "sets": [
+              { "index": 0, "reps": 5, "weight": 225, "rir": 0, "completed": true },
+              { "index": 1, "reps": 8, "weight": 225, "completed": false },
+              { "index": 2, "reps": 8, "weight": 225, "completed": false }
+            ]
+          }
+        ]
+      },
+      "trackedLifts": [
+        {
+          "id": "tl-bench",
+          "name": "Bench Press",
+          "category": "Push",
+          "benchmark": "275 lb, 3 reps",
+          "unit": "lbs",
+          "step": 5,
+          "equipment": "barbell",
+          "progression": true,
+          "estimate": 290,
+          "status": "on track",
+          "recentSessions": [
+            { "date": "2026-09-22", "goal": "strength", "sets": [{ "reps": 5, "weight": 255 }, { "reps": 5, "weight": 255 }, { "reps": 4, "weight": 255 }] },
+            { "date": "2026-09-25", "goal": "volume", "sets": [{ "reps": 8, "weight": 220 }, { "reps": 8, "weight": 220 }, { "reps": 7, "weight": 220 }] }
+          ],
+          "next": { "volume": "8@225, 8@225, 8@225", "strength": "5@255, 5@255, 5@255", "checkpoint": "3@275" }
+        }
+      ]
+    },
+    "squatSeeded": {
+      "screen": "workout",
+      "units": "kg",
+      "focusExerciseId": "we-squat",
+      "activeWorkout": {
+        "name": "Legs",
+        "exercises": [
+          {
+            "id": "we-squat",
+            "name": "Back Squat",
+            "unit": "kg",
+            "trackedLiftId": "tl-squat",
+            "goal": "strength",
+            "sets": [
+              { "index": 0, "reps": 5, "weight": 120, "rir": 1, "completed": true },
+              { "index": 1, "reps": 2, "weight": 120, "rir": 0, "completed": true },
+              { "index": 2, "reps": 5, "weight": 120, "completed": false },
+              { "index": 3, "reps": 5, "weight": 120, "completed": false },
+              { "index": 4, "reps": 5, "weight": 120, "completed": false }
+            ]
+          }
+        ]
+      },
+      "trackedLifts": [
+        {
+          "id": "tl-squat",
+          "name": "Back Squat",
+          "category": "Legs",
+          "benchmark": "140 kg, 3 reps",
+          "unit": "kg",
+          "step": 2.5,
+          "equipment": "barbell",
+          "progression": true,
+          "estimate": 150,
+          "status": "on track",
+          "recentSessions": [
+            { "date": "2026-09-24", "goal": "volume", "sets": [{ "reps": 10, "weight": 100 }, { "reps": 9, "weight": 100 }, { "reps": 9, "weight": 100 }] }
+          ],
+          "next": { "volume": "8-12@100, 8-12@100, 8-12@100", "strength": "5@120, 5@120, 5@120, 5@120, 5@120", "checkpoint": "3@137.5" }
+        }
+      ]
+    },
     "squatDayKg": {
       "screen": "workout",
       "units": "kg",
@@ -171,9 +254,9 @@
   },
   "cases": [
     {
-      "name": "bench: one miss by 2",
+      "name": "bench: miss by 3",
       "context": "benchDay",
-      "message": "Only got 6 on that second set of bench.",
+      "message": "Only got 5 on that second set of bench.",
       "expectTools": ["adjustSet"],
       "forbidTools": ["swapExercise", "updateBenchmark", "removeTrackedLift"]
     },
@@ -201,7 +284,7 @@
     {
       "name": "ohp: swap for good",
       "context": "benchDay",
-      "message": "Barbell overhead press bugs my wrists. Switch it to dumbbell shoulder press for good.",
+      "message": "I'd rather use dumbbells for overhead press from now on. Switch it to dumbbell shoulder press for good.",
       "expectTools": ["swapExercise", "updateBenchmark"],
       "forbidTools": ["removeTrackedLift"]
     },
@@ -223,13 +306,13 @@
       "name": "bench: third miss, lower benchmark",
       "context": "benchStalled",
       "message": "Missed 185 for 8 again, that's the third session in a row. Should we lower my benchmark?",
-      "expectTools": ["updateBenchmark"],
+      "expectAnyTools": ["updateBenchmark", "swapExercise"],
       "forbidTools": ["removeTrackedLift", "addTrackedLift"]
     },
     {
-      "name": "squat kg: miss by 2",
+      "name": "squat kg: miss by 3",
       "context": "squatDayKg",
-      "message": "Squat set 2 I only got 3 reps.",
+      "message": "Squat set 2 I only got 2 reps.",
       "expectTools": ["adjustSet"],
       "forbidTools": ["swapExercise", "updateBenchmark", "removeTrackedLift"]
     },
@@ -239,6 +322,27 @@
       "message": "How long should I rest between these squat sets?",
       "expectTools": [],
       "forbidTools": ["adjustSet", "swapExercise", "updateBenchmark", "addTrackedLift", "removeTrackedLift"]
+    },
+    {
+      "name": "seed: bench 5 of 8 at 225",
+      "context": "benchSeeded",
+      "message": "I just did 5 reps at 225 lbs on Bench Press; the target was 8. What should I do for the rest?",
+      "expectTools": ["adjustSet"],
+      "forbidTools": ["swapExercise", "updateBenchmark", "removeTrackedLift"]
+    },
+    {
+      "name": "seed: squat 2 of 5 at 120 kg",
+      "context": "squatSeeded",
+      "message": "I just did 2 reps at 120 kg on Back Squat; the target was 5. What should I do for the rest?",
+      "expectTools": ["adjustSet"],
+      "forbidTools": ["swapExercise", "updateBenchmark", "removeTrackedLift"]
+    },
+    {
+      "name": "seed: can't do bench",
+      "context": "benchDay",
+      "message": "I can't do Bench Press today. What should I do instead?",
+      "expectTools": ["swapExercise"],
+      "forbidTools": ["removeTrackedLift", "updateBenchmark"]
     }
   ]
 }

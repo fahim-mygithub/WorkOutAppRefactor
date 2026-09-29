@@ -36,17 +36,30 @@ describe('compareLift', () => {
 
 describe('compareTools', () => {
   it('passes when every expected tool is called and no forbidden one is', () => {
-    expect(compareTools(['adjustSet', 'logSet'], ['adjustSet'], ['swapExercise'])).toEqual([]);
+    expect(
+      compareTools(['adjustSet', 'logSet'], { expectTools: ['adjustSet'], forbidTools: ['swapExercise'] }),
+    ).toEqual([]);
   });
 
   it('reports missing and forbidden tools', () => {
-    expect(compareTools(['swapExercise'], ['adjustSet'], ['swapExercise'])).toEqual([
-      'missing adjustSet',
-      'forbidden swapExercise',
-    ]);
+    expect(
+      compareTools(['swapExercise'], { expectTools: ['adjustSet'], forbidTools: ['swapExercise'] }),
+    ).toEqual(['missing adjustSet', 'forbidden swapExercise']);
+  });
+
+  it('expectAnyTools passes when at least one listed tool is called', () => {
+    const any = { expectAnyTools: ['updateBenchmark', 'swapExercise'] };
+    expect(compareTools(['swapExercise'], any)).toEqual([]);
+    expect(compareTools(['updateBenchmark', 'swapExercise'], any)).toEqual([]);
+    expect(compareTools(['adjustSet'], any)).toEqual(['missing any of updateBenchmark|swapExercise']);
+    expect(compareTools([], any)).toHaveLength(1);
+  });
+
+  it('ignores an empty expectAnyTools', () => {
+    expect(compareTools([], { expectAnyTools: [] })).toEqual([]);
   });
 
   it('defaults to no expectations', () => {
-    expect(compareTools([])).toEqual([]);
+    expect(compareTools([], {})).toEqual([]);
   });
 });

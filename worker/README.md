@@ -30,7 +30,7 @@ ANTHROPIC_API_KEY=sk-ant-... npm --prefix worker run eval
 
 Only the fields listed in each case's `expect` are compared (numbers exactly,
 strings case-insensitively; `"question": true` means a clarifying question was
-asked). Chat cases pass when every `expectTools` name is called and no
-`forbidTools` name is. Chat cases name a shared context from the `contexts`
+asked). Chat cases pass when every `expectTools` name is called, at least
+one `expectAnyTools` name is (when given), and no `forbidTools` name is. Chat cases name a shared context from the `contexts`
 map in the same file. Without the key the runner prints a note and exits;
 it always exits 0 and never runs in `npm test` or CI.

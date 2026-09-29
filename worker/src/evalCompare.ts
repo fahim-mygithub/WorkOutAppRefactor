@@ -29,15 +29,23 @@ export function compareLift(expect: LiftExpectation, actual: Record<string, unkn
   return diffs;
 }
 
-/** Differences for a chat case: every expected tool must be called, no
- *  forbidden tool may be. Empty = pass. */
-export function compareTools(
-  called: readonly string[],
-  expectTools: readonly string[] = [],
-  forbidTools: readonly string[] = [],
-): string[] {
+export interface ToolExpectation {
+  /** Every one of these must be called. */
+  expectTools?: readonly string[];
+  /** At least one of these must be called (when non-empty). */
+  expectAnyTools?: readonly string[];
+  /** None of these may be called. */
+  forbidTools?: readonly string[];
+}
+
+/** Differences for a chat case; empty = pass. */
+export function compareTools(called: readonly string[], expect: ToolExpectation): string[] {
+  const { expectTools = [], expectAnyTools = [], forbidTools = [] } = expect;
   const diffs: string[] = [];
   for (const name of expectTools) if (!called.includes(name)) diffs.push(`missing ${name}`);
+  if (expectAnyTools.length && !expectAnyTools.some((name) => called.includes(name))) {
+    diffs.push(`missing any of ${expectAnyTools.join('|')}`);
+  }
   for (const name of forbidTools) if (called.includes(name)) diffs.push(`forbidden ${name}`);
   return diffs;
 }
