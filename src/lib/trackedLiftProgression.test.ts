@@ -252,4 +252,12 @@ describe('fractional and invalid steps', () => {
     expect(roundLoad(226, 'lb', NaN)).toBe(225);
     expect(roundLoad(226, 'lb', Infinity)).toBe(225);
   });
+  it('keeps the checkpoint attempt on the step (no float artefacts)', () => {
+    const tiny: TrackedLift = {
+      id: 'tiny', name: 'Finger curl', category: 'Grip', progression: true, step: 0.1,
+      load: { kind: 'weight', value: 0.7, unit: 'kg' },
+      target: { kind: 'repMax', reps: 1 },
+    };
+    expect(prescribe(tiny, 'checkpoint').sets.at(-1)?.weight).toBe(0.8);
+  });
 });

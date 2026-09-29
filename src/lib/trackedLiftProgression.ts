@@ -179,7 +179,7 @@ export function prescribe(lift: TrackedLift, goal: SessionGoal): TrackedParsedEx
     const bench = benchmarkE1RM(lift);
     const attempt = Math.max(
       at(ATTEMPT_FRACTION),
-      bench != null ? roundLoad(bench, load.unit, lift.step) + step : 0,
+      bench != null ? roundLoad(roundLoad(bench, load.unit, lift.step) + step, load.unit, lift.step) : 0,
     );
     const top = attempt / ATTEMPT_FRACTION;
     return {
