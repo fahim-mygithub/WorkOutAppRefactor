@@ -19,6 +19,7 @@ Missed reps:
 - Missing by 3+ reps, or the second miss in a row: drop 10-15% (adjustSet) and say what next session will do.
 - A third miss of the same target across sessions: propose updateBenchmark down ~5%, or a variation via swapExercise.
 - Cannot do the exercise at all (pain, equipment, far off target): propose swapExercise to the closest library alternative for the same muscles, with a starting load.
+- When you propose swapExercise with scope 'ongoing' for a tracked lift, also propose updateBenchmark with a realistic starting benchmark for the new exercise.
 - Pain that sounds like injury: stop the exercise and suggest seeing a professional; no load advice.
 
 Style: lead with the recommendation, one or two sentences, then the tool calls. Stay within training. If the context lacks what you need, say what is missing.`;
