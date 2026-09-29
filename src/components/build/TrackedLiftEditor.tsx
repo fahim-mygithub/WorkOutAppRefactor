@@ -1,4 +1,4 @@
-import { useEffect, useId, useState, type ReactNode } from 'react';
+import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import type {
   TrackedLift,
   TrackedLoad,
@@ -178,27 +178,39 @@ const num = (v: number | null | undefined): string | null =>
   typeof v === 'number' && Number.isFinite(v) && v > 0 ? String(v) : null;
 const text = (v: string | null | undefined): string | null => (typeof v === 'string' && v.trim() ? v.trim() : null);
 
-/** Merge a "Describe it" result into the form: what it read wins, the rest is kept. */
+/**
+ * Merge a "Describe it" result into the form. A reading never mixes with stale
+ * values: when it names a load kind, the load fields (weight, unit, level,
+ * step) are rebuilt from it — blank unless given, the unit kept if omitted —
+ * and likewise the target fields when it names a target kind. Name, sets and
+ * equipment take the reading when present and are kept otherwise.
+ */
 function applyReadLift(f: FormState, r: ReadLiftResult): FormState {
-  const targetKind = TARGET_KINDS.includes(r.targetKind) ? r.targetKind : f.targetKind;
-  const reps = num(r.reps);
-  return {
+  const next: FormState = {
     ...f,
     name: text(r.name) ?? f.name,
-    loadKind: LOAD_KINDS.includes(r.loadKind) ? r.loadKind : f.loadKind,
-    weight: num(r.weight) ?? f.weight,
-    unit: r.unit === 'lb' || r.unit === 'kg' ? r.unit : f.unit,
-    level: text(r.level) ?? f.level,
-    targetKind,
-    repsMin: targetKind === 'reps' && reps ? reps : f.repsMin,
-    repsMax: num(r.repsMax) ?? f.repsMax,
-    repMax: targetKind === 'repMax' && reps ? reps : f.repMax,
-    seconds: num(r.seconds) ?? f.seconds,
-    tempo: text(r.tempo) ?? f.tempo,
     sets: num(r.sets) ?? f.sets,
-    step: num(r.step) ?? f.step,
     equipment: r.equipment ?? f.equipment,
   };
+
+  if (LOAD_KINDS.includes(r.loadKind)) {
+    next.loadKind = r.loadKind;
+    next.weight = num(r.weight) ?? '';
+    next.unit = r.unit === 'lb' || r.unit === 'kg' ? r.unit : f.unit;
+    next.level = text(r.level) ?? '';
+    next.step = num(r.step) ?? '';
+  }
+
+  if (TARGET_KINDS.includes(r.targetKind)) {
+    const reps = num(r.reps);
+    next.targetKind = r.targetKind;
+    next.repsMin = r.targetKind === 'reps' ? reps ?? '' : '';
+    next.repsMax = r.targetKind === 'reps' ? num(r.repsMax) ?? '' : '';
+    next.repMax = r.targetKind === 'repMax' ? reps ?? '' : '';
+    next.seconds = r.targetKind === 'time' ? num(r.seconds) ?? '' : '';
+    next.tempo = r.targetKind === 'time' ? text(r.tempo) ?? '' : '';
+  }
+  return next;
 }
 
 // --- small local controls ----------------------------------------------------
@@ -286,11 +298,24 @@ export function TrackedLiftEditor({
   const fallbackCategory = defaultCategory ?? categories[0] ?? NEW_CATEGORY;
   const [form, setForm] = useState<FormState>(() => toForm(lift, fallbackCategory, defaultUnit));
 
+  // Each open is a new generation; a "Describe it" reply from an older one is dropped.
+  const [generation, setGeneration] = useState(0);
+  const currentGeneration = useRef(0);
+
   // Reset the form each time the sheet opens for a (possibly different) lift.
   useEffect(() => {
-    if (open) setForm(toForm(lift, fallbackCategory, defaultUnit));
+    if (open) {
+      setForm(toForm(lift, fallbackCategory, defaultUnit));
+      currentGeneration.current += 1;
+      setGeneration(currentGeneration.current);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, lift]);
+
+  const applyDescription = (r: ReadLiftResult) => {
+    if (generation !== currentGeneration.current) return;
+    setForm((f) => applyReadLift(f, r));
+  };
 
   const set = <K extends keyof FormState>(key: K, value: FormState[K]) =>
     setForm((f) => ({ ...f, [key]: value }));
@@ -328,7 +353,7 @@ export function TrackedLiftEditor({
             if (parsed) onSave(parsed);
           }}
         >
-          <LiftDescribeField onResult={(r) => setForm((f) => applyReadLift(f, r))} />
+          <LiftDescribeField key={generation} onResult={applyDescription} />
 
           {/* Searches the exercise library like the Build tab; any typed name still works. */}
           <ExerciseQuickAdd

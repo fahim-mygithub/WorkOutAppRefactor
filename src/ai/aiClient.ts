@@ -230,3 +230,8 @@ export function isBackendAvailable(deps?: AiClientDeps): boolean {
   const d = { ...defaults(), ...deps };
   return !isOffline() && Boolean(d.url);
 }
+
+/** Whether a Firebase user is signed in (AI actions need an ID token). */
+export function isSignedIn(): boolean {
+  return auth.currentUser !== null;
+}

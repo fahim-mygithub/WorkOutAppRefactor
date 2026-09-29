@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { act, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Provider } from 'react-redux';
 import { configureStore } from '@reduxjs/toolkit';
@@ -8,6 +8,7 @@ import user from '../../store/slices/userSlice';
 import { TrackedLifts } from './TrackedLifts';
 import { useTrackedLiftsSync } from '../../hooks/useTrackedLiftsSync';
 import * as aiClient from '../../ai/aiClient';
+import { resetDescribeFieldSession } from './LiftDescribeField';
 
 /** AppShell mounts the sync hook app-wide; stand in for it here. */
 function WithSync(props: React.ComponentProps<typeof TrackedLifts>) {
@@ -182,7 +183,11 @@ describe('TrackedLiftEditor — Weight step', () => {
 });
 
 describe('TrackedLiftEditor — Describe it', () => {
-  beforeEach(() => localStorage.clear());
+  beforeEach(() => {
+    localStorage.clear();
+    resetDescribeFieldSession();
+    vi.spyOn(aiClient, 'isSignedIn').mockReturnValue(true);
+  });
   afterEach(() => vi.restoreAllMocks());
 
   async function openAdd() {
@@ -286,4 +291,99 @@ describe('TrackedLiftEditor — Describe it', () => {
     await describeIt(u, dialog, 'squat');
     await vi.waitFor(() => expect(within(dialog).queryByLabelText('Describe it')).not.toBeInTheDocument());
   });
+  const ready = () => vi.spyOn(aiClient, 'isBackendAvailable').mockReturnValue(true);
+  const reading = (r: Partial<aiClient.ReadLiftResult>) =>
+    vi.spyOn(aiClient, 'readLiftEntry').mockResolvedValue({
+      name: '', loadKind: 'weight', targetKind: 'reps', question: null, ...r,
+    } as aiClient.ReadLiftResult);
+
+  async function openRow(u: ReturnType<typeof userEvent.setup>, name: RegExp) {
+    await u.click(await screen.findByRole('button', { name }));
+    return screen.findByRole('dialog');
+  }
+
+  it('is hidden when nobody is signed in', async () => {
+    ready();
+    vi.spyOn(aiClient, 'isSignedIn').mockReturnValue(false);
+    const { dialog } = await openAdd();
+    expect(within(dialog).queryByLabelText('Describe it')).not.toBeInTheDocument();
+  });
+
+  it('stays hidden for the session after not-allowed, across close and reopen', async () => {
+    ready();
+    vi.spyOn(aiClient, 'readLiftEntry').mockRejectedValue(new aiClient.AiBackendError('x', 'not-allowed'));
+    const { u, dialog } = await openAdd();
+    await describeIt(u, dialog, 'squat');
+    await vi.waitFor(() => expect(within(dialog).queryByLabelText('Describe it')).not.toBeInTheDocument());
+    await u.keyboard('{Escape}');
+    await vi.waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    const again = await openRow(u, /^Seal Row/);
+    expect(within(again).queryByLabelText('Describe it')).not.toBeInTheDocument();
+  });
+
+  it('rebuilds the target: 3x5 over an 8-12 range leaves no max', async () => {
+    ready();
+    reading({ name: 'Lunge', loadKind: 'weight', weight: 50, targetKind: 'reps', reps: 5, sets: 3 });
+    const { u, dialog } = await openAdd();
+    await u.type(within(dialog).getByLabelText('Reps'), '8');
+    await u.type(within(dialog).getByLabelText('Up to (optional)'), '12');
+    await describeIt(u, dialog, 'lunge 50 3x5');
+    await within(dialog).findByText(/check and save/i);
+    expect(within(dialog).getByLabelText('Reps')).toHaveValue('5');
+    expect(within(dialog).getByLabelText('Up to (optional)')).toHaveValue('');
+  });
+
+  it('rebuilds the load: a bodyweight result over a weighted lift has no added weight', async () => {
+    ready();
+    reading({ name: 'Pull-up', loadKind: 'bodyweight', targetKind: 'reps', reps: 10 });
+    const u = userEvent.setup();
+    renderList();
+    const dialog = await openRow(u, /^Seal Row/);
+    await describeIt(u, dialog, 'pull-ups for 10');
+    await within(dialog).findByText(/check and save/i);
+    expect(within(dialog).getByLabelText('Added weight (optional)')).toHaveValue('');
+  });
+
+  it('rebuilds the load: a level result clears the weight and step', async () => {
+    ready();
+    reading({ name: 'Band row', loadKind: 'level', level: 'Band: red', targetKind: 'reps', reps: 15 });
+    const u = userEvent.setup();
+    renderList();
+    const dialog = await openRow(u, /^Seal Row/);
+    await u.type(within(dialog).getByLabelText('Weight step'), '10');
+    await describeIt(u, dialog, 'red band rows 15');
+    await within(dialog).findByText(/check and save/i);
+    expect(within(dialog).getByLabelText('Progression step')).toHaveValue('Band: red');
+    await u.click(within(dialog).getByRole('radio', { name: 'Weight' }));
+    expect(within(dialog).getByLabelText('Weight')).toHaveValue('');
+    expect(within(dialog).getByLabelText('Weight step')).toHaveValue('');
+  });
+
+  it('ignores a reply that lands after the sheet closed and reopened for another lift', async () => {
+    ready();
+    let resolve!: (r: aiClient.ReadLiftResult) => void;
+    vi.spyOn(aiClient, 'readLiftEntry').mockReturnValue(new Promise((res) => (resolve = res)));
+    const { u, dialog } = await openAdd();
+    await describeIt(u, dialog, 'front squat 250 for 3x5');
+    await u.keyboard('{Escape}');
+    await vi.waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    const again = await openRow(u, /^Seal Row/);
+    await act(async () => {
+      resolve({ name: 'Front Squat', loadKind: 'weight', weight: 250, unit: 'lb', targetKind: 'reps', reps: 5, question: null });
+    });
+    expect(within(again).getByLabelText('Lift')).toHaveValue('Seal Row');
+    expect(within(again).getByLabelText('Weight')).toHaveValue('160');
+    expect(within(again).queryByText(/check and save/i)).not.toBeInTheDocument();
+  });
+
+  it('clears the note when the description changes', async () => {
+    ready();
+    reading({ name: 'Squat', weight: 200, reps: 5 });
+    const { u, dialog } = await openAdd();
+    await describeIt(u, dialog, 'squat 200x5');
+    await within(dialog).findByText(/check and save/i);
+    await u.type(within(dialog).getByLabelText('Describe it'), '!');
+    expect(within(dialog).queryByText(/check and save/i)).not.toBeInTheDocument();
+  });
 });
+
