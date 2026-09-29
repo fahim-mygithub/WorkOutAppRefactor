@@ -28,13 +28,13 @@ import { z } from 'zod';
  *  updateBenchmark, addTrackedLift and the readLift action. */
 export const flatLiftFields = {
   loadKind: z.enum(['weight', 'bodyweight', 'level']).describe('How the lift is loaded.'),
-  weight: z.number().positive().optional().describe('Load (weight) or added load (bodyweight).'),
+  weight: z.number().positive().finite().optional().describe('Load (weight) or added load (bodyweight).'),
   unit: z.enum(['lb', 'kg']).optional().describe('Unit for weight.'),
   level: z.string().optional().describe('Named step for level loads, e.g. "Med ball 6 kg", "Band: red", "Pin 12".'),
   targetKind: z.enum(['reps', 'repMax', 'time', 'none']).describe('What the benchmark measures.'),
   reps: z.number().int().positive().optional().describe('Reps (reps target: minimum; repMax: N).'),
   repsMax: z.number().int().positive().optional().describe('Top of a rep range.'),
-  seconds: z.number().positive().optional().describe('Hold time for time targets.'),
+  seconds: z.number().positive().finite().optional().describe('Hold time for time targets.'),
   tempo: z.string().optional().describe('Tempo such as "3-1-3".'),
 };
 

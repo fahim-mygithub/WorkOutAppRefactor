@@ -8,7 +8,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { aiRequestSchema, type AiRequest } from './schemas';
 import { AiError, errorResponse, json } from './errors';
 import { isAllowed, takeDailySlot, verifyIdToken } from './access';
-import { assertContextSize, handleChat, handleParse, makeClient } from './handlers';
+import { assertContextSize, handleChat, handleParse, handleReadLift, makeClient } from './handlers';
 
 /** Largest request body accepted (characters). */
 const MAX_BODY_CHARS = 1_000_000;
@@ -41,6 +41,8 @@ const defaultDeps: Deps = {
       const req = d as Extract<AiRequest, { action: 'chat' }>;
       return handleChat(c, req.messages, req.context);
     },
+    readLift: (d, c) =>
+      handleReadLift(c, (d as Extract<AiRequest, { action: 'readLift' }>).text).then((result) => ({ result })),
   },
 };
 

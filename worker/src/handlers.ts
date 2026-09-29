@@ -5,19 +5,22 @@
  *
  *   parse: free text -> structured sets (FAST_MODEL)
  *   chat:  tool-use; tool calls are validated and returned, never applied here.
+ *   readLift: a described lift -> one tracked-lift entry (FAST_MODEL)
  *
  * Both put the system prompt behind cache_control so the prefix is cached.
  */
 import Anthropic from '@anthropic-ai/sdk';
 import { AiError } from './errors';
 import { FAST_MODEL, SMART_MODEL } from './models';
-import { CHAT_SYSTEM_PROMPT, PARSE_SYSTEM_PROMPT } from './prompts';
+import { CHAT_SYSTEM_PROMPT, PARSE_SYSTEM_PROMPT, READ_LIFT_SYSTEM_PROMPT } from './prompts';
 import {
   parseOutputJsonSchema,
   parseResultSchema,
+  readLiftResultSchema,
   type ChatContext,
   type ChatMessage,
   type ParseResult,
+  type ReadLiftResult,
 } from './schemas';
 import { buildToolDefs, toolValidators, type ToolName } from './tools';
 
@@ -81,6 +84,40 @@ export async function handleParse(client: Anthropic, text: string): Promise<Pars
   if (!result.success) {
     console.warn('parse output failed schema validation', JSON.stringify(result.error.issues));
     throw new AiError('internal', 'Parse output did not match the expected schema.');
+  }
+  return result.data;
+}
+
+// ---------------------------------------------------------------------------
+// readLift action
+// ---------------------------------------------------------------------------
+
+/** Drop top-level null values: the model often writes `weight: null` for a
+ *  field it does not know, which the shared lift fields treat as absent. */
+function withoutNulls(raw: unknown): unknown {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return raw;
+  return Object.fromEntries(Object.entries(raw).filter(([, v]) => v !== null));
+}
+
+export async function handleReadLift(client: Anthropic, text: string): Promise<ReadLiftResult> {
+  const response = await client.messages.create({
+    model: FAST_MODEL,
+    max_tokens: 512,
+    system: [{ type: 'text', text: READ_LIFT_SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } }],
+    messages: [{ role: 'user', content: text }],
+  });
+  const block = response.content.find((b) => b.type === 'text');
+  if (!block || block.type !== 'text') throw new AiError('internal', 'No reply.');
+  let raw: unknown;
+  try {
+    raw = JSON.parse(extractJson(block.text));
+  } catch {
+    throw new AiError('internal', 'Reply was not JSON.');
+  }
+  const result = readLiftResultSchema.safeParse(withoutNulls(raw));
+  if (!result.success) {
+    console.warn('readLift output failed schema validation', JSON.stringify(result.error.issues));
+    throw new AiError('internal', 'Reply did not match the lift schema.');
   }
   return result.data;
 }

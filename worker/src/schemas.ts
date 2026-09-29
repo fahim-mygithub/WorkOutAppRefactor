@@ -3,6 +3,7 @@
  * output of the `parse` action.
  */
 import { z } from 'zod';
+import { flatLiftFields } from './tools';
 
 const WeightUnit = z.enum(['lbs', 'kg']);
 
@@ -83,9 +84,32 @@ export const chatRequestSchema = z.object({
   context: chatContextSchema.optional(),
 });
 
+// ---------------------------------------------------------------------------
+// readLift action — a described lift -> one tracked-lift entry (Haiku 4.5)
+// ---------------------------------------------------------------------------
+
+export const readLiftRequestSchema = z.object({
+  action: z.literal('readLift'),
+  text: z.string().min(1).max(500),
+});
+
+export const readLiftResultSchema = z.object({
+  name: z.string(),
+  ...flatLiftFields,
+  sets: z.number().int().min(1).max(10).nullable().optional(),
+  rir: z.number().int().min(0).max(5).nullable().optional(),
+  equipment: z.enum(['barbell', 'dumbbell', 'machine', 'cable', 'bodyweight', 'band', 'other']).nullable().optional(),
+  /** Load increment; capped so an absurd model step never reaches the engine. */
+  step: z.number().positive().max(50).finite().nullable().optional(),
+  question: z.string().nullable().optional(),
+});
+
+export type ReadLiftResult = z.infer<typeof readLiftResultSchema>;
+
 export const aiRequestSchema = z.discriminatedUnion('action', [
   parseRequestSchema,
   chatRequestSchema,
+  readLiftRequestSchema,
 ]);
 
 export type AiRequest = z.infer<typeof aiRequestSchema>;
