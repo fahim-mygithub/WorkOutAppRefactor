@@ -21,8 +21,8 @@ passes through the engine before it lands.
   and timed-hold exceptions; per-lift session log.
 - `src/lib/progression/inSession.ts` + `InSessionSuggestion` — rule-based
   reduce / repeat / end after a missed set.
-- `functions/` — Firebase callable `ai`: auth gate, Zod-validated tool catalog,
-  prompt caching, mutations returned (never auto-applied).
+- `functions/` — Firebase callable `ai` (never deployed; its tools, prompts and
+  Zod schemas are ported to the Worker, then the package is removed).
 - `src/components/ai/AiChatSheet.tsx`, `ApplyRejectCard.tsx`,
   `src/components/CustomExerciseModal.tsx`.
 
@@ -33,7 +33,8 @@ passes through the engine before it lands.
 | Where AI sits | Hybrid: engine computes, Claude interprets and advises |
 | AI moments (v1) | Lift setup, missed reps, floating Ask AI agent, custom-exercise lookup |
 | Autonomy | Tiered: today-only changes apply with Undo; anything touching saved data or future numbers is Apply/Reject |
-| Billing | The owner's Anthropic API key in the Firebase function, hard monthly cap, allow-listed accounts |
+| Backend | A Cloudflare Worker (free tier, no card) holds the owner's Anthropic API key; Firebase Functions dropped because Blaze needs a card and has no hard cap |
+| Billing | The owner's Anthropic API key, hard monthly spend cap in the Anthropic Console, allow-listed accounts |
 | Subscription auth | Not allowed (see below); an MCP connector is the later, compliant way to use Claude plans |
 | Exercise media | Any source, link only, verified server-side |
 
@@ -51,9 +52,9 @@ v1 (it also needs tracked lifts synced to Firestore).
 ## 1. Architecture
 
 ```
- App (GitHub Pages)                              Firebase function `ai`
- ─────────────────                               ──────────────────────
- Ask AI button ─┐                                 allow-listed Google accounts
+ App (GitHub Pages)                              Cloudflare Worker `workout-ai`
+ ─────────────────                               ──────────────────────────────
+ Ask AI button ─┐   Firebase ID token ──────────► verifies token, allow-listed emails
  Lift editor   ─┼─► context: lifts, today's  ──►  model call with typed tools
  Player (miss) ─┘   sets, recent sessions         (+ web search for lookups)
         ▲                                                 │
@@ -61,13 +62,17 @@ v1 (it also needs tracked lifts synced to Firestore).
             today-only → apply + Undo · saved data → Apply/Reject
 ```
 
-- **Stateless function, no Firestore sync in v1.** The client sends the relevant
+- **Stateless Worker, no Firestore sync in v1.** The client sends the relevant
   slice: the tracked lifts involved, their last 6 sessions, today's sets.
 - **Models:** `claude-haiku-4-5-20251001` for entry reading; `claude-sonnet-5-5`
   for the agent, missed-rep advice and exercise lookup (replacing
   `claude-sonnet-4-6`).
+- **Auth:** the client sends the signed-in user's Firebase ID token; the Worker
+  verifies it against Google's public keys (issuer/audience = the Firebase
+  project) and checks the email against the allow-list. No Firebase Admin SDK.
 - **Cost guard:** monthly spend cap in the Anthropic Console; per-account daily
-  request limit in the function; allow-list of accounts.
+  request limit in Workers KV; allow-list of accounts. Workers free tier:
+  100k requests/day, 10 ms CPU per request (waiting on Anthropic doesn't count).
 - **No AI → today's behaviour.** Every entry point degrades to the rule-based
   suggestion or the manual form.
 
@@ -146,7 +151,7 @@ check; broken media falls back to the glyph placeholder.
 | Undo | One tap for 8 s or from workout history; restores exact prior values |
 
 - **Privacy:** prompts carry lift names, numbers and the user's note only (no
-  email or tokens). The function logs counts, not contents.
+  email or tokens). The Worker logs counts, not contents.
 - **Prompt injection:** web content is data. The lookup step only accepts the
   `findExercise` result schema, so a page can't trigger other tools.
 
@@ -154,11 +159,11 @@ check; broken media falls back to the glyph placeholder.
 
 - **Engine (Vitest, strict paths):** `step` rounding; out-of-range snap/reject;
   a reducer per tool with apply + undo round-trips.
-- **Function:** Zod schema per tool; allow-list, rate limit and cap with a mocked
+- **Worker:** Zod schema per tool; allow-list, rate limit and cap with a mocked
   Anthropic client; media verifier against fixtures (200 mp4, 403 hotlink, HTML
   posing as gif).
 - **UI:** Apply/Reject card and Undo toast; one Chrome pass on a local dev
-  server with a stubbed function.
+  server with a stubbed Worker.
 - **Evals:** ~20 real lift descriptions and ~10 missed-rep scenarios with
   expected structured output, rerun when prompts or models change.
 
@@ -169,8 +174,8 @@ check; broken media falls back to the glyph placeholder.
 - Stall detection across cycles (the agent can advise when asked).
 - Rehosting media.
 
-## Prerequisites before building
+## Prerequisites before deploying
 
-- Firebase Blaze plan and the `functions/` deploy (not currently confirmed
-  deployed).
-- `ANTHROPIC_KEY` secret, a Console spend cap, and the account allow-list.
+- A free Cloudflare account; `npx wrangler login` run by the user.
+- `wrangler secret put ANTHROPIC_API_KEY`, a Console spend cap, and the
+  account allow-list.
