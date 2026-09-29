@@ -19,7 +19,9 @@ export async function verifyIdToken(
       algorithms: ['RS256'],
     });
     if (!payload.sub) throw new Error('no subject');
-    return { uid: payload.sub, email: typeof payload.email === 'string' ? payload.email : undefined };
+    // Unverified addresses must not pass the allow-list: anyone can sign up with a friend's email.
+    const email = payload.email_verified === true && typeof payload.email === 'string' ? payload.email : undefined;
+    return { uid: payload.sub, email };
   } catch {
     throw new AiError('unauthenticated', 'Sign in to use the AI assistant.');
   }
@@ -39,6 +41,16 @@ export function nextUsage(prev: Usage | undefined, today: string, limit: number)
   return { ok: true, usage: { day: today, count: count + 1 } };
 }
 
+/** A missing or unparsable KV value counts as no record. */
+function parseUsage(raw: string | null): Usage | undefined {
+  if (!raw) return undefined;
+  try {
+    return JSON.parse(raw) as Usage;
+  } catch {
+    return undefined;
+  }
+}
+
 /**
  * Counts one request for `uid`. KV is eventually consistent, so two requests
  * in the same instant can both pass — fine for a soft per-person limit; the
@@ -47,8 +59,7 @@ export function nextUsage(prev: Usage | undefined, today: string, limit: number)
 export async function takeDailySlot(kv: KVNamespace, uid: string, limit: number): Promise<boolean> {
   const today = new Date().toISOString().slice(0, 10);
   const key = `usage:${uid}`;
-  const raw = await kv.get(key);
-  const next = nextUsage(raw ? (JSON.parse(raw) as Usage) : undefined, today, limit);
+  const next = nextUsage(parseUsage(await kv.get(key)), today, limit);
   if (!next.ok) return false;
   await kv.put(key, JSON.stringify(next.usage), { expirationTtl: 60 * 60 * 48 });
   return true;

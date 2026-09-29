@@ -25,11 +25,26 @@ const token = (claims: Record<string, unknown>, opts: { iss?: string; aud?: stri
 
 describe('verifyIdToken', () => {
   it('returns uid and email for a valid token', async () => {
-    await expect(verifyIdToken(await token({ email: 'me@x.io' }), PROJECT, jwks)).resolves.toEqual({ uid: 'uid-1', email: 'me@x.io' });
+    await expect(verifyIdToken(await token({ email: 'me@x.io', email_verified: true }), PROJECT, jwks)).resolves.toEqual({ uid: 'uid-1', email: 'me@x.io' });
   });
-  it('rejects the wrong project or an expired token', async () => {
+  it('drops an unverified email', async () => {
+    await expect(verifyIdToken(await token({ email: 'me@x.io', email_verified: false }), PROJECT, jwks)).resolves.toEqual({ uid: 'uid-1', email: undefined });
+  });
+  it('rejects the wrong project, the wrong issuer or an expired token', async () => {
     await expect(verifyIdToken(await token({}, { aud: 'other' }), PROJECT, jwks)).rejects.toMatchObject({ code: 'unauthenticated' });
+    await expect(verifyIdToken(await token({}, { iss: 'https://securetoken.google.com/other' }), PROJECT, jwks)).rejects.toMatchObject({ code: 'unauthenticated' });
     await expect(verifyIdToken(await token({}, { exp: '-1m' }), PROJECT, jwks)).rejects.toMatchObject({ code: 'unauthenticated' });
+  });
+  it('rejects an HS256-signed token', async () => {
+    const hs = await new SignJWT({ email: 'me@x.io', email_verified: true })
+      .setProtectedHeader({ alg: 'HS256', kid: 'k1' })
+      .setIssuer(`https://securetoken.google.com/${PROJECT}`)
+      .setAudience(PROJECT)
+      .setSubject('uid-1')
+      .setIssuedAt()
+      .setExpirationTime('1h')
+      .sign(new TextEncoder().encode('x'.repeat(32)));
+    await expect(verifyIdToken(hs, PROJECT, jwks)).rejects.toMatchObject({ code: 'unauthenticated' });
   });
 });
 
@@ -61,5 +76,14 @@ describe('takeDailySlot', () => {
     expect(await takeDailySlot(kv, 'u', 2)).toBe(true);
     expect(await takeDailySlot(kv, 'u', 2)).toBe(true);
     expect(await takeDailySlot(kv, 'u', 2)).toBe(false);
+  });
+  it('treats an unparsable KV value as no record', async () => {
+    const store = new Map<string, string>([['usage:u', 'not json']]);
+    const kv = {
+      get: async (k: string) => store.get(k) ?? null,
+      put: async (k: string, v: string) => void store.set(k, v),
+    } as unknown as KVNamespace;
+    expect(await takeDailySlot(kv, 'u', 2)).toBe(true);
+    expect(JSON.parse(store.get('usage:u')!)).toMatchObject({ count: 1 });
   });
 });
