@@ -16,6 +16,14 @@ export interface WorkoutState {
   progressionTracking: Record<string, ProgressionTracking>; // exerciseId -> tracking
 }
 
+/** One targeted set edit for `setsPatched`. */
+export interface SetPatch {
+  setId: string;
+  changes: Partial<WorkoutSet>;
+  /** Apply only while every listed field still equals this value (`undefined` = absent). */
+  onlyIf?: Partial<WorkoutSet>;
+}
+
 const initialRestTimer: RestTimer = {
   isActive: false,
   timeRemaining: 0,
@@ -142,6 +150,26 @@ const workoutSlice = createSlice({
         if (rir !== undefined) set.rir = rir;
         // No additional logic here - the UI drives progression via the per-set
         // in-session decision and the nextSupersetExercise action.
+      }
+    },
+
+    /**
+     * Targeted set edits (AI apply/undo): each patch finds its set by id in the
+     * CURRENT state and is skipped when the set is gone or any `onlyIf` field
+     * differs, so a late apply or undo never clobbers sets changed since. A key
+     * whose change is `undefined` clears that field.
+     */
+    setsPatched: (state, action: PayloadAction<{ exerciseId: string; patches: SetPatch[] }>) => {
+      const exercise = state.activeWorkout?.exercises.find((ex) => ex.id === action.payload.exerciseId);
+      if (!exercise) return;
+      for (const { setId, changes, onlyIf } of action.payload.patches) {
+        const set = exercise.sets.find((s) => s.id === setId) as Record<string, unknown> | undefined;
+        if (!set) continue;
+        if (onlyIf && Object.entries(onlyIf).some(([key, value]) => set[key] !== value)) continue;
+        for (const [key, value] of Object.entries(changes)) {
+          if (value === undefined) delete set[key];
+          else set[key] = value;
+        }
       }
     },
 
@@ -459,6 +487,7 @@ export const {
   previousSet,
   jumpToSet,
   completeSet,
+  setsPatched,
   uncompleteSet,
   addSet,
   startRestTimer,
