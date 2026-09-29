@@ -5,7 +5,7 @@ import { Provider } from 'react-redux';
 import { MemoryRouter } from 'react-router-dom';
 import { configureStore } from '@reduxjs/toolkit';
 import workout, { startWorkout, completeSet, startRestTimer, endWorkout } from '../../store/slices/workoutSlice';
-import trackedLifts, { trackedLiftsHydrated } from '../../store/slices/trackedLiftsSlice';
+import trackedLifts, { trackedLiftsHydrated, liftUpdated } from '../../store/slices/trackedLiftsSlice';
 import exercise, { setExercises } from '../../store/slices/exerciseSlice';
 import user from '../../store/slices/userSlice';
 import ai, { askAiOpened, askAiClosed } from '../../store/slices/aiSlice';
@@ -167,6 +167,25 @@ describe('AskAiHost', () => {
     await u.click(screen.getByRole('button', { name: 'Apply' }));
     expect(await screen.findByText("Couldn't apply: That exercise is not in this workout.")).toBeInTheDocument();
     expect(store.getState().trackedLifts).toBe(before);
+  });
+
+  it('refuses a late Apply whose re-plan no longer matches the proposal', async () => {
+    vi.spyOn(aiClient, 'chat').mockResolvedValue({
+      reply: 'Lower it.', source: 'backend',
+      toolCalls: [{ id: 't6', name: 'updateBenchmark', input: { liftId: 'l1', loadKind: 'weight', weight: 255, unit: 'lb', targetKind: 'repMax', reps: 1, reason: 'misses' } }],
+    });
+    const store = renderHost();
+    const u = userEvent.setup();
+    await u.click(screen.getByRole('button', { name: 'Ask AI' }));
+    await u.type(screen.getByLabelText('Message'), 'too heavy');
+    await u.click(screen.getByRole('button', { name: 'Send' }));
+    await screen.findByRole('button', { name: 'Apply' });
+    act(() => {
+      store.dispatch(liftUpdated({ id: 'l1', name: 'Paused Bench' }));
+    });
+    await u.click(screen.getByRole('button', { name: 'Apply' }));
+    expect(await screen.findByText("Couldn't apply: things changed since this was suggested.")).toBeInTheDocument();
+    expect(store.getState().trackedLifts.lifts[0].load).toEqual({ kind: 'weight', value: 265, unit: 'lb' });
   });
 
   it('says the limit plainly and disables AI', async () => {

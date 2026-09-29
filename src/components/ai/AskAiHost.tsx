@@ -3,7 +3,9 @@
 // Each tool call the model returns is planned against the LATEST store state
 // (`planToolCall`) and tiered: auto → applied now with an Undo toast; confirm →
 // an Apply/Reject card (re-planned against the state at Apply); rejected → a
-// "discarded" notice. The button hides when AI can't be used or mid-rest.
+// "discarded" notice. The button hides when AI can't be used, mid-rest, while
+// an Undo toast shows, and on /workout (the player has its own Ask coach
+// entries there; the sheet itself still opens on any route).
 import * as React from 'react';
 import { useStore } from 'react-redux';
 import { useLocation } from 'react-router-dom';
@@ -154,6 +156,11 @@ export function AskAiHost() {
           const plan = planNow(call);
           if (plan.kind !== 'confirm') {
             return `Couldn't apply: ${plan.kind === 'rejected' ? plan.reason : 'things changed since.'}`;
+          }
+          // Still valid but no longer what the card said (e.g. a renamed lift or
+          // a different target): don't apply something the user didn't read.
+          if (plan.summary !== proposal.summary) {
+            return "Couldn't apply: things changed since this was suggested.";
           }
           plan.apply.forEach((a) => dispatch(a));
           pendingCalls.current.delete(proposal.id);
