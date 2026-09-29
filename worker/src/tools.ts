@@ -1,259 +1,106 @@
 /**
- * Tool catalog for the `/ai` chat-with-tools surface.
+ * Tool catalog for the Worker's `chat` action.
  *
  * Each tool is defined ONCE as a Zod schema (the single source of truth) and
  * converted to the JSON Schema shape Anthropic's Messages API expects via
- * {@link zodToInputSchema}. The same Zod schemas are exported so the function
- * can validate the model's emitted `tool_use.input` before returning it to the
+ * {@link zodToJsonSchema}. The same Zod schemas are exported so the Worker can
+ * validate the model's emitted `tool_use.input` before returning it to the
  * client.
  *
- * IMPORTANT (design §4): these tools describe *mutations the client may apply*
- * and the *chart vocabulary the client may render*. The function NEVER applies
- * a mutation server-side — it returns the structured tool calls to the client,
- * which presents an Apply/Reject confirmation UX. The tool handlers therefore
- * live entirely on the client; here we only define the contract.
+ * The catalog is exactly the tools the client knows how to apply (design §2);
+ * a tool without a client handler would produce a card that does nothing.
+ * The Worker NEVER applies a mutation — it returns the structured tool calls
+ * and the client applies them, tiered as auto (logSet, adjustSet: apply +
+ * Undo) or confirm (the rest: Apply/Reject), re-checking every load.
+ *
+ * The hand-rolled converter supports objects of scalars/enums/arrays with
+ * optional/default only (no unions), so load and target travel as flat fields
+ * ({@link flatLiftFields}).
  */
 import type Anthropic from '@anthropic-ai/sdk';
 import { z } from 'zod';
 
 // ---------------------------------------------------------------------------
-// Shared scalar vocabulary (kept consistent with src/types/exercise.ts)
+// Tools the client applies
 // ---------------------------------------------------------------------------
 
-const WeightUnit = z.enum(['lbs', 'kg']);
-
-/** Identifies a target exercise inside the active workout. */
-const exerciseRef = {
-  exerciseId: z
-    .string()
-    .describe('The id of the WorkoutExercise in the active workout to act on.'),
+/** Flat load + target (the JSON-schema converter has no unions). Shared by
+ *  updateBenchmark, addTrackedLift and the readLift action. */
+export const flatLiftFields = {
+  loadKind: z.enum(['weight', 'bodyweight', 'level']).describe('How the lift is loaded.'),
+  weight: z.number().positive().optional().describe('Load (weight) or added load (bodyweight).'),
+  unit: z.enum(['lb', 'kg']).optional().describe('Unit for weight.'),
+  level: z.string().optional().describe('Named step for level loads, e.g. "Med ball 6 kg", "Band: red", "Pin 12".'),
+  targetKind: z.enum(['reps', 'repMax', 'time', 'none']).describe('What the benchmark measures.'),
+  reps: z.number().int().positive().optional().describe('Reps (reps target: minimum; repMax: N).'),
+  repsMax: z.number().int().positive().optional().describe('Top of a rep range.'),
+  seconds: z.number().positive().optional().describe('Hold time for time targets.'),
+  tempo: z.string().optional().describe('Tempo such as "3-1-3".'),
 };
-
-const setRef = {
-  ...exerciseRef,
-  setId: z
-    .string()
-    .describe('The id of the WorkoutSet within the exercise to act on.'),
-};
-
-// ---------------------------------------------------------------------------
-// Mutation tools (~10). Returned to the client, applied only on user Approve.
-// ---------------------------------------------------------------------------
 
 export const mutationToolSchemas = {
+  logSet: z
+    .object({
+      exerciseId: z.string().describe('WorkoutExercise id in the active workout.'),
+      setIndex: z.number().int().nonnegative().optional().describe('Set to log; omit for the current set.'),
+      reps: z.number().int().nonnegative().describe('Reps completed.'),
+      weight: z.number().nonnegative().optional().describe('Load used, in the workout unit.'),
+      rir: z.number().int().min(0).max(5).optional().describe('Reps in reserve, if the lifter said.'),
+    })
+    .describe('Record a set the lifter just described. Applies immediately with Undo.'),
+
+  adjustSet: z
+    .object({
+      exerciseId: z.string().describe('WorkoutExercise id in the active workout.'),
+      fromSetIndex: z.number().int().nonnegative().describe('First not-yet-done set to change; later sets change too.'),
+      weight: z.number().positive().optional().describe('New load for those sets.'),
+      reps: z.number().int().positive().optional().describe('New target reps for those sets.'),
+      reason: z.string().describe('One short line shown to the lifter.'),
+    })
+    .describe("Change today's remaining sets of one exercise. Applies immediately with Undo."),
+
   swapExercise: z
     .object({
-      ...exerciseRef,
-      replacementExerciseId: z
-        .string()
-        .optional()
-        .describe('Catalog Exercise.id to swap in, if known.'),
-      replacementExerciseName: z
-        .string()
-        .optional()
-        .describe(
-          'Human-readable name of the replacement exercise when the catalog id is unknown; the client resolves it.',
-        ),
-      reason: z
-        .string()
-        .optional()
-        .describe('Short justification shown to the user (e.g. "shoulder-friendly").'),
+      exerciseId: z.string().describe('WorkoutExercise id in the active workout.'),
+      replacementExerciseName: z.string().describe('Library name of the replacement.'),
+      scope: z.enum(['today', 'ongoing']).describe("'ongoing' also renames the tracked lift."),
+      weight: z.number().positive().optional().describe('Starting load for the replacement.'),
+      reason: z.string().describe('One short line shown to the lifter.'),
     })
-    .describe('Replace one exercise with another (e.g. an equipment or injury substitution).'),
+    .describe('Replace an exercise the lifter cannot do or keeps failing. Needs confirmation.'),
 
-  reduceWeight: z
+  updateBenchmark: z
     .object({
-      ...exerciseRef,
-      setId: z
-        .string()
-        .optional()
-        .describe('Optional specific set; omit to apply to all sets of the exercise.'),
-      percent: z
-        .number()
-        .min(1)
-        .max(90)
-        .optional()
-        .describe('Percentage to reduce the load by (1-90). Mutually exclusive with absolute.'),
-      absolute: z
-        .number()
-        .positive()
-        .optional()
-        .describe('Absolute new weight value. Mutually exclusive with percent.'),
-      unit: WeightUnit.optional().describe('Unit for an absolute value; defaults to the set unit.'),
+      liftId: z.string().describe('Tracked lift id.'),
+      ...flatLiftFields,
+      reason: z.string().describe('One short line shown to the lifter.'),
     })
-    .describe('Lower the working weight for an exercise or a single set.'),
+    .describe('Change the benchmark future prescriptions derive from. Needs confirmation.'),
 
-  addBackoffSet: z
+  addTrackedLift: z
     .object({
-      ...exerciseRef,
-      percent: z
-        .number()
-        .min(1)
-        .max(99)
-        .default(90)
-        .describe('Backoff load as a percent of the top set (default 90%).'),
-      reps: z.number().int().positive().optional().describe('Target reps for the backoff set.'),
+      name: z.string().describe('Exercise name, preferably the library name.'),
+      category: z.string().describe('Existing category name, or a new one.'),
+      ...flatLiftFields,
+      sets: z.number().int().min(1).max(10).optional().describe('Accessory set count.'),
+      progression: z.boolean().optional().describe('Track Volume/Strength/checkpoint progression.'),
     })
-    .describe('Append a lighter back-off set after the top set of an exercise.'),
+    .describe('Add a lift to the tracked list. Needs confirmation.'),
 
-  markFailedReps: z
+  removeTrackedLift: z
     .object({
-      ...setRef,
-      completedReps: z
-        .number()
-        .int()
-        .nonnegative()
-        .describe('How many reps were actually completed before failure.'),
+      liftId: z.string().describe('Tracked lift id.'),
+      reason: z.string().describe('One short line shown to the lifter.'),
     })
-    .describe('Record that a set was taken to failure, capturing the completed rep count.'),
-
-  deloadExercise: z
-    .object({
-      ...exerciseRef,
-      percent: z
-        .number()
-        .min(1)
-        .max(90)
-        .default(10)
-        .describe('How much to deload by, as a percent of current load (default 10%).'),
-    })
-    .describe('Apply a deload to a single exercise (reduce load across all its sets).'),
-
-  regenerateRoutine: z
-    .object({
-      scope: z
-        .enum(['workout', 'exercise'])
-        .default('workout')
-        .describe('Whether to regenerate the whole workout or just one exercise.'),
-      exerciseId: z
-        .string()
-        .optional()
-        .describe('Required when scope is "exercise".'),
-      goal: z
-        .enum(['strength', 'hypertrophy', 'endurance', 'general'])
-        .optional()
-        .describe('Optional training goal to bias the regeneration.'),
-      notes: z.string().optional().describe('Free-text constraints (time, equipment, injuries).'),
-    })
-    .describe('Regenerate the current routine (whole workout or a single exercise).'),
-
-  adjustSetCount: z
-    .object({
-      ...exerciseRef,
-      sets: z.number().int().min(1).max(20).describe('The desired total number of sets.'),
-    })
-    .describe('Set the total number of sets for an exercise (adds or removes trailing sets).'),
-
-  adjustRestTime: z
-    .object({
-      ...exerciseRef,
-      seconds: z
-        .number()
-        .int()
-        .min(0)
-        .max(900)
-        .describe('New rest duration in seconds (0-900).'),
-    })
-    .describe('Change the rest-timer duration between sets for an exercise.'),
-
-  addExercise: z
-    .object({
-      exerciseId: z.string().optional().describe('Catalog Exercise.id to add, if known.'),
-      exerciseName: z
-        .string()
-        .optional()
-        .describe('Name of the exercise to add when the catalog id is unknown.'),
-      position: z
-        .number()
-        .int()
-        .nonnegative()
-        .optional()
-        .describe('Insertion index; omit to append to the end.'),
-      sets: z.number().int().min(1).max(20).default(3).describe('Initial number of sets.'),
-    })
-    .describe('Add a new exercise to the active workout.'),
-
-  removeExercise: z
-    .object({
-      ...exerciseRef,
-      reason: z.string().optional().describe('Short justification shown to the user.'),
-    })
-    .describe('Remove an exercise from the active workout.'),
-
-  createSuperset: z
-    .object({
-      exerciseIds: z
-        .array(z.string())
-        .min(2)
-        .describe('Two or more WorkoutExercise ids to group into a superset, in order.'),
-    })
-    .describe('Group two or more existing exercises into a superset.'),
+    .describe('Remove a lift from the tracked list. Needs confirmation.'),
 } as const;
-
-// ---------------------------------------------------------------------------
-// Chart vocabulary: renderChart({ kind, series, range, filter })
-// ---------------------------------------------------------------------------
-
-export const renderChartSchema = z
-  .object({
-    kind: z
-      .enum(['line', 'bar', 'area', 'scatter', 'heatmap'])
-      .describe('The chart type to render.'),
-    series: z
-      .array(
-        z
-          .enum([
-            'volume',
-            'estimated1rm',
-            'topSetWeight',
-            'reps',
-            'rpe',
-            'bodyweight',
-            'sessionDuration',
-            'frequency',
-          ])
-          .describe('A metric to plot.'),
-      )
-      .min(1)
-      .describe('One or more metrics to plot as series.'),
-    range: z
-      .object({
-        preset: z
-          .enum(['7d', '30d', '90d', '6m', '1y', 'all'])
-          .optional()
-          .describe('A relative time range preset.'),
-        from: z.string().optional().describe('ISO date (inclusive). Used when preset is absent.'),
-        to: z.string().optional().describe('ISO date (inclusive). Used when preset is absent.'),
-      })
-      .optional()
-      .describe('Time range for the chart; defaults to the client default when omitted.'),
-    filter: z
-      .object({
-        exerciseId: z.string().optional().describe('Restrict to a single exercise.'),
-        muscleGroup: z
-          .string()
-          .optional()
-          .describe('Restrict to one muscle group (e.g. "Chest").'),
-        unit: WeightUnit.optional().describe('Force a weight unit for weight-based series.'),
-      })
-      .optional()
-      .describe('Optional filters narrowing the data set.'),
-  })
-  .describe(
-    'Describe a chart for the client to render. Use this when the user asks to see, plot, ' +
-      'graph, or visualize their training data. The function does not render anything; it ' +
-      'returns this spec to the client.',
-  );
 
 // ---------------------------------------------------------------------------
 // Assembly: Zod -> Anthropic tool definitions
 // ---------------------------------------------------------------------------
 
 /** Per-tool human descriptions surface in the API tool list via `.describe()`. */
-const allToolSchemas = {
-  ...mutationToolSchemas,
-  renderChart: renderChartSchema,
-} as const;
+const allToolSchemas = { ...mutationToolSchemas } as const;
 
 export type ToolName = keyof typeof allToolSchemas;
 

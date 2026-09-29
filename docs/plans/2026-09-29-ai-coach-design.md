@@ -91,8 +91,8 @@ v1 (it also needs tracked lifts synced to Firestore).
 | `getPrescription(liftId, goal)` | Read-only engine output | — |
 
 Existing workout-mutation tools (`reduceWeight`, `addBackoffSet`,
-`markFailedReps`, …) stay; overlapping ones are folded into `adjustSet` when
-built.
+`markFailedReps`, …) are removed; the catalog is exactly the tools the client
+applies.
 
 **Tiering rule:** only affects today's workout and matches what the user just
 said → apply with Undo. Changes saved data or future numbers → ask first.
