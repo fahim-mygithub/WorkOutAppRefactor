@@ -17,6 +17,7 @@ import { liftAdded, liftRemoved, liftUpdated } from '../store/slices/trackedLift
 import { checkProposedLoad } from '../lib/aiLoadCheck';
 import { formatLoad, formatTarget } from '../lib/trackedLifts';
 import { fromFlatLift, type FlatLift } from './liftFields';
+import { swapAlternatives } from './alternatives';
 import type { AiAssistantTurn, AiToolCall } from './types';
 
 export interface PlanContext {
@@ -71,27 +72,47 @@ function stepFor(ctx: PlanContext, ex: WorkoutExercise, unit: WeightUnit): numbe
 /** Lower-case words with punctuation dropped: "Pull-Up " → "pull up". */
 const normalName = (s: string): string => s.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
 
+/** Everyday gym equipment, preferred over bands, TRX and other niche kit. */
+const COMMON_EQUIPMENT = new Set(['barbell', 'dumbbells', 'dumbbell', 'machine', 'cables', 'cable', 'kettlebells', 'kettlebell']);
+
 /**
  * The library exercise a model-given name means: an exact match (ignoring
- * case, spacing and punctuation), else the shortest name that contains every
- * word of it (words of 2+ letters), else none. The model often drops the
- * equipment prefix the library uses ("Romanian Deadlift" → "Barbell
- * Romanian Deadlift").
+ * case, spacing and punctuation), else the best name that contains every word
+ * of it (words of 2+ letters), else none. The model often drops the equipment
+ * prefix the library uses ("Romanian Deadlift" → "Barbell Romanian
+ * Deadlift"). Word matches rank: in `replaced`'s own swap alternatives (what
+ * the context offered), then the same equipment as `replaced`, then common
+ * equipment, then the shortest name, then name order.
  */
-function libraryMatch(ctx: PlanContext, name: string): Exercise | undefined {
+function libraryMatch(ctx: PlanContext, name: string, replaced?: Exercise): Exercise | undefined {
   const key = normalName(name);
   if (!key) return undefined;
   const exact = ctx.library.find((e) => normalName(e.name) === key);
   if (exact) return exact;
   const words = key.split(' ').filter((w) => w.length >= 2);
   if (words.length === 0) return undefined;
-  let best: Exercise | undefined;
-  for (const e of ctx.library) {
+  const candidates = ctx.library.filter((e) => {
     const own = new Set(normalName(e.name).split(' '));
-    if (!words.every((w) => own.has(w))) continue;
-    if (!best || e.name.length < best.name.length || (e.name.length === best.name.length && e.name < best.name)) best = e;
-  }
-  return best;
+    return words.every((w) => own.has(w));
+  });
+  if (candidates.length === 0) return undefined;
+
+  const offered = new Set(replaced ? swapAlternatives(replaced, ctx.library) : []);
+  const kit = (e: Exercise) => (e.equipment ?? '').trim().toLowerCase();
+  const replacedKit = replaced ? kit(replaced) : '';
+  const rank = (e: Exercise): number[] => [
+    offered.has(e.name) ? 0 : 1,
+    replacedKit && kit(e) === replacedKit ? 0 : 1,
+    COMMON_EQUIPMENT.has(kit(e)) ? 0 : 1,
+    e.name.length,
+  ];
+  const better = (a: Exercise, b: Exercise): boolean => {
+    const ra = rank(a);
+    const rb = rank(b);
+    for (let k = 0; k < ra.length; k++) if (ra[k] !== rb[k]) return ra[k] < rb[k];
+    return a.name < b.name;
+  };
+  return candidates.reduce((best, e) => (better(e, best) ? e : best));
 }
 
 /**
@@ -201,7 +222,7 @@ export function planToolCall(call: AiToolCall, ctx: PlanContext): ToolPlan {
       if (!ex) return reject('That exercise is not in this workout.');
       const name = str(i.replacementExerciseName);
       if (!name) return reject('No replacement exercise was named.');
-      const replacement = libraryMatch(ctx, name);
+      const replacement = libraryMatch(ctx, name, ex.exercise);
       if (!replacement) return reject(`"${name}" is not in the exercise library.`);
       const apply: UnknownAction[] = [replaceExerciseMovement({ exerciseId: ex.id, exercise: replacement })];
       const unit = unitOf(ex.sets[0]);

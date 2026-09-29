@@ -106,6 +106,43 @@ describe('planToolCall', () => {
       expect(confirm(swapTo('Romanian Deadlift')).summary).toMatch(/for Barbell Romanian Deadlift today$/);
     });
 
+    describe('ranking word matches', () => {
+      const ex = (name: string, equipment: string, muscleGroups: string[] = []) =>
+        ({ id: `x-${name}`, name, equipment, muscleGroups, muscleGroup: muscleGroups.join(',') });
+      const variants = [
+        ex('Band Romanian Deadlift', 'Band', ['Glutes', 'Hamstrings']),
+        ex('Barbell Romanian Deadlift', 'Barbell', ['Glutes', 'Hamstrings']),
+        ex('Dumbbell Romanian Deadlift', 'Dumbbells', ['Glutes', 'Hamstrings']),
+      ];
+      /** Swap "Romanian Deadlift" in for `replaced`, against `library`. */
+      const resolve = (replaced: ReturnType<typeof ex>, library = variants) => {
+        const w = { ...workout, exercises: [{ ...workout.exercises[0], exercise: replaced }] } as unknown as ActiveWorkout;
+        return replacementOf(planToolCall(
+          { id: 'sw', name: 'swapExercise', input: { exerciseId: 'e1', replacementExerciseName: 'Romanian Deadlift', scope: 'today' } },
+          { ...ctx, activeWorkout: w, library: [...library, replaced] as never },
+        ));
+      };
+
+      it('prefers the equipment of the exercise being replaced', () => {
+        expect(resolve(ex('Barbell Good Morning', 'Barbell', ['Hamstrings']))).toBe('Barbell Romanian Deadlift');
+        expect(resolve(ex('Dumbbell Stiff Leg Deadlift', 'Dumbbells', ['Hamstrings']))).toBe('Dumbbell Romanian Deadlift');
+      });
+
+      it('prefers common equipment over band or other niche kit, even when longer', () => {
+        const noDumbbell = variants.filter((v) => v.equipment !== 'Dumbbells');
+        expect(resolve(ex('Mystery Hinge', 'Vitruvian'), noDumbbell)).toBe('Barbell Romanian Deadlift');
+      });
+
+      it("prefers a name from the exercise's own alternatives over equipment", () => {
+        const library = [
+          ex('Band Romanian Deadlift', 'Band', ['Glutes']),
+          ex('Barbell Romanian Deadlift', 'Barbell', ['Lower back']),
+        ];
+        // Only the band one shares a muscle with the hip thrust, so only it is an alternative.
+        expect(resolve(ex('Barbell Hip Thrust', 'Barbell', ['Glutes']), library)).toBe('Band Romanian Deadlift');
+      });
+    });
+
     it('rejects a name no library exercise contains', () => {
       expect(swapTo('Quantum Leg Deadlift')).toEqual({ kind: 'rejected', id: 'sw', reason: '"Quantum Leg Deadlift" is not in the exercise library.' });
       expect(swapTo('a').kind).toBe('rejected');
