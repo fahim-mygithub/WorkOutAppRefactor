@@ -106,6 +106,40 @@ describe('aiClient', () => {
     });
   });
 
+  describe('request size caps', () => {
+    it('chat sends at most the last 40 messages, starting with a user turn', async () => {
+      const messages = Array.from({ length: 45 }, (_, i) => ({
+        role: (i % 2 === 0 ? 'user' : 'assistant') as 'user' | 'assistant',
+        content: `m${i}`,
+      }));
+      const f = ok({ action: 'chat', text: '' });
+      await chat({ messages }, deps(f));
+      const sent = JSON.parse(f.mock.calls[0][1].body).messages;
+      // Last 40 would start at m5 (assistant); the leading assistant turn is dropped.
+      expect(sent).toHaveLength(39);
+      expect(sent[0]).toEqual({ role: 'user', content: 'm6' });
+      expect(sent.at(-1)).toEqual({ role: 'user', content: 'm44' });
+    });
+
+    it('chat leaves a short conversation untouched', async () => {
+      const f = ok({ action: 'chat', text: '' });
+      await chat(req, deps(f));
+      expect(JSON.parse(f.mock.calls[0][1].body).messages).toEqual(req.messages);
+    });
+
+    it('readLiftEntry trims and caps the text at 500 chars', async () => {
+      const f = ok({ action: 'readLift', result: { name: 'x' } });
+      await readLiftEntry(`  ${'a'.repeat(600)}  `, deps(f));
+      expect(JSON.parse(f.mock.calls[0][1].body).text).toBe('a'.repeat(500));
+    });
+
+    it('findExerciseOnline trims and caps the name at 120 chars', async () => {
+      const f = ok({ action: 'findExercise', result: { name: 'x' } });
+      await findExerciseOnline(`  ${'b'.repeat(200)}  `, deps(f));
+      expect(JSON.parse(f.mock.calls[0][1].body).name).toBe('b'.repeat(120));
+    });
+  });
+
   describe('readLiftEntry()', () => {
     it('readLiftEntry returns the result', async () => {
       const f = ok({ action: 'readLift', result: { name: 'Front Squat', loadKind: 'weight', weight: 250, unit: 'lb', targetKind: 'reps', reps: 5 } });

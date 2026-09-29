@@ -97,17 +97,35 @@ export async function callAi<T>(payload: AiRequestPayload, deps?: AiClientDeps):
   }
 }
 
+/** Most chat messages sent per turn (the Worker accepts up to 50). */
+export const MAX_CHAT_MESSAGES = 40;
+/** Longest readLift description sent (the Worker's cap). */
+export const MAX_READ_LIFT_CHARS = 500;
+/** Longest findExercise name sent (the Worker's cap). */
+export const MAX_LOOKUP_NAME_CHARS = 120;
+
+/** The last MAX_CHAT_MESSAGES messages, starting with a user turn. */
+function recentMessages(messages: AiChatRequest['messages']): AiChatRequest['messages'] {
+  const recent = messages.slice(-MAX_CHAT_MESSAGES);
+  const firstUser = recent.findIndex((m) => m.role === 'user');
+  return firstUser > 0 ? recent.slice(firstUser) : recent;
+}
+
 /**
  * Conversational coaching with tool use.
  *
  * Backend-only: there is no offline substitute for the chat model. Throws
- * `AiBackendError` (with a code) when the Worker cannot serve the turn.
+ * `AiBackendError` (with a code) when the Worker cannot serve the turn. Only
+ * the last MAX_CHAT_MESSAGES messages are sent, starting with a user turn.
  */
 export async function chat(
   request: AiChatRequest,
   deps?: AiClientDeps,
 ): Promise<AiChatResponse> {
-  const data = await callAi<WorkerChatResult>({ action: 'chat', ...request }, deps);
+  const data = await callAi<WorkerChatResult>(
+    { action: 'chat', ...request, messages: recentMessages(request.messages) },
+    deps,
+  );
   return {
     reply: data?.text ?? '',
     toolCalls: data?.toolCalls ?? [],
@@ -128,10 +146,14 @@ export interface ReadLiftResult extends FlatLift {
 
 /**
  * Turn a lifter's description ("front squat 250 for 3x5") into a lift entry.
- * Backend-only; throws `AiBackendError` when the Worker cannot serve it.
+ * Backend-only; throws `AiBackendError` when the Worker cannot serve it. The
+ * text is trimmed and cut to MAX_READ_LIFT_CHARS so an overlong paste still reads.
  */
 export async function readLiftEntry(text: string, deps?: AiClientDeps): Promise<ReadLiftResult> {
-  const data = await callAi<{ result?: ReadLiftResult }>({ action: 'readLift', text }, deps);
+  const data = await callAi<{ result?: ReadLiftResult }>(
+    { action: 'readLift', text: text.trim().slice(0, MAX_READ_LIFT_CHARS) },
+    deps,
+  );
   if (!data?.result || typeof data.result !== 'object') {
     throw new AiBackendError('AI returned no lift.', 'failed');
   }
@@ -156,13 +178,16 @@ export interface FindExerciseResult {
 /**
  * Look up an exercise the library doesn't have (web search on the Worker; can
  * take tens of seconds). Backend-only; throws `AiBackendError` when the Worker
- * cannot serve it.
+ * cannot serve it. The name is trimmed and cut to MAX_LOOKUP_NAME_CHARS.
  */
 export async function findExerciseOnline(
   name: string,
   deps?: AiClientDeps,
 ): Promise<FindExerciseResult> {
-  const data = await callAi<{ result?: FindExerciseResult }>({ action: 'findExercise', name }, deps);
+  const data = await callAi<{ result?: FindExerciseResult }>(
+    { action: 'findExercise', name: name.trim().slice(0, MAX_LOOKUP_NAME_CHARS) },
+    deps,
+  );
   if (!data?.result || typeof data.result !== 'object') {
     throw new AiBackendError('AI found no exercise.', 'failed');
   }
