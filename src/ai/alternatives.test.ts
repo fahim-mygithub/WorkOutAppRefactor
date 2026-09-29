@@ -54,4 +54,21 @@ describe('swapAlternatives', () => {
   it('is empty when the exercise has no muscle groups', () => {
     expect(swapAlternatives({ id: 'x', name: 'Mystery' } as Exercise, library)).toEqual([]);
   });
+
+  it('at equal overlap, ranks other equipment, then common kit, then shorter names, before bands and bodyweight', () => {
+    const cableRow = ex('Cable Row', 'Cables', ['Lats', 'Upper back']);
+    const rows = [
+      ex('Band Row', 'Band', ['Lats', 'Upper back']),
+      ex('Bodyweight Inverted Row', 'Bodyweight', ['Bodyweight', 'Lats', 'Upper back']),
+      ex('Barbell Bent Over Row', 'Barbell', ['Barbell', 'Lats', 'Upper back']),
+      ex('Machine Row', 'Machine', ['Lats', 'Upper back']),
+      ex('Dumbbell Row', 'Dumbbells', ['Lats', 'Upper back']),
+      ex('Cable Seated Row', 'Cables', ['Lats', 'Upper back']),
+    ];
+    expect(swapAlternatives(cableRow, rows)).toEqual([
+      'Machine Row', 'Dumbbell Row', 'Barbell Bent Over Row', // common kit, shortest first
+      'Band Row', 'Bodyweight Inverted Row', // niche kit
+      'Cable Seated Row', // same equipment last
+    ]);
+  });
 });

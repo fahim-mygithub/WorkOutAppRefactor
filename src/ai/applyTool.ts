@@ -17,7 +17,7 @@ import { liftAdded, liftRemoved, liftUpdated } from '../store/slices/trackedLift
 import { checkProposedLoad } from '../lib/aiLoadCheck';
 import { formatLoad, formatTarget } from '../lib/trackedLifts';
 import { fromFlatLift, type FlatLift } from './liftFields';
-import { swapAlternatives } from './alternatives';
+import { swapAlternatives, usesCommonEquipment } from './alternatives';
 import type { AiAssistantTurn, AiToolCall } from './types';
 
 export interface PlanContext {
@@ -72,13 +72,10 @@ function stepFor(ctx: PlanContext, ex: WorkoutExercise, unit: WeightUnit): numbe
 /** Lower-case words with punctuation dropped: "Pull-Up " → "pull up". */
 const normalName = (s: string): string => s.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
 
-/** Everyday gym equipment, preferred over bands, TRX and other niche kit. */
-const COMMON_EQUIPMENT = new Set(['barbell', 'dumbbells', 'dumbbell', 'machine', 'cables', 'cable', 'kettlebells', 'kettlebell']);
-
 /**
  * The library exercise a model-given name means: an exact match (ignoring
  * case, spacing and punctuation), else the best name that contains every word
- * of it (words of 2+ letters), else none. The model often drops the equipment
+ * of it (words of 2+ letters, and at least two of them), else none. The model often drops the equipment
  * prefix the library uses ("Romanian Deadlift" → "Barbell Romanian
  * Deadlift"). Word matches rank: in `replaced`'s own swap alternatives (what
  * the context offered), then the same equipment as `replaced`, then common
@@ -90,7 +87,7 @@ function libraryMatch(ctx: PlanContext, name: string, replaced?: Exercise): Exer
   const exact = ctx.library.find((e) => normalName(e.name) === key);
   if (exact) return exact;
   const words = key.split(' ').filter((w) => w.length >= 2);
-  if (words.length === 0) return undefined;
+  if (words.length < 2) return undefined;
   const candidates = ctx.library.filter((e) => {
     const own = new Set(normalName(e.name).split(' '));
     return words.every((w) => own.has(w));
@@ -103,7 +100,7 @@ function libraryMatch(ctx: PlanContext, name: string, replaced?: Exercise): Exer
   const rank = (e: Exercise): number[] => [
     offered.has(e.name) ? 0 : 1,
     replacedKit && kit(e) === replacedKit ? 0 : 1,
-    COMMON_EQUIPMENT.has(kit(e)) ? 0 : 1,
+    usesCommonEquipment(e) ? 0 : 1,
     e.name.length,
   ];
   const better = (a: Exercise, b: Exercise): boolean => {
@@ -113,6 +110,27 @@ function libraryMatch(ctx: PlanContext, name: string, replaced?: Exercise): Exer
     return a.name < b.name;
   };
   return candidates.reduce((best, e) => (better(e, best) ? e : best));
+}
+
+/**
+ * Whether two plans of the same call would do the same thing, so a late Apply
+ * may go ahead. Ignores what legitimately differs between planning and Apply:
+ * the id `liftAdded` generates each time, and set patches (they target
+ * whichever sets are still open, each guarded by `onlyIf`).
+ */
+export function sameIntent(a: readonly UnknownAction[], b: readonly UnknownAction[]): boolean {
+  const normal = (actions: readonly UnknownAction[]) =>
+    JSON.stringify(
+      actions
+        .filter((x) => x.type !== setsPatched.type)
+        .map((x) => {
+          if (x.type !== liftAdded.type) return x;
+          const payload = { ...(x.payload as Record<string, unknown>) };
+          delete payload.id;
+          return { ...x, payload };
+        }),
+    );
+  return normal(a) === normal(b);
 }
 
 /**

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { UnknownAction } from '@reduxjs/toolkit';
-import { planToolCall, toAssistantTurn, type PlanContext, type ToolPlan } from './applyTool';
+import { planToolCall, sameIntent, toAssistantTurn, type PlanContext, type ToolPlan } from './applyTool';
 import reducer, { startWorkout, completeSet, jumpToSet, type WorkoutState } from '../store/slices/workoutSlice';
 import type { ActiveWorkout, WorkoutExercise } from '../types/exercise';
 import type { AiToolCall } from './types';
@@ -146,6 +146,12 @@ describe('planToolCall', () => {
     it('rejects a name no library exercise contains', () => {
       expect(swapTo('Quantum Leg Deadlift')).toEqual({ kind: 'rejected', id: 'sw', reason: '"Quantum Leg Deadlift" is not in the exercise library.' });
       expect(swapTo('a').kind).toBe('rejected');
+    });
+
+    it('needs at least two words for a word match; a single word must be exact', () => {
+      expect(swapTo('Press').kind).toBe('rejected');
+      expect(swapTo('Deadlift').kind).toBe('rejected');
+      expect(swapTo('a leg press').kind).toBe('confirm'); // "a" is too short to count, "leg press" is two words
     });
   });
 
@@ -349,6 +355,42 @@ describe('planToolCall', () => {
     expect(setsIn(s1)[2].completed).toBe(true);
     expect(s1.restTimer).toEqual(s0.restTimer);
     expect(run(s1, plan.undo).restTimer).toEqual(s0.restTimer);
+  });
+});
+
+describe('sameIntent', () => {
+  const addSquat = { id: 'n', name: 'addTrackedLift' as const, input: {
+    name: 'Squat', category: 'Legs', loadKind: 'weight', weight: 315, unit: 'lb', targetKind: 'repMax', reps: 1,
+  } };
+  const swap = { id: 'sw', name: 'swapExercise' as const, input: {
+    exerciseId: 'e1', replacementExerciseName: 'Dumbbell Bench Press', scope: 'today', weight: 80,
+  } };
+
+  it("ignores the id liftAdded generates each time it is planned", () => {
+    const a = confirm(planToolCall(addSquat, ctx)).apply;
+    const b = confirm(planToolCall(addSquat, ctx)).apply;
+    expect(JSON.stringify(a)).not.toBe(JSON.stringify(b));
+    expect(sameIntent(a, b)).toBe(true);
+  });
+
+  it('ignores set patches, which follow whichever sets are open at Apply', () => {
+    const s0 = startState();
+    const before = confirm(planToolCall(swap, ctxFor(s0))).apply;
+    const s1 = reducer(s0, completeSet({ exerciseIndex: 0, setIndex: 2, setData: { reps: 3, weight: 225 } }));
+    expect(sameIntent(before, confirm(planToolCall(swap, ctxFor(s1))).apply)).toBe(true);
+  });
+
+  it('tells apart different actions, payloads and counts', () => {
+    const bench = (weight: number) => confirm(planToolCall({ id: 'b', name: 'updateBenchmark', input: {
+      liftId: 'l-bench', loadKind: 'weight', weight, unit: 'lb', targetKind: 'repMax', reps: 1,
+    } }, ctx)).apply;
+    expect(sameIntent(bench(255), bench(255))).toBe(true);
+    expect(sameIntent(bench(255), bench(245))).toBe(false);
+    expect(sameIntent(bench(255), [...bench(255), ...bench(255)])).toBe(false);
+    expect(sameIntent(bench(255), confirm(planToolCall(addSquat, ctx)).apply)).toBe(false);
+    const other = { ...swap, input: { ...swap.input, replacementExerciseName: 'Barbell Bench Press' } };
+    const lib = { ...ctx, library: [...(ctx.library as never[]), { id: 'x-bench', name: 'Barbell Bench Press' }] as never };
+    expect(sameIntent(confirm(planToolCall(swap, lib)).apply, confirm(planToolCall(other, lib)).apply)).toBe(false);
   });
 });
 

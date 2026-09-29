@@ -7,10 +7,10 @@
  * tracked lift `id` → `liftId`.
  */
 import type { ActiveWorkout, Exercise } from '../types/exercise';
-import { swapAlternatives } from './alternatives';
 import type { SessionGoal, TrackedLift, TrackedSetLog, WeightUnit } from '../types/trackedLifts';
 import { currentEstimate, prescribe, progressionStatus, roundLoad } from '../lib/trackedLiftProgression';
 import { formatLoad, formatTarget } from '../lib/trackedLifts';
+import { swapAlternatives } from './alternatives';
 import type { AiChatContext } from './types';
 
 /** Sessions of a lift's log sent along (the engine keeps up to 6). */

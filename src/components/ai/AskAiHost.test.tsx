@@ -247,7 +247,7 @@ describe('AskAiHost', () => {
     });
   });
 
-  it('refuses a late swap whose set patches changed because a set was logged', async () => {
+  it('applies a late swap to the sets still open, after another set was logged', async () => {
     vi.spyOn(aiClient, 'chat').mockResolvedValue({
       reply: 'Try dumbbells.', source: 'backend',
       toolCalls: [{ id: 'sw', name: 'swapExercise', input: { exerciseId: 'e1', replacementExerciseName: 'Dumbbell Bench Press', scope: 'today', weight: 80, reason: 'x' } }],
@@ -259,8 +259,22 @@ describe('AskAiHost', () => {
       store.dispatch(completeSet({ exerciseIndex: 0, setIndex: 2, setData: {} }));
     });
     await u.click(screen.getByRole('button', { name: 'Apply' }));
-    expect(await screen.findByText("Couldn't apply: things changed since this was suggested.")).toBeInTheDocument();
-    expect(store.getState().workout.activeWorkout!.exercises[0].exercise.name).toBe('Barbell Bench Press');
+    expect(screen.queryByText(/Couldn't apply/)).not.toBeInTheDocument();
+    const ex = store.getState().workout.activeWorkout!.exercises[0];
+    expect(ex.exercise.name).toBe('Dumbbell Bench Press');
+    expect(ex.sets.map((s) => [s.weight, s.completed])).toEqual([[225, true], [225, true], [225, true], [80, false]]);
+  });
+
+  it('applies a new tracked lift card', async () => {
+    vi.spyOn(aiClient, 'chat').mockResolvedValue({
+      reply: 'Track it.', source: 'backend',
+      toolCalls: [{ id: 'n1', name: 'addTrackedLift', input: { name: 'Squat', category: 'Legs', loadKind: 'weight', weight: 315, unit: 'lb', targetKind: 'repMax', reps: 1 } }],
+    });
+    const store = renderHost();
+    const u = await send('track my squat');
+    await u.click(await screen.findByRole('button', { name: 'Apply' }));
+    expect(screen.queryByText(/Couldn't apply/)).not.toBeInTheDocument();
+    expect(store.getState().trackedLifts.lifts.map((l) => l.name)).toEqual(['Bench Press', 'Squat']);
   });
 
   it('says the limit plainly and disables AI', async () => {

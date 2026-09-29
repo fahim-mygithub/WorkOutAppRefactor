@@ -19,7 +19,7 @@ import type { RootState } from '../../store';
 import { aiDisabled, askAiClosed, askAiOpened } from '../../store/slices/aiSlice';
 import { AiBackendError, chat, isBackendAvailable, isSignedIn } from '../../ai/aiClient';
 import { buildAiContext } from '../../ai/context';
-import { planToolCall, toAssistantTurn } from '../../ai/applyTool';
+import { planToolCall, sameIntent, toAssistantTurn } from '../../ai/applyTool';
 import type { AiErrorCode, AiToolCall } from '../../ai/types';
 import { useExerciseLibrary } from '../workout/useExerciseLibrary';
 import { AiChatSheet, type AiChatClient } from './AiChatSheet';
@@ -60,7 +60,7 @@ export function AskAiHost() {
 
   // Calls awaiting Apply, with the actions their card was planned with. Each
   // is re-planned on Apply against the state at that moment.
-  const pendingCalls = React.useRef(new Map<string, { call: AiToolCall; apply: string }>());
+  const pendingCalls = React.useRef(new Map<string, { call: AiToolCall; apply: UnknownAction[] }>());
   React.useEffect(() => {
     if (!open) pendingCalls.current.clear();
   }, [open]);
@@ -102,7 +102,7 @@ export function AskAiHost() {
           plan.apply.forEach((a) => dispatch(a));
           setUndos((q) => [...q, { id: plan.id, message: plan.summary, undo: plan.undo }]);
         } else if (plan.kind === 'confirm') {
-          pendingCalls.current.set(plan.id, { call, apply: JSON.stringify(plan.apply) });
+          pendingCalls.current.set(plan.id, { call, apply: plan.apply });
         }
         return { call, plan };
       });
@@ -164,11 +164,12 @@ export function AskAiHost() {
           if (plan.kind !== 'confirm') {
             return `Couldn't apply: ${plan.kind === 'rejected' ? plan.reason : 'things changed since.'}`;
           }
-          // Still valid but no longer the actions the card was planned with (e.g.
-          // a set logged since, or a different unit): don't apply something the
-          // user didn't read. Compared by actions, not wording, so a swap
-          // renaming the lift doesn't block a benchmark card from the same turn.
-          if (JSON.stringify(plan.apply) !== pending.apply) {
+          // Still valid but no longer what the card was planned to do (e.g. a
+          // different unit): don't apply something the user didn't read.
+          // Compared by intent, not wording, so a swap renaming the lift doesn't
+          // block a benchmark card from the same turn. The re-plan's actions
+          // are the ones dispatched: they fit the state right now.
+          if (!sameIntent(plan.apply, pending.apply)) {
             return "Couldn't apply: things changed since this was suggested.";
           }
           plan.apply.forEach((a) => dispatch(a));
