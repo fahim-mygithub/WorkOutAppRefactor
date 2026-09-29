@@ -225,3 +225,20 @@ describe('newBest', () => {
     expect(best).toMatchObject({ liftId: 'bench', load: { value: 275 } });
   });
 });
+
+describe('equipment step', () => {
+  it('rounds to a custom step', () => {
+    expect(roundLoad(183, 'lb', 10)).toBe(180);
+    expect(roundLoad(186, 'lb', 10)).toBe(190);
+    expect(roundLoad(61.5, 'kg')).toBe(62.5);
+  });
+  it('prescribes on the lift step', () => {
+    const lift: TrackedLift = {
+      id: 'lat', name: 'Lat Pulldown', category: 'Pull', progression: true, step: 10,
+      load: { kind: 'weight', value: 160, unit: 'lb' }, target: { kind: 'reps', min: 10 },
+    };
+    for (const goal of ['volume', 'strength', 'checkpoint'] as const) {
+      for (const s of prescribe(lift, goal).sets) expect((s.weight ?? 0) % 10).toBe(0);
+    }
+  });
+});

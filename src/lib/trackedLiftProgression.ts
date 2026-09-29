@@ -37,10 +37,10 @@ export const SESSIONS_PER_GOAL = 2;
 
 const LB_PER_KG = 2.20462;
 
-/** Round to the loadable increment: 5 lb or 2.5 kg. */
-export function roundLoad(value: number, unit: WeightUnit): number {
-  const step = unit === 'kg' ? 2.5 : 5;
-  return Math.round(value / step) * step;
+/** Round to the loadable increment: the equipment `step`, else 5 lb or 2.5 kg. */
+export function roundLoad(value: number, unit: WeightUnit, step?: number): number {
+  const inc = step && step > 0 ? step : unit === 'kg' ? 2.5 : 5;
+  return Math.round(value / inc) * inc;
 }
 
 export function convertWeight(value: number, from: WeightUnit, to: WeightUnit): number {
@@ -157,7 +157,7 @@ export function prescribe(lift: TrackedLift, goal: SessionGoal): TrackedParsedEx
   if (load.kind === 'weight') {
     const estimate = currentEstimate(lift)?.value ?? load.value;
     const unit = parsedUnit(load.unit);
-    const at = (fraction: number) => roundLoad(estimate * fraction, load.unit);
+    const at = (fraction: number) => roundLoad(estimate * fraction, load.unit, lift.step);
     if (goal === 'strength') {
       return { ...base, restTime: 180, sets: repeat(4, { reps: 3, weight: at(0.85), unit }) };
     }
@@ -170,11 +170,11 @@ export function prescribe(lift: TrackedLift, goal: SessionGoal): TrackedParsedEx
     }
     // The attempt always goes after the benchmark: at least one loadable step
     // above it, even when submaximal logged sets read low (no RIR tapped).
-    const step = load.unit === 'kg' ? 2.5 : 5;
+    const step = lift.step && lift.step > 0 ? lift.step : load.unit === 'kg' ? 2.5 : 5;
     const bench = benchmarkE1RM(lift);
     const attempt = Math.max(
       at(ATTEMPT_FRACTION),
-      bench != null ? roundLoad(bench, load.unit) + step : 0,
+      bench != null ? roundLoad(bench, load.unit, lift.step) + step : 0,
     );
     const top = attempt / ATTEMPT_FRACTION;
     return {
@@ -182,7 +182,7 @@ export function prescribe(lift: TrackedLift, goal: SessionGoal): TrackedParsedEx
       restTime: 180,
       notes: 'Checkpoint: warm up, then one max attempt',
       sets: [
-        ...CHECKPOINT_LADDER.map(([reps, f]) => ({ reps, weight: roundLoad(top * f, load.unit), unit })),
+        ...CHECKPOINT_LADDER.map(([reps, f]) => ({ reps, weight: roundLoad(top * f, load.unit, lift.step), unit })),
         { reps: 1, weight: attempt, unit },
       ],
     };
@@ -323,7 +323,7 @@ export function progressionStatus(lift: TrackedLift): string {
   const cycle = `Volume ${c.volume}/${SESSIONS_PER_GOAL} · Strength ${c.strength}/${SESSIONS_PER_GOAL}`;
   const est = currentEstimate(lift);
   if (!est || lift.load.kind !== 'weight') return cycle;
-  return est.fromLog ? `Est. max ${roundLoad(est.value, lift.load.unit)} ${lift.load.unit} · ${cycle}` : cycle;
+  return est.fromLog ? `Est. max ${roundLoad(est.value, lift.load.unit, lift.step)} ${lift.load.unit} · ${cycle}` : cycle;
 }
 
 /**
