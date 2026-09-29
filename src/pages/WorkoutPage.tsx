@@ -51,7 +51,7 @@ import { Card } from '../components/ui/card';
 import { Exercise, WorkoutExercise, WorkoutSet } from '../types/exercise';
 import type { InSessionDecision } from '../types/progression';
 import { askAiOpened } from '../store/slices/aiSlice';
-import { isBackendAvailable, isSignedIn } from '../ai/aiClient';
+import { isBackendAvailable } from '../ai/aiClient';
 import { buildMissSeed } from '../ai/missSeed';
 
 /** Build a calendar-shaped WorkoutSummary from a finished ActiveWorkout, for the
@@ -128,10 +128,13 @@ export default function WorkoutPage() {
   const [showEditModal, setShowEditModal] = useState(false);
   const [showEndWorkoutModal, setShowEndWorkoutModal] = useState(false);
   // Live in-session cue after a logged set (reduce/repeat only).
-  const [suggestion, setSuggestion] = useState<InSessionDecision | null>(null);
-  // What the suggestion is about: the set as logged and as prescribed (captured
+  // Carries what it is about: the set as logged and as prescribed (captured
   // before completeSet overwrites the prescribed reps), for Ask coach's seed.
-  const missRef = useRef<{ logged: { reps: number; weight: number; unit?: string }; planned: WorkoutSet } | null>(null);
+  const [suggestion, setSuggestion] = useState<{
+    decision: InSessionDecision;
+    logged: { reps: number; weight: number; unit?: string };
+    planned: WorkoutSet;
+  } | null>(null);
   // Applied "lighter" loads keyed by exercise IDENTITY (catalog exercise id). A
   // chosen reduction (welcome-back OR in-session) pre-fills the working sets via
   // recommendedWeight; keying by id — not the current index — means it survives
@@ -301,8 +304,10 @@ export default function WorkoutPage() {
     // each set now gets its own decision. inSessionSuggestion returns null for
     // continue/end, so those stay silent and keep the no-scroll player calm.
     if (loggedSet) {
-      missRef.current = { logged: { reps, weight, unit: loggedSet.unit }, planned: { ...loggedSet } };
-      setSuggestion(inSessionSuggestion(loggedSet, { reps, weight, rir }, setIndex, totalSets));
+      const decision = inSessionSuggestion(loggedSet, { reps, weight, rir }, setIndex, totalSets);
+      setSuggestion(decision
+        ? { decision, logged: { reps, weight, unit: loggedSet.unit }, planned: { ...loggedSet } }
+        : null);
     }
 
     // Check if current exercise is part of a superset
@@ -349,6 +354,8 @@ export default function WorkoutPage() {
       exerciseIndex: activeWorkout.currentExerciseIndex,
       setIndex: activeWorkout.currentSetIndex
     }));
+    // The cue (and its miss) described a set that is no longer logged.
+    setSuggestion(null);
   };
 
   // Apply the suggested cut to the remaining sets: route it through the same
@@ -366,16 +373,16 @@ export default function WorkoutPage() {
   // Ask coach — only offered when AI can actually answer. After a miss the
   // chip seeds the chat with what was logged vs planned; the always-there link
   // just opens it about this exercise and lets the user type.
-  const aiUsable = !aiDisabledReason && isBackendAvailable() && isSignedIn();
+  const aiUsable = !aiDisabledReason && isBackendAvailable() && Boolean(user);
   const handleAskCoach = () => {
-    const done = currentExercise.sets.filter((s) => s.completed);
-    const miss = missRef.current;
+    // The chip only renders with a suggestion, which carries its miss.
+    if (!suggestion) return;
     dispatch(askAiOpened({
       focusExerciseId: currentExercise.id,
       seed: buildMissSeed(
         currentExercise.customTitle || currentExercise.exercise.name,
-        miss?.logged ?? done[done.length - 1],
-        miss?.planned,
+        suggestion.logged,
+        suggestion.planned,
       ),
     }));
     setSuggestion(null);
@@ -656,7 +663,7 @@ export default function WorkoutPage() {
             onCompleteSet={handleCompleteSet}
             onUncompleteSet={handleUncompleteSet}
             onJumpToSet={handleJumpToSet}
-            suggestion={suggestion}
+            suggestion={suggestion?.decision ?? null}
             onApplySuggestion={handleApplySuggestion}
             onKeepSuggestion={handleKeepSuggestion}
             onAskCoach={aiUsable ? handleAskCoach : undefined}

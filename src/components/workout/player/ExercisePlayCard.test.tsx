@@ -35,6 +35,13 @@ describe('ExercisePlayCard Ask coach link', () => {
     expect(onAskCoachGeneral).toHaveBeenCalledOnce();
   });
 
+  it('pads the link hit area to the 44px touch minimum without changing layout', () => {
+    renderCard({ onAskCoachGeneral: vi.fn() });
+    const link = screen.getByRole('button', { name: /ask coach/i });
+    // 12px × 1.4 caption + py-1 ≈ 24.8px; a 10px pseudo-element above and below → ≈ 44.8px.
+    expect(link).toHaveClass('relative', 'after:absolute', 'after:-inset-y-2.5', "after:content-['']");
+  });
+
   it('has no Ask coach link without the handler', () => {
     renderCard();
     expect(screen.queryByRole('button', { name: /ask coach/i })).not.toBeInTheDocument();

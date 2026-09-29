@@ -263,7 +263,9 @@ export const ExercisePlayCard: React.FC<ExercisePlayCardProps> = ({
         <button
           type="button"
           onClick={onAskCoachGeneral}
-          className="-my-1 inline-flex shrink-0 items-center gap-1.5 self-center rounded-full px-2 py-1 text-caption font-semibold text-ink-muted transition-colors duration-snap hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+          // The after: pseudo-element pads the hit area to ≥44px (24.8px + 2×10px)
+          // without taking layout space.
+          className="relative -my-1 inline-flex after:absolute after:inset-x-0 after:-inset-y-2.5 after:content-[''] shrink-0 items-center gap-1.5 self-center rounded-full px-2 py-1 text-caption font-semibold text-ink-muted transition-colors duration-snap hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
         >
           <MessageCircle size={13} aria-hidden="true" />
           Ask coach
