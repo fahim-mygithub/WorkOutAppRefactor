@@ -10,8 +10,9 @@
  */
 import type { UnknownAction } from '@reduxjs/toolkit';
 import type { ActiveWorkout, Exercise, WorkoutExercise, WorkoutSet } from '../types/exercise';
-import type { TrackedLift, WeightUnit } from '../types/trackedLifts';
-import { updateExercise, replaceExerciseMovement } from '../store/slices/workoutSlice';
+import type { TrackedLift, TrackedLoad, TrackedTarget, WeightUnit } from '../types/trackedLifts';
+import { replaceExerciseMovement, setsPatched, type SetPatch } from '../store/slices/workoutSlice';
+import { prescribedFloor } from '../lib/progression/setPrescription';
 import { liftAdded, liftRemoved, liftUpdated } from '../store/slices/trackedLiftsSlice';
 import { checkProposedLoad } from '../lib/aiLoadCheck';
 import { formatLoad, formatTarget } from '../lib/trackedLifts';
@@ -68,11 +69,27 @@ function libraryMatch(ctx: PlanContext, name: string): Exercise | undefined {
   return ctx.library.find((e) => e.name.toLowerCase() === key);
 }
 
-function setsAction(ex: WorkoutExercise, sets: WorkoutSet[]): UnknownAction {
-  return updateExercise({ exerciseId: ex.id, sets, restTime: ex.restTime ?? 120 });
+/**
+ * A guarded edit of one set and its undo. Apply runs only while the set matches
+ * `applyIf`; undo restores the prior value of each changed field, and only while
+ * the set still holds exactly what we applied (plus `undoIf`). So neither ever
+ * clobbers a set the lifter touched in between.
+ */
+function patchPair(
+  set: WorkoutSet,
+  changes: Partial<WorkoutSet>,
+  applyIf: Partial<WorkoutSet>,
+  undoIf: Partial<WorkoutSet> = {},
+): { apply: SetPatch; undo: SetPatch } {
+  const prior: Record<string, unknown> = {};
+  for (const key of Object.keys(changes)) prior[key] = (set as unknown as Record<string, unknown>)[key];
+  return {
+    apply: { setId: set.id, changes, onlyIf: applyIf },
+    undo: { setId: set.id, changes: prior as Partial<WorkoutSet>, onlyIf: { ...changes, ...undoIf } },
+  };
 }
 
-const describeLift = (parsed: NonNullable<ReturnType<typeof fromFlatLift>>): string =>
+const describeLift = (parsed: { load: TrackedLoad; target: TrackedTarget }): string =>
   [formatLoad(parsed.load), formatTarget(parsed.target)].filter(Boolean).join(', ');
 
 export function planToolCall(call: AiToolCall, ctx: PlanContext): ToolPlan {
@@ -102,23 +119,22 @@ export function planToolCall(call: AiToolCall, ctx: PlanContext): ToolPlan {
         if (!reps) return reject('Reps must be a whole number above zero.');
       }
 
-      const sets = ex.sets.map((s, k) =>
-        k >= from && !s.completed
-          ? {
-              ...s,
-              ...(weight !== undefined ? { weight } : {}),
-              ...(reps !== undefined ? { reps, repMin: undefined, repMax: undefined } : {}),
-            }
-          : s,
-      );
+      const changes: Partial<WorkoutSet> = {
+        ...(weight !== undefined ? { weight } : {}),
+        ...(reps !== undefined ? { reps, repMin: undefined, repMax: undefined } : {}),
+      };
+      // Undo skips a set the lifter has logged since, even at the adjusted numbers.
+      const pairs = ex.sets
+        .filter((s, k) => k >= from && !s.completed)
+        .map((s) => patchPair(s, changes, { completed: false }, { completed: false }));
       const what = [weight !== undefined && `${weight} ${unit}`, reps !== undefined && `${reps} reps`]
         .filter(Boolean)
         .join(' × ');
       return {
         kind: 'auto', id,
         summary: `${ex.customTitle || ex.exercise.name}: remaining sets at ${what}`,
-        apply: [setsAction(ex, sets)],
-        undo: [setsAction(ex, ex.sets)],
+        apply: [setsPatched({ exerciseId: ex.id, patches: pairs.map((p) => p.apply) })],
+        undo: [setsPatched({ exerciseId: ex.id, patches: pairs.map((p) => p.undo) })],
       };
     }
 
@@ -131,18 +147,27 @@ export function planToolCall(call: AiToolCall, ctx: PlanContext): ToolPlan {
       if (idx < 0 || idx >= ex.sets.length) return reject('No open set to log.');
       const weight = num(i.weight);
       if (weight !== undefined && weight < 0) return reject('Load cannot be negative.');
-      const rir = index(i.rir);
-      const unit = unitOf(ex.sets[idx]);
-      const sets = ex.sets.map((s, k) =>
-        k === idx
-          ? { ...s, reps, ...(weight !== undefined ? { weight } : {}), ...(rir !== undefined ? { rir } : {}), completed: true }
-          : s,
-      );
+      let rir: number | undefined;
+      if (i.rir !== undefined) {
+        rir = index(i.rir);
+        if (rir === undefined || rir > 5) return reject('Reps in reserve must be 0–5.');
+      }
+      const set = ex.sets[idx];
+      const unit = unitOf(set);
+      const changes: Partial<WorkoutSet> = {
+        reps,
+        ...(weight !== undefined ? { weight } : {}),
+        ...(rir !== undefined ? { rir } : {}),
+        completed: true,
+        // Same rule as completeSet: judged against the prescription being replaced.
+        failed: reps < prescribedFloor(set),
+      };
+      const pair = patchPair(set, changes, { completed: set.completed, reps: set.reps, weight: set.weight });
       return {
         kind: 'auto', id,
-        summary: `Logged set ${idx + 1}: ${reps} reps${weight !== undefined ? ` at ${weight} ${unit}` : ''}`,
-        apply: [setsAction(ex, sets)],
-        undo: [setsAction(ex, ex.sets)],
+        summary: `${set.completed ? 'Corrected' : 'Logged'} set ${idx + 1}: ${reps} reps${weight !== undefined ? ` at ${weight} ${unit}` : ''}`,
+        apply: [setsPatched({ exerciseId: ex.id, patches: [pair.apply] })],
+        undo: [setsPatched({ exerciseId: ex.id, patches: [pair.undo] })],
       };
     }
 
@@ -161,16 +186,24 @@ export function planToolCall(call: AiToolCall, ctx: PlanContext): ToolPlan {
         const check = checkProposedLoad(num(i.weight) ?? 0, null, unit);
         if (!check.ok) return reject(check.reason);
         weight = check.value;
-        apply.push(setsAction(ex, ex.sets.map((s) => (s.completed ? s : { ...s, weight }))));
+        // Only sets still open when Apply is tapped: a late Apply never un-logs one.
+        const patches: SetPatch[] = ex.sets
+          .filter((s) => !s.completed)
+          .map((s) => ({ setId: s.id, changes: { weight }, onlyIf: { completed: false } }));
+        apply.push(setsPatched({ exerciseId: ex.id, patches }));
       }
-      const ongoing = i.scope === 'ongoing';
-      if (ongoing && ex.tracked) {
-        apply.push(liftUpdated({ id: ex.tracked.liftId, name: replacement.name }));
-      }
+      // 'ongoing' only means something for a tracked lift; otherwise it is today's swap.
+      const lift = i.scope === 'ongoing' && ex.tracked
+        ? ctx.trackedLifts.find((l) => l.id === ex.tracked!.liftId)
+        : undefined;
+      if (lift) apply.push(liftUpdated({ id: lift.id, name: replacement.name }));
+      const benchmarkNote = lift
+        ? `Benchmark stays ${describeLift(lift)} — update it after your first session.`
+        : undefined;
       return {
         kind: 'confirm', id,
-        summary: `Swap ${ex.customTitle || ex.exercise.name} for ${replacement.name}${weight !== undefined ? ` at ${weight} ${unit}` : ''}${ongoing ? ' from now on' : ' today'}`,
-        detail: str(i.reason),
+        summary: `Swap ${ex.customTitle || ex.exercise.name} for ${replacement.name}${weight !== undefined ? ` at ${weight} ${unit}` : ''}${lift ? ' from now on' : ' today'}`,
+        detail: [str(i.reason), benchmarkNote].filter(Boolean).join(' ') || undefined,
         apply,
       };
     }
@@ -194,7 +227,14 @@ export function planToolCall(call: AiToolCall, ctx: PlanContext): ToolPlan {
       const category = str(i.category);
       const parsed = fromFlatLift(i as unknown as FlatLift);
       if (!name || !category || !parsed) return reject('That lift is missing a name, category or benchmark.');
-      const sets = index(i.sets);
+      if (ctx.trackedLifts.some((l) => l.name.trim().toLowerCase() === name.toLowerCase())) {
+        return reject(`${name} is already tracked.`);
+      }
+      let sets: number | undefined;
+      if (i.sets !== undefined) {
+        sets = index(i.sets);
+        if (sets === undefined || sets < 1 || sets > 10) return reject('Sets must be 1–10.');
+      }
       return {
         kind: 'confirm', id,
         summary: `Track ${name} (${category}): ${describeLift(parsed)}`,
