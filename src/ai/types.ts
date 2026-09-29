@@ -1,17 +1,17 @@
 /**
  * Shared request/response + tool types for the AI layer.
  *
- * These types mirror the contract of the Firebase callable Cloud Function
- * (`functions/`, a SEPARATE package). The function is the ONLY place the
+ * These types mirror the contract of the Cloudflare Worker (`worker/`, a
+ * SEPARATE package). The Worker is the ONLY place the
  * Anthropic API key lives; the client never talks to Anthropic directly. The
  * client either calls the `ai` callable (when a backend is reachable) or falls
  * back to the existing deterministic regex parser (when offline / no backend).
  *
  * Model ids (authoritative — do not invent others):
  *   - parse surface       → 'claude-haiku-4-5-20251001'
- *   - chat-with-tools     → 'claude-sonnet-4-6'
+ *   - chat-with-tools     → 'claude-sonnet-5-5'
  *
- * The function uses the official @anthropic-ai/sdk with prompt caching
+ * The Worker uses the official @anthropic-ai/sdk with prompt caching
  * (cache_control on the system prompt). None of that leaks to the client — the
  * client only sees the request/response shapes below.
  */
@@ -28,7 +28,7 @@ export const AI_MODELS = {
   /** Structured freeform-text -> sets parsing. */
   parse: 'claude-haiku-4-5-20251001',
   /** Conversational coaching with tool use. */
-  chat: 'claude-sonnet-4-6',
+  chat: 'claude-sonnet-5-5',
 } as const;
 
 export type AiModelId = (typeof AI_MODELS)[keyof typeof AI_MODELS];
