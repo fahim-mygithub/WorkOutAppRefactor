@@ -1,28 +1,22 @@
-// AiChatSheet: a self-contained AI chat surface (design §4 — Phase 4 AI layer).
+// AiChatSheet: the Ask AI chat surface (a bottom sheet), mounted app-wide by
+// AskAiHost (components/ai/AskAiHost.tsx), which owns the Worker wiring.
 //
-// Behavior (per design §4 / §7 Phase 4):
-//   - A bottom-sheet chat surface. The user types; assistant turns stream back
-//     as text plus structured "tool-call" blocks.
-//   - MUTATION tool-calls render as [Apply]/[Reject] cards (ApplyRejectCard).
-//     The AI never mutates state directly — the user confirms each change.
-//   - VISUALIZATION tool-calls (charts) render READ-ONLY (no Apply/Reject).
-//   - When the AI backend is unavailable (no Worker URL configured, or no
-//     ANTHROPIC_API_KEY secret on the Worker) it shows a graceful state AND
-//     still offers the working DETERMINISTIC parse (freeform text -> sets) via
-//     the existing client-side WorkoutParser. So the surface is useful even
-//     before the backend ships.
+// Behavior:
+//   - The user types; each assistant turn renders as text plus structured
+//     tool-call blocks.
+//   - Confirm-tier tool calls render as [Apply]/[Reject] cards (ApplyRejectCard);
+//     auto-tier calls (logSet, adjustSet) are applied by the host and show here
+//     as small applied/discarded notices (the host shows the Undo toast).
+//   - VISUALIZATION blocks render READ-ONLY (no Apply/Reject).
+//   - When no client is available it shows a graceful state and still offers
+//     the on-device WorkoutParser (freeform text -> sets) via onFallbackParse.
 //
 // Isolation / security:
 //   - This component NEVER imports @anthropic-ai/sdk and NEVER sees the API key.
-//     The key lives in the Worker only. All Claude access goes through an
-//     injected `client` (the Worker transport). Model ids
-//     (parse=claude-haiku-4-5-20251001, chat=claude-sonnet-5-5) and prompt
-//     caching live server-side in the Worker, not here.
+//     The key lives in the Worker only; all model access goes through the
+//     injected `client`. Models and prompt caching live in the Worker.
 //   - The client is injected so this file compiles and tests without any
-//     network/SDK dependency, and so the page that mounts it owns the wiring.
-//
-// Not wired into any route yet — exported ready to mount (e.g. a Build-page
-// "Ask AI" button). Mounting it touches no shared files.
+//     network/SDK dependency.
 import * as React from 'react';
 import {
   Sheet,
