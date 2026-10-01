@@ -112,25 +112,32 @@ describe('TrackedLifts', () => {
     expect(store.getState().trackedLifts.lifts.map((l) => l.name)).toEqual(['Bench Press', 'Seal Row']);
   });
 
-  it('shows a checkbox per lift only when selection is enabled', async () => {
+  it('makes each row a checkbox when selection is enabled, with a small edit button', async () => {
     const u = userEvent.setup();
     const toggled: string[] = [];
     renderList({ selectedIds: ['seed-seal-row'], onToggleSelect: (id) => toggled.push(id) });
 
-    const bench = await screen.findByRole('checkbox', { name: 'Include Bench Press in a workout' });
+    const bench = await screen.findByRole('checkbox', { name: /^Bench Press/ });
     expect(bench).toHaveAttribute('aria-checked', 'false');
-    expect(screen.getByRole('checkbox', { name: 'Include Seal Row in a workout' })).toHaveAttribute('aria-checked', 'true');
+    expect(screen.getByRole('checkbox', { name: /^Seal Row/ })).toHaveAttribute('aria-checked', 'true');
 
+    // tapping the row checks it and does not open the editor
     await u.click(bench);
     expect(toggled).toEqual(['seed-bench-press']);
-    // the row itself still opens the editor, not the checkbox
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+
+    // the pencil opens the editor and does not toggle
+    await u.click(screen.getByRole('button', { name: 'Edit Bench Press' }));
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByLabelText('Lift')).toHaveValue('Bench Press');
+    expect(toggled).toEqual(['seed-bench-press']);
   });
 
   it('has no checkboxes without a selection handler', async () => {
     renderList();
     await screen.findAllByRole('heading', { level: 3 });
     expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^Edit / })).not.toBeInTheDocument();
   });
 
   it('flags a lift for progression from the row', async () => {

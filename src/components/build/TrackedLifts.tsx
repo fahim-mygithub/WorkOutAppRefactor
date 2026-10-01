@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Check, Flag, Plus } from 'lucide-react';
+import { Check, Flag, Pencil, Plus } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAppDispatch, useAppSelector } from '../../store/hooks';
 import {
@@ -24,9 +24,10 @@ import { TrackedLiftEditor } from './TrackedLiftEditor';
  * under the name. Tapping a row opens the editor sheet; "Add" per category and
  * in the section header opens it empty.
  *
- * With `onToggleSelect`, each row also gets a checkbox on the left so lifts can
- * be picked to build a workout from; the parent owns the selection and the
- * "Build workout" action.
+ * With `onToggleSelect`, a row becomes a checkbox so lifts can be picked to
+ * build a workout from (tap anywhere on it), and a small pencil on the right
+ * opens the editor instead. The parent owns the selection and the "Build
+ * workout" action.
  *
  * The flag on the right marks a lift for progression (Volume / Strength sets
  * from its log, checkpoint days); flagged rows show that status under the
@@ -108,20 +109,26 @@ export function TrackedLifts({ className, selectedIds = [], onToggleSelect }: Tr
                     key={lift.id}
                     className={cn('flex items-stretch', i > 0 && 'border-t border-hairline')}
                   >
-                    {onToggleSelect && (
-                      <button
-                        type="button"
-                        role="checkbox"
-                        aria-checked={checked}
-                        aria-label={`Include ${lift.name} in a workout`}
-                        onClick={() => onToggleSelect(lift.id)}
-                        className="group flex w-14 shrink-0 items-center justify-center pl-2 focus-visible:outline-none"
-                      >
+                    <button
+                      type="button"
+                      // Picking lifts for a workout: the whole row is the checkbox
+                      // and the pencil edits. Without a selection handler there is
+                      // nothing to check, so the row itself opens the editor.
+                      role={onToggleSelect ? 'checkbox' : undefined}
+                      aria-checked={onToggleSelect ? checked : undefined}
+                      onClick={() =>
+                        onToggleSelect ? onToggleSelect(lift.id) : setEditor({ open: true, lift })
+                      }
+                      className={cn(
+                        'group flex min-h-[64px] min-w-0 flex-1 items-center gap-4 py-3 pl-4 pr-1 text-left transition-colors duration-snap',
+                        'hover:bg-surface-raised/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent',
+                      )}
+                    >
+                      {onToggleSelect && (
                         <span
                           aria-hidden="true"
                           className={cn(
-                            'flex h-6 w-6 items-center justify-center rounded-lg transition-colors duration-snap',
-                            'group-focus-visible:ring-2 group-focus-visible:ring-accent',
+                            'flex h-6 w-6 shrink-0 items-center justify-center rounded-lg transition-colors duration-snap',
                             checked
                               ? 'bg-accent-2 text-accent-2-fg'
                               : 'bg-surface-raised text-transparent group-hover:bg-surface-raised/70',
@@ -129,17 +136,7 @@ export function TrackedLifts({ className, selectedIds = [], onToggleSelect }: Tr
                         >
                           <Check size={16} strokeWidth={3} />
                         </span>
-                      </button>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => setEditor({ open: true, lift })}
-                      className={cn(
-                        'flex min-h-[64px] min-w-0 flex-1 items-center gap-4 py-3 pr-1 text-left transition-colors duration-snap',
-                        'hover:bg-surface-raised/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent',
-                        onToggleSelect ? 'pl-2' : 'pl-4',
                       )}
-                    >
                       <span className="min-w-0 flex-1">
                         <span className="block truncate text-body font-semibold text-ink">{lift.name}</span>
                         {target && (
@@ -160,6 +157,18 @@ export function TrackedLifts({ className, selectedIds = [], onToggleSelect }: Tr
                         {formatLoad(lift.load)}
                       </span>
                     </button>
+                    {onToggleSelect && (
+                      <IconButton
+                        variant="ghost"
+                        size="sm"
+                        aria-label={`Edit ${lift.name}`}
+                        title="Edit lift"
+                        onClick={() => setEditor({ open: true, lift })}
+                        className="my-auto shrink-0"
+                      >
+                        <Pencil size={16} aria-hidden="true" />
+                      </IconButton>
+                    )}
                     <button
                       type="button"
                       aria-pressed={!!lift.progression}
