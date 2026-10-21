@@ -26,6 +26,8 @@ interface SetInputProps {
   allSets?: any[];
   recommendedWeight?: number;
   recommendedReps?: number;
+  /** A load the lifter explicitly chose (e.g. "apply lighter"); beats the set's own weight. */
+  overrideWeight?: number;
   /** Tighten padding, input height, and the action button for the no-scroll player. */
   compact?: boolean;
 }
@@ -38,12 +40,23 @@ export const SetInput: React.FC<SetInputProps> = ({
   allSets = NO_SETS,
   recommendedWeight,
   recommendedReps,
+  overrideWeight,
   compact = false,
 }) => {
   const [reps, setReps] = useState(0);
   const [weight, setWeight] = useState(0);
   const [rir, setRir] = useState<number | undefined>(undefined);
   const [isEditing, setIsEditing] = useState(false);
+
+  // Weight precedence: an explicit applied load, then the set's own configured
+  // (builder) weight, then the progression recommendation. The recommendation is
+  // one number per exercise, so it must only fill sets with no weight of their
+  // own — otherwise it flattens a configured ramp (100/110/120 -> 100/100/100).
+  const resolveWeight = (): number | undefined => {
+    if (overrideWeight !== undefined) return overrideWeight;
+    if (set?.weight > 0) return undefined;
+    return recommendedWeight;
+  };
 
   // Smart defaults logic
   const getSmartDefaults = () => {
@@ -63,12 +76,13 @@ export const SetInput: React.FC<SetInputProps> = ({
     if (recommendedReps !== undefined) {
       defaultReps = recommendedReps;
     }
-    if (recommendedWeight !== undefined) {
-      defaultWeight = recommendedWeight;
+    const weight = resolveWeight();
+    if (weight !== undefined) {
+      defaultWeight = weight;
     }
 
     // If we have recommendation or configured reps, use them
-    if (defaultReps > 0 || recommendedReps !== undefined || recommendedWeight !== undefined) {
+    if (defaultReps > 0 || recommendedReps !== undefined || weight !== undefined) {
       return {
         reps: defaultReps || previousSet?.reps || 8,
         weight: defaultWeight || previousSet?.weight || 0
@@ -120,13 +134,14 @@ export const SetInput: React.FC<SetInputProps> = ({
 
   // Update when recommendation changes
   useEffect(() => {
-    if (recommendedWeight !== undefined && !set?.completed) {
-      setWeight(recommendedWeight);
+    const weight = resolveWeight();
+    if (weight !== undefined && !set?.completed) {
+      setWeight(weight);
     }
     if (recommendedReps !== undefined && !set?.completed) {
       setReps(recommendedReps);
     }
-  }, [recommendedWeight, recommendedReps, set?.completed]);
+  }, [recommendedWeight, overrideWeight, set?.weight, recommendedReps, set?.completed]);
 
   const handleComplete = () => {
     onComplete(reps, weight, rir);

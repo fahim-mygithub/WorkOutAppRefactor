@@ -656,7 +656,8 @@ export default function WorkoutPage() {
                 ? previousPerformances[currentExercise.exercise.id] || null
                 : null
             }
-            recommendedWeight={appliedWeights[currentExercise.exercise.id] ?? progressionHook.recommendation?.recommendedWeight}
+            recommendedWeight={progressionHook.recommendation?.recommendedWeight}
+            overrideWeight={appliedWeights[currentExercise.exercise.id]}
             recommendedReps={progressionHook.recommendation?.recommendedReps}
             onEditSets={() => handleEditExercise(currentExercise)}
             onChangeExercise={() => setSwapExerciseId(currentExercise.id)}

@@ -24,6 +24,8 @@ interface ExercisePlayCardProps {
   supersetPartners: string[];
   previousPerformance: ExerciseHistory | null;
   recommendedWeight?: number;
+  /** Explicitly applied load (lighter-load prompts); beats each set's configured weight. */
+  overrideWeight?: number;
   recommendedReps?: number;
   onEditSets: () => void;
   /** Swap which movement this is (when the typed name was matched wrong). */
@@ -102,6 +104,7 @@ export const ExercisePlayCard: React.FC<ExercisePlayCardProps> = ({
   supersetPartners,
   previousPerformance,
   recommendedWeight,
+  overrideWeight,
   recommendedReps,
   onEditSets,
   onChangeExercise,
@@ -240,6 +243,7 @@ export const ExercisePlayCard: React.FC<ExercisePlayCardProps> = ({
           previousSet={currentSetIndex > 0 ? sets[currentSetIndex - 1] ?? null : null}
           allSets={sets}
           recommendedWeight={recommendedWeight}
+          overrideWeight={overrideWeight}
           recommendedReps={recommendedReps}
         />
       </div>

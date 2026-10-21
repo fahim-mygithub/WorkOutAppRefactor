@@ -99,3 +99,27 @@ describe('SetInput — Tempo steppers', () => {
     expect(screen.getByLabelText('Reps')).toHaveValue(0);
   });
 });
+
+describe('SetInput — builder weight vs recommendation', () => {
+  const ramp = [100, 110, 120].map((weight, i) => ({ id: `s${i}`, reps: 5, weight, completed: false }));
+
+  it.each([0, 1, 2])('set %i keeps its own configured weight over the recommendation', (i) => {
+    render(
+      <SetInput set={ramp[i]} allSets={ramp} onComplete={noop} onUncomplete={noop} recommendedWeight={100} recommendedReps={5} />,
+    );
+    expect(screen.getByLabelText('Weight')).toHaveValue(ramp[i].weight);
+  });
+
+  it('uses the recommendation for a set with no configured weight', () => {
+    const set = { id: 's', reps: 5, completed: false };
+    render(<SetInput set={set} onComplete={noop} onUncomplete={noop} recommendedWeight={85} />);
+    expect(screen.getByLabelText('Weight')).toHaveValue(85);
+  });
+
+  it('an explicit applied load overrides the configured weight', () => {
+    render(
+      <SetInput set={ramp[1]} allSets={ramp} onComplete={noop} onUncomplete={noop} recommendedWeight={100} overrideWeight={90} />,
+    );
+    expect(screen.getByLabelText('Weight')).toHaveValue(90);
+  });
+});
