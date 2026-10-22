@@ -483,4 +483,44 @@ describe('WorkoutListView', () => {
     // Accessible name updates to 50 seconds
     expect(screen.getByRole('button', { name: /set 1: 50 seconds/i })).toBeInTheDocument();
   });
+
+  it('superset card headers allow multi-line wrapping (line-clamp-2) and contain no truncate in header', () => {
+    const supersetWorkout = createMockWorkout([
+      {
+        id: 'we-incline',
+        exercise: inclineEx,
+        isSuperset: true,
+        supersetId: 'ss-wrap',
+        sets: [{ id: 's1', reps: 10, weight: 50, completed: false }],
+      },
+      {
+        id: 'we-raise',
+        exercise: lateralRaiseEx,
+        isSuperset: true,
+        supersetId: 'ss-wrap',
+        sets: [{ id: 's2', reps: 12, weight: 20, completed: false }],
+      },
+    ]);
+
+    render(
+      <WorkoutListView
+        workout={supersetWorkout}
+        onCompleteSet={vi.fn()}
+        onUncompleteSet={vi.fn()}
+        onUpdateSet={vi.fn()}
+      />
+    );
+
+    const headingA = screen.getByRole('heading', { level: 2, name: 'Incline Dumbbell Press' });
+    const headingB = screen.getByRole('heading', { level: 2, name: 'Dumbbell Lateral Raise' });
+
+    expect(headingA).toBeInTheDocument();
+    expect(headingB).toBeInTheDocument();
+
+    // The header heading should not have `truncate` and should have `line-clamp-2`
+    expect(headingA.className).not.toContain('truncate');
+    expect(headingA.className).toContain('line-clamp-2');
+    expect(headingB.className).not.toContain('truncate');
+    expect(headingB.className).toContain('line-clamp-2');
+  });
 });

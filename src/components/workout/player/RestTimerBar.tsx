@@ -188,24 +188,89 @@ export const RestTimerBar: React.FC = () => {
   const remainingFraction =
     active && restTimer.duration > 0 ? Math.max(0, Math.min(1, remaining / restTimer.duration)) : 1;
 
-  // "Up next" — the set that follows the one just logged. Supersets advance by
-  // round (partner first), so the card is omitted there rather than guessed.
+  // "Up next" — the next NOT-completed set across the workout (skips already-logged
+  // sets and cards, handling list mode out-of-order logging and Cards mode).
+  // Supersets advance by round (first round partner A, then B; then round 2 A, B...).
   const upNext = (() => {
-    if (!activeWorkout || !currentExercise || currentExercise.isSuperset) return null;
-    const nextInExercise = currentExercise.sets[activeWorkout.currentSetIndex + 1];
-    if (nextInExercise) {
-      return {
-        name: currentExercise.customTitle || currentExercise.exercise.name,
-        setLabel: `set ${activeWorkout.currentSetIndex + 2}`,
-        set: nextInExercise,
-      };
+    if (!activeWorkout) return null;
+
+    type SetCandidate = {
+      exerciseIndex: number;
+      setIndex: number;
+      set: (typeof activeWorkout.exercises)[number]['sets'][number];
+    };
+
+    const orderedCandidates: SetCandidate[] = [];
+    const visitedExercises = new Set<number>();
+
+    for (let i = 0; i < activeWorkout.exercises.length; i++) {
+      if (visitedExercises.has(i)) continue;
+      const ex = activeWorkout.exercises[i];
+
+      if (ex.isSuperset && ex.supersetId) {
+        const partnerIndices: number[] = [];
+        activeWorkout.exercises.forEach((candidate, idx) => {
+          if (candidate.isSuperset && candidate.supersetId === ex.supersetId) {
+            partnerIndices.push(idx);
+            visitedExercises.add(idx);
+          }
+        });
+
+        const maxSets = Math.max(
+          ...partnerIndices.map((idx) => activeWorkout.exercises[idx].sets.length),
+        );
+        for (let round = 0; round < maxSets; round++) {
+          partnerIndices.forEach((idx) => {
+            const partnerSet = activeWorkout.exercises[idx].sets[round];
+            if (partnerSet) {
+              orderedCandidates.push({
+                exerciseIndex: idx,
+                setIndex: round,
+                set: partnerSet,
+              });
+            }
+          });
+        }
+      } else {
+        visitedExercises.add(i);
+        ex.sets.forEach((set, sIdx) => {
+          orderedCandidates.push({
+            exerciseIndex: i,
+            setIndex: sIdx,
+            set,
+          });
+        });
+      }
     }
-    const nextExercise = activeWorkout.exercises[activeWorkout.currentExerciseIndex + 1];
-    if (!nextExercise || !nextExercise.sets[0]) return null;
+
+    const currentIndex = orderedCandidates.findIndex(
+      (c) =>
+        c.exerciseIndex === activeWorkout.currentExerciseIndex &&
+        c.setIndex === activeWorkout.currentSetIndex,
+    );
+
+    let nextCandidate: SetCandidate | undefined;
+    if (currentIndex !== -1) {
+      for (let offset = 1; offset < orderedCandidates.length; offset++) {
+        const candidate = orderedCandidates[(currentIndex + offset) % orderedCandidates.length];
+        if (!candidate.set.completed) {
+          nextCandidate = candidate;
+          break;
+        }
+      }
+    }
+
+    if (!nextCandidate) {
+      nextCandidate = orderedCandidates.find((c) => !c.set.completed);
+    }
+
+    if (!nextCandidate) return null;
+
+    const nextExercise = activeWorkout.exercises[nextCandidate.exerciseIndex];
     return {
       name: nextExercise.customTitle || nextExercise.exercise.name,
-      setLabel: 'set 1',
-      set: nextExercise.sets[0],
+      setLabel: `set ${nextCandidate.setIndex + 1}`,
+      set: nextCandidate.set,
     };
   })();
 

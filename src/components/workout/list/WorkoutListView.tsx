@@ -254,7 +254,7 @@ export const WorkoutListView: React.FC<WorkoutListViewProps> = ({
                         )}
                         <h2
                           className={cn(
-                            'text-[17px] font-extrabold font-display leading-tight truncate',
+                            'text-[17px] font-extrabold font-display leading-tight line-clamp-2',
                             isCardDone ? 'text-accent-2' : 'text-ink',
                           )}
                         >
