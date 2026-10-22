@@ -1,16 +1,12 @@
-// WorkoutListView — non-interactive scrollable list view for the workout screen (Tempo).
-// Displays all exercises for the workout in a single scrollable page, with inline steppers
-// per set, collapsed summary rows for completed sets, superset badges, and in-session cue strips.
 import React, { useState } from 'react';
-import { Check, Replace, Pencil, History, Link2, BookOpen } from 'lucide-react';
+import { Check, Replace, Pencil, BookOpen, MessageCircle, Minus, Plus } from 'lucide-react';
 import type { WorkoutExercise, ActiveWorkout } from '../../../types/exercise';
 import type { ExerciseHistory } from '../../../types/exerciseHistory';
 import type { InSessionDecision } from '@/types/progression';
-import { Card } from '@/components/ui/card';
 import { IconButton } from '@/components/ui/icon-button';
 import { Modal, ModalContent, ModalTitle, ModalDescription } from '@/components/ui/modal';
-import { SetInput } from '../../SetInput';
-import { InSessionSuggestion } from '../player/InSessionSuggestion';
+import { prescribedFloor } from '@/lib/progression/setPrescription';
+import { groupWorkoutCards, getExerciseTag } from './workoutCardUtils';
 import { cn } from '@/lib/utils';
 
 export interface WorkoutListViewProps {
@@ -30,274 +26,543 @@ export interface WorkoutListViewProps {
     rir?: number,
   ) => void;
   onUncompleteSet: (exerciseIndex: number, setIndex: number) => void;
+  onStartRest?: (duration: number) => void;
   onApplySuggestion?: (weight: number, exerciseId: string) => void;
   onKeepSuggestion?: () => void;
   onEditSets?: (exercise: WorkoutExercise) => void;
   onChangeExercise?: (exercise: WorkoutExercise) => void;
   onAskCoach?: (exercise: WorkoutExercise) => void;
-  /** The lifter touched this exercise's card — lets the page point its
-   *  per-exercise state (progression recommendation) at it. */
   onFocusExercise?: (exerciseIndex: number) => void;
   recommendations?: Record<string, { recommendedWeight?: number; recommendedReps?: number }>;
 }
 
+const WEIGHT_STEP = 5;
+
 export const WorkoutListView: React.FC<WorkoutListViewProps> = ({
   workout,
-  previousPerformances,
   appliedWeights,
-  suggestion,
   onCompleteSet,
   onUncompleteSet,
-  onApplySuggestion,
-  onKeepSuggestion,
+  onStartRest,
   onEditSets,
   onChangeExercise,
   onAskCoach,
   onFocusExercise,
   recommendations,
 }) => {
-  // Sets that the lifter has tapped to reopen for editing or undoing
-  const [reopenedSets, setReopenedSets] = useState<Set<string>>(() => new Set());
+  // Key of the currently open line for editing: `${cardId}-${lineIndex}`
+  const [openLineKey, setOpenLineKey] = useState<string | null>(null);
+
+  // Per-line edits: key -> { reps: number; weight: number }
+  const [lineEdits, setLineEdits] = useState<Record<string, { reps: number; weight: number }>>({});
+
   // Instructions modal target exercise
   const [selectedInstructions, setSelectedInstructions] = useState<WorkoutExercise | null>(null);
 
-  const toggleReopenSet = (key: string) => {
-    setReopenedSets((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) {
-        next.delete(key);
-      } else {
-        next.add(key);
-      }
-      return next;
-    });
-  };
-
   const exercises = workout.exercises ?? [];
+  const cardGroups = groupWorkoutCards(exercises);
 
   return (
-    <div className="flex-1 overflow-y-auto px-4 pb-28 pt-2 space-y-4 [scrollbar-width:none]">
-      {exercises.map((exercise, exerciseIndex) => {
-        const title = exercise.customTitle || exercise.exercise.name;
-        const sets = exercise.sets ?? [];
-        const completedSets = sets.filter((s) => s.completed).length;
+    <>
+      <style>{`
+        .reveal {
+          animation: reveal 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
+        }
+        @keyframes reveal {
+          from {
+            opacity: 0;
+            transform: translateY(-4px);
+          }
+          to {
+            opacity: 1;
+            transform: none;
+          }
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .reveal {
+            animation: none !important;
+          }
+        }
+      `}</style>
 
-        // Superset partners in this workout
-        const supersetPartners =
-          exercise.isSuperset && exercise.supersetId
-            ? exercises
-                .filter((ex) => ex.supersetId === exercise.supersetId && ex.id !== exercise.id)
-                .map((ex) => ex.customTitle || ex.exercise.name)
-            : [];
+      <div className="flex-1 min-h-0 overflow-y-auto px-3 pb-28 pt-2 space-y-3 [scrollbar-width:none]">
+        {cardGroups.map((card, cardIndex) => {
+          // Flatten lines: interleave sets across exercises in this card
+          const maxSets = Math.max(
+            ...card.exercises.map((e) => e.sets?.length ?? 0),
+            0,
+          );
 
-        // Previous performance readout
-        const prevPerf = previousPerformances?.[exercise.exercise.id] || null;
-        const lastSets = prevPerf?.sets ?? [];
-        const lastLine = lastSets
-          .map((s) => (s.weight > 0 ? `${s.weight}×${s.actualReps}` : `${s.actualReps} reps`))
-          .join(', ');
+          const lines: Array<{
+            exercise: WorkoutExercise;
+            exerciseIndex: number;
+            setIndex: number;
+            set: WorkoutExercise['sets'][number];
+            side: number;
+            tag: string;
+            lineKey: string;
+            currentReps: number;
+            currentWeight: number;
+            unit: string;
+            isTimed: boolean;
+            isCompleted: boolean;
+          }> = [];
 
-        const instructions = exercise.exercise.instructions ?? [];
-        const overrideWeight = appliedWeights?.[exercise.exercise.id];
-        const rec = recommendations?.[exercise.exercise.id];
+          for (let round = 0; round < maxSets; round++) {
+            card.exercises.forEach((ex, exInCardIdx) => {
+              const set = ex.sets?.[round];
+              if (!set) return;
 
-        return (
-          <Card
-            key={exercise.id || exerciseIndex}
-            id={`workout-exercise-${exerciseIndex}`}
-            data-exercise-index={exerciseIndex}
-            onPointerDownCapture={() => onFocusExercise?.(exerciseIndex)}
-            onFocusCapture={() => onFocusExercise?.(exerciseIndex)}
-            elevation={1}
-            className="p-4 space-y-3"
-          >
-            {/* Header: name, progress, action buttons */}
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <p className="font-num font-tabular text-body-sm font-semibold text-accent-2">
-                  {completedSets} of {sets.length} sets done
-                </p>
-                <h2 className="mt-0.5 line-clamp-2 text-title font-bold text-ink">
-                  {title}
-                </h2>
-                {supersetPartners.length > 0 && (
-                  <p className="mt-1 inline-flex items-center gap-1 text-body-sm text-ink-muted">
-                    <Link2 size={14} aria-hidden="true" className="text-accent-2" />
-                    Superset with {supersetPartners.join(' + ')}
-                  </p>
-                )}
-              </div>
-              <div className="flex shrink-0 gap-1.5">
-                {onChangeExercise && (
-                  <IconButton
-                    variant="secondary"
-                    size="sm"
-                    aria-label={`Change exercise ${title}`}
-                    onClick={() => onChangeExercise(exercise)}
-                  >
-                    <Replace size={16} />
-                  </IconButton>
-                )}
-                {onEditSets && (
-                  <IconButton
-                    variant="secondary"
-                    size="sm"
-                    aria-label={`Edit sets for ${title}`}
-                    onClick={() => onEditSets(exercise)}
-                  >
-                    <Pencil size={16} />
-                  </IconButton>
-                )}
-              </div>
-            </div>
+              const exerciseIndex = card.exerciseIndices[exInCardIdx];
+              const lineKey = `${ex.id || exerciseIndex}-s-${set.id || round}`;
 
-            {/* Context row: Last time + How to */}
-            <div className="flex items-center justify-between gap-2 text-body-sm text-ink-muted">
-              <p className="flex min-w-0 items-center gap-1.5">
-                <History size={14} className="shrink-0" aria-hidden="true" />
-                {lastLine ? (
-                  <span className="truncate">
-                    Last time <span className="font-num font-tabular text-ink">{lastLine}</span>
-                  </span>
-                ) : (
-                  <span>First time. Today sets your baseline.</span>
-                )}
-              </p>
-              {instructions.length > 0 && (
-                <button
-                  type="button"
-                  onClick={() => setSelectedInstructions(exercise)}
-                  className="inline-flex shrink-0 items-center gap-1 text-caption font-semibold text-ink-muted hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent rounded"
-                  aria-label={`How to perform ${title}`}
-                >
-                  <BookOpen size={13} aria-hidden="true" />
-                  How to
-                </button>
+              // Resolve initial weight & reps
+              let defaultWeight = 0;
+              if (set.completed && set.weight !== undefined) {
+                defaultWeight = set.weight;
+              } else if (appliedWeights?.[ex.exercise.id] !== undefined) {
+                defaultWeight = appliedWeights[ex.exercise.id];
+              } else if (set.weight && set.weight > 0) {
+                defaultWeight = set.weight;
+              } else if (recommendations?.[ex.exercise.id]?.recommendedWeight !== undefined) {
+                defaultWeight = recommendations[ex.exercise.id].recommendedWeight!;
+              }
+
+              let defaultReps = 8;
+              if (set.completed && set.reps) {
+                defaultReps = set.reps;
+              } else if (recommendations?.[ex.exercise.id]?.recommendedReps !== undefined) {
+                defaultReps = recommendations[ex.exercise.id].recommendedReps!;
+              } else if (set.reps) {
+                defaultReps = prescribedFloor(set);
+              }
+
+              const edited = lineEdits[lineKey];
+              const currentReps = edited?.reps ?? defaultReps;
+              const currentWeight = edited?.weight ?? defaultWeight;
+
+              lines.push({
+                exercise: ex,
+                exerciseIndex,
+                setIndex: round,
+                set,
+                side: exInCardIdx === 0 ? 0 : 1,
+                tag: getExerciseTag(ex),
+                lineKey,
+                currentReps,
+                currentWeight,
+                unit: set.unit || 'lb',
+                isTimed: set.time != null && set.time > 0,
+                isCompleted: Boolean(set.completed),
+              });
+            });
+          }
+
+          const isCardDone = lines.length > 0 && lines.every((l) => l.isCompleted);
+
+          const handleToggleLine = (lineKey: string) => {
+            setOpenLineKey((prev) => (prev === lineKey ? null : lineKey));
+          };
+
+          const handleUpdateLine = (
+            lineKey: string,
+            exerciseIndex: number,
+            setIndex: number,
+            newReps: number,
+            newWeight: number,
+            isCompleted: boolean,
+          ) => {
+            setLineEdits((prev) => ({
+              ...prev,
+              [lineKey]: { reps: newReps, weight: newWeight },
+            }));
+
+            // If set was already completed, update it live
+            if (isCompleted) {
+              onCompleteSet(exerciseIndex, setIndex, newReps, newWeight, undefined);
+            }
+          };
+
+          const handleLogCard = () => {
+            setOpenLineKey(null);
+            if (isCardDone) {
+              // Undo all sets in this card
+              lines.forEach((line) => {
+                onUncompleteSet(line.exerciseIndex, line.setIndex);
+              });
+            } else {
+              // Complete all not-yet-completed sets in this card in order
+              lines.forEach((line) => {
+                if (!line.isCompleted) {
+                  onCompleteSet(
+                    line.exerciseIndex,
+                    line.setIndex,
+                    line.currentReps,
+                    line.currentWeight,
+                    undefined,
+                  );
+                }
+              });
+
+              // Start exactly one rest timer using the first exercise's restTime
+              const restDuration = card.firstExercise.restTime || 120;
+              onStartRest?.(restDuration);
+            }
+          };
+
+          return (
+            <section
+              key={card.id || cardIndex}
+              id={`workout-card-${cardIndex}`}
+              data-exercise-index={card.firstExerciseIndex}
+              onPointerDownCapture={() => onFocusExercise?.(card.firstExerciseIndex)}
+              onFocusCapture={() => onFocusExercise?.(card.firstExerciseIndex)}
+              className={cn(
+                'shrink-0 rounded-[22px] p-4 transition-colors duration-smooth',
+                isCardDone
+                  ? 'bg-surface/50 border border-accent-2/20'
+                  : 'bg-surface-subtle border border-hairline/20',
               )}
-            </div>
+            >
+              {/* Card Header: title(s) + compact action buttons */}
+              <div className="flex flex-col gap-1.5 pb-2.5 px-0.5">
+                {card.exercises.map((ex, exInCardIdx) => {
+                  const exTitle = ex.customTitle || ex.exercise.name;
+                  const exerciseIndex = card.exerciseIndices[exInCardIdx];
+                  const shapeClass = exInCardIdx === 0 ? 'rounded-full' : 'rounded-[3px]';
 
-            {/* Sets list */}
-            <div className="space-y-2.5 pt-1">
-              {sets.map((set, setIndex) => {
-                const setKey = `${exercise.id || exerciseIndex}-s-${setIndex}`;
-                const isReopened = reopenedSets.has(setKey);
-                const isCompleted = set.completed;
-                const hasSuggestion =
-                  suggestion &&
-                  suggestion.exerciseIndex === exerciseIndex &&
-                  suggestion.setIndex === setIndex;
-
-                const hasWeight = (set.weight ?? 0) > 0;
-                const summaryText = hasWeight ? `${set.reps}×${set.weight} ✓` : `${set.reps} reps ✓`;
-
-                return (
-                  <div key={set.id || setIndex} className="space-y-1.5">
-                    {isCompleted && !isReopened ? (
-                      /* Collapsed summary row */
-                      <button
-                        type="button"
-                        aria-label={`Set ${setIndex + 1}: ${summaryText} completed, tap to edit`}
-                        onClick={() => toggleReopenSet(setKey)}
-                        className={cn(
-                          'flex w-full items-center justify-between rounded-2xl bg-accent-2/10 px-4 py-3 text-body-sm font-semibold text-accent-2 transition-colors hover:bg-accent-2/15',
-                          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent',
+                  return (
+                    <div
+                      key={ex.id || exerciseIndex}
+                      id={`workout-exercise-${exerciseIndex}`}
+                      className="flex items-center justify-between gap-2"
+                    >
+                      <div className="flex items-center gap-2 min-w-0 flex-1">
+                        {card.isSuperset && (
+                          <span
+                            className={cn('shrink-0 w-2.5 h-2.5 bg-accent-2', shapeClass)}
+                            aria-hidden="true"
+                          />
                         )}
-                      >
-                        <div className="flex items-center gap-2.5">
-                          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-accent-2 text-accent-2-fg">
-                            <Check className="h-3.5 w-3.5" strokeWidth={3} aria-hidden="true" />
-                          </span>
-                          <span className="text-body font-medium text-ink">Set {setIndex + 1}</span>
-                        </div>
-                        <span className="font-num font-tabular text-body font-semibold text-accent-2">
-                          {summaryText}
-                        </span>
-                      </button>
-                    ) : isCompleted && isReopened ? (
-                      /* Reopened completed set */
-                      <div className="space-y-1.5 rounded-2xl bg-surface-raised/20 p-2">
-                        <div className="flex items-center justify-between px-1">
-                          <span className="text-caption font-semibold text-ink-muted">
-                            Set {setIndex + 1} (logged)
-                          </span>
+                        <h2
+                          className={cn(
+                            'text-[17px] font-extrabold font-display leading-tight truncate',
+                            isCardDone ? 'text-accent-2' : 'text-ink',
+                          )}
+                        >
+                          {exTitle}
+                        </h2>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-1">
+                        {ex.exercise.instructions && ex.exercise.instructions.length > 0 && (
                           <button
                             type="button"
-                            onClick={() => toggleReopenSet(setKey)}
-                            className="text-caption font-semibold text-ink-muted hover:text-ink rounded px-1"
+                            onClick={() => setSelectedInstructions(ex)}
+                            className="inline-flex items-center gap-1 text-caption font-semibold text-ink-muted hover:text-ink px-1 rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                            aria-label={`How to perform ${exTitle}`}
                           >
-                            Collapse
+                            <BookOpen size={13} aria-hidden="true" />
+                            How to
+                          </button>
+                        )}
+                        {onAskCoach && (
+                          <IconButton
+                            variant="ghost"
+                            size="sm"
+                            aria-label={`Ask coach about ${exTitle}`}
+                            onClick={() => {
+                              onFocusExercise?.(exerciseIndex);
+                              onAskCoach(ex);
+                            }}
+                          >
+                            <MessageCircle size={15} />
+                          </IconButton>
+                        )}
+                        {onChangeExercise && (
+                          <IconButton
+                            variant="ghost"
+                            size="sm"
+                            aria-label={`Change exercise ${exTitle}`}
+                            onClick={() => {
+                              onFocusExercise?.(exerciseIndex);
+                              onChangeExercise(ex);
+                            }}
+                          >
+                            <Replace size={15} />
+                          </IconButton>
+                        )}
+                        {onEditSets && (
+                          <IconButton
+                            variant="ghost"
+                            size="sm"
+                            aria-label={`Edit sets for ${exTitle}`}
+                            onClick={() => {
+                              onFocusExercise?.(exerciseIndex);
+                              onEditSets(ex);
+                            }}
+                          >
+                            <Pencil size={15} />
+                          </IconButton>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Ledger Lines */}
+              <div className="space-y-0">
+                {lines.map((ln, lineIdx) => {
+                  const isOpen = openLineKey === ln.lineKey;
+                  const showRail = lineIdx < lines.length - 1;
+                  const setNumber = ln.setIndex + 1;
+                  const isWeighted = ln.currentWeight > 0;
+
+                  // Label for accessibility
+                  const tagPrefix = card.isSuperset ? `${ln.tag} ` : '';
+                  const accessibleLabel = ln.isTimed
+                    ? `${tagPrefix}Set ${setNumber}: ${ln.set.time} seconds. Tap to edit.`
+                    : isWeighted
+                      ? `${tagPrefix}Set ${setNumber}: ${ln.currentReps} reps, ${ln.currentWeight} ${ln.unit}. Tap to edit.`
+                      : `${tagPrefix}Set ${setNumber}: ${ln.currentReps} reps. Tap to edit.`;
+
+                  const nodeShape = ln.side === 0 ? 'rounded-full' : 'rounded-[4px]';
+
+                  return (
+                    <div key={ln.lineKey}>
+                      <div className="flex items-stretch">
+                        {/* Rail + Node */}
+                        <div
+                          className="shrink-0 w-[30px] flex flex-col items-center select-none"
+                          aria-hidden="true"
+                        >
+                          <span
+                            className={cn(
+                              'mt-[15px] w-[18px] h-[18px] box-border flex items-center justify-center shrink-0 relative z-10 transition-colors duration-snap',
+                              nodeShape,
+                              ln.isCompleted
+                                ? 'bg-accent-2 border-2 border-accent-2 text-surface'
+                                : isOpen
+                                  ? 'bg-surface-subtle border-2 border-accent ring-4 ring-accent/20'
+                                  : 'bg-surface-subtle border-2 border-ink-subtle/50',
+                            )}
+                          >
+                            {ln.isCompleted && (
+                              <Check className="w-2.5 h-2.5 stroke-[4]" aria-hidden="true" />
+                            )}
+                          </span>
+                          {showRail && (
+                            <span
+                              className={cn(
+                                'flex-1 w-[2px] min-h-[8px] -mb-[15px] transition-colors duration-smooth',
+                                isCardDone ? 'bg-accent-2/50' : 'bg-surface-raised',
+                              )}
+                            />
+                          )}
+                        </div>
+
+                        {/* Line Button */}
+                        <div className="flex-1 min-w-0">
+                          <button
+                            type="button"
+                            aria-label={accessibleLabel}
+                            aria-expanded={isOpen}
+                            onClick={() => {
+                              onFocusExercise?.(ln.exerciseIndex);
+                              handleToggleLine(ln.lineKey);
+                            }}
+                            className={cn(
+                              'w-full min-h-[48px] flex items-baseline border-0 bg-transparent py-3 text-left cursor-pointer transition-transform active:scale-[0.985]',
+                              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent rounded-lg',
+                            )}
+                          >
+                            {card.isSuperset && (
+                              <span className="shrink-0 w-14 text-caption font-bold text-ink-subtle truncate mr-1">
+                                {ln.tag}
+                              </span>
+                            )}
+
+                            {ln.isTimed ? (
+                              <span
+                                className={cn(
+                                  'shrink-0 flex items-baseline gap-1',
+                                  isCardDone ? 'text-accent-2' : 'text-ink',
+                                )}
+                              >
+                                <span className="text-[22px] font-extrabold font-num font-tabular tracking-tight leading-none">
+                                  {ln.set.time}
+                                </span>
+                                <span className="text-[13px] font-semibold opacity-70">Sec</span>
+                              </span>
+                            ) : (
+                              <span
+                                className={cn(
+                                  'shrink-0 flex items-baseline gap-1',
+                                  isCardDone ? 'text-accent-2' : 'text-ink',
+                                )}
+                              >
+                                <span className="text-[22px] font-extrabold font-num font-tabular tracking-tight leading-none">
+                                  {ln.currentReps}
+                                </span>
+                                <span className="text-[13px] font-semibold opacity-70">Reps</span>
+                              </span>
+                            )}
+
+                            {isWeighted && !ln.isTimed && (
+                              <>
+                                <span
+                                  className={cn(
+                                    'flex-1 h-0 mx-2.5 border-b-2 border-dotted',
+                                    isCardDone ? 'border-accent-2/35' : 'border-surface-raised',
+                                  )}
+                                />
+                                <span
+                                  className={cn(
+                                    'shrink-0 flex items-baseline gap-1',
+                                    isCardDone ? 'text-accent-2' : 'text-ink',
+                                  )}
+                                >
+                                  <span className="text-[22px] font-extrabold font-num font-tabular tracking-tight leading-none">
+                                    {ln.currentWeight}
+                                  </span>
+                                  <span className="text-[13px] font-semibold opacity-70">
+                                    {ln.unit}
+                                  </span>
+                                </span>
+                              </>
+                            )}
                           </button>
                         </div>
-                        <SetInput
-                          compact
-                          set={set}
-                          onComplete={(reps, weight, rir) => {
-                            onCompleteSet(exerciseIndex, setIndex, reps, weight, rir);
-                            setReopenedSets((prev) => {
-                              const next = new Set(prev);
-                              next.delete(setKey);
-                              return next;
-                            });
-                          }}
-                          onUncomplete={() => {
-                            onUncompleteSet(exerciseIndex, setIndex);
-                            setReopenedSets((prev) => {
-                              const next = new Set(prev);
-                              next.delete(setKey);
-                              return next;
-                            });
-                          }}
-                          previousSet={setIndex > 0 ? sets[setIndex - 1] ?? null : null}
-                          allSets={sets}
-                          recommendedWeight={rec?.recommendedWeight}
-                          overrideWeight={overrideWeight}
-                          recommendedReps={rec?.recommendedReps}
-                        />
                       </div>
-                    ) : (
-                      /* Uncompleted set stepper */
-                      <div className="space-y-1">
-                        <div className="flex items-center justify-between px-1">
-                          <span className="font-num font-tabular text-body-sm font-semibold text-accent-2">
-                            Set {setIndex + 1} of {sets.length}
-                          </span>
-                        </div>
-                        <SetInput
-                          compact
-                          set={set}
-                          onComplete={(reps, weight, rir) => {
-                            onCompleteSet(exerciseIndex, setIndex, reps, weight, rir);
-                          }}
-                          onUncomplete={() => {
-                            onUncompleteSet(exerciseIndex, setIndex);
-                          }}
-                          previousSet={setIndex > 0 ? sets[setIndex - 1] ?? null : null}
-                          allSets={sets}
-                          recommendedWeight={rec?.recommendedWeight}
-                          overrideWeight={overrideWeight}
-                          recommendedReps={rec?.recommendedReps}
-                        />
-                      </div>
-                    )}
 
-                    {/* In-session cue strip under the set just logged */}
-                    {hasSuggestion && (
-                      <div className="mt-2">
-                        <InSessionSuggestion
-                          decision={suggestion.decision}
-                          onApply={(w) => onApplySuggestion?.(w, exercise.exercise.id)}
-                          onKeep={() => onKeepSuggestion?.()}
-                          onAskCoach={onAskCoach ? () => onAskCoach(exercise) : undefined}
-                        />
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          </Card>
-        );
-      })}
+                      {/* Inline Stepper Editor */}
+                      {isOpen && (
+                        <div className="pl-[30px] pb-2">
+                          <div className="reveal motion-reduce:animate-none flex gap-2 bg-surface rounded-2xl p-2 mb-2">
+                            {/* Weight Stepper */}
+                            <div className="flex-1 flex items-center justify-between bg-surface-subtle rounded-xl p-1">
+                              <button
+                                type="button"
+                                aria-label="Decrease weight"
+                                onClick={() =>
+                                  handleUpdateLine(
+                                    ln.lineKey,
+                                    ln.exerciseIndex,
+                                    ln.setIndex,
+                                    ln.currentReps,
+                                    Math.max(0, ln.currentWeight - WEIGHT_STEP),
+                                    ln.isCompleted,
+                                  )
+                                }
+                                className="h-[42px] w-[42px] rounded-[10px] bg-surface-raised text-ink hover:bg-surface-raised/80 flex items-center justify-center cursor-pointer transition-transform active:scale-95 border-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                              >
+                                <Minus size={16} strokeWidth={2.6} aria-hidden="true" />
+                              </button>
+                              <div className="text-center">
+                                <div className="text-[20px] font-extrabold font-num font-tabular text-ink leading-none">
+                                  {ln.currentWeight}
+                                </div>
+                                <div className="text-[10px] font-semibold text-ink-muted uppercase mt-0.5">
+                                  {ln.unit}
+                                </div>
+                              </div>
+                              <button
+                                type="button"
+                                aria-label="Increase weight"
+                                onClick={() =>
+                                  handleUpdateLine(
+                                    ln.lineKey,
+                                    ln.exerciseIndex,
+                                    ln.setIndex,
+                                    ln.currentReps,
+                                    ln.currentWeight + WEIGHT_STEP,
+                                    ln.isCompleted,
+                                  )
+                                }
+                                className="h-[42px] w-[42px] rounded-[10px] bg-surface-raised text-ink hover:bg-surface-raised/80 flex items-center justify-center cursor-pointer transition-transform active:scale-95 border-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                              >
+                                <Plus size={16} strokeWidth={2.6} aria-hidden="true" />
+                              </button>
+                            </div>
+
+                            {/* Reps Stepper */}
+                            <div className="flex-1 flex items-center justify-between bg-surface-subtle rounded-xl p-1">
+                              <button
+                                type="button"
+                                aria-label="Decrease reps"
+                                onClick={() =>
+                                  handleUpdateLine(
+                                    ln.lineKey,
+                                    ln.exerciseIndex,
+                                    ln.setIndex,
+                                    Math.max(0, ln.currentReps - 1),
+                                    ln.currentWeight,
+                                    ln.isCompleted,
+                                  )
+                                }
+                                className="h-[42px] w-[42px] rounded-[10px] bg-surface-raised text-ink hover:bg-surface-raised/80 flex items-center justify-center cursor-pointer transition-transform active:scale-95 border-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                              >
+                                <Minus size={16} strokeWidth={2.6} aria-hidden="true" />
+                              </button>
+                              <div className="text-center">
+                                <div className="text-[20px] font-extrabold font-num font-tabular text-accent-2 leading-none">
+                                  {ln.currentReps}
+                                </div>
+                                <div className="text-[10px] font-semibold text-ink-muted uppercase mt-0.5">
+                                  reps
+                                </div>
+                              </div>
+                              <button
+                                type="button"
+                                aria-label="Increase reps"
+                                onClick={() =>
+                                  handleUpdateLine(
+                                    ln.lineKey,
+                                    ln.exerciseIndex,
+                                    ln.setIndex,
+                                    ln.currentReps + 1,
+                                    ln.currentWeight,
+                                    ln.isCompleted,
+                                  )
+                                }
+                                className="h-[42px] w-[42px] rounded-[10px] bg-surface-raised text-ink hover:bg-surface-raised/80 flex items-center justify-center cursor-pointer transition-transform active:scale-95 border-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                              >
+                                <Plus size={16} strokeWidth={2.6} aria-hidden="true" />
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Bottom Button: Log workout / Logged. Tap to undo */}
+              <div className="pt-2">
+                <button
+                  type="button"
+                  onClick={handleLogCard}
+                  aria-label={
+                    isCardDone
+                      ? 'Logged. Tap to undo.'
+                      : `Log all sets of ${card.titles.join(' and ')} as shown`
+                  }
+                  className={cn(
+                    'w-full min-h-[50px] rounded-[15px] font-extrabold text-[15px] cursor-pointer transition-transform active:scale-[0.985]',
+                    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface',
+                    isCardDone
+                      ? 'border-2 border-accent-2/60 bg-transparent text-accent-2 hover:bg-accent-2/10'
+                      : 'border-0 bg-accent text-accent-fg shadow-[inset_0_1px_0_rgba(255,255,255,0.35)] hover:bg-accent/90',
+                  )}
+                >
+                  {isCardDone ? 'Logged. Tap to undo' : 'Log workout'}
+                </button>
+              </div>
+            </section>
+          );
+        })}
+      </div>
 
       {/* Instructions Modal */}
       {selectedInstructions && (
@@ -322,6 +587,6 @@ export const WorkoutListView: React.FC<WorkoutListViewProps> = ({
           </ModalContent>
         </Modal>
       )}
-    </div>
+    </>
   );
 };

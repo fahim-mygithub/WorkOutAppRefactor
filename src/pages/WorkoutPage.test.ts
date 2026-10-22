@@ -182,5 +182,30 @@ describe('executeCompleteSet (lifted handler)', () => {
 
       expect(dispatch).toHaveBeenCalledWith(startRestTimer({ duration: 120 }));
     });
+
+    it('skips rest timer and superset advancement when skipRestTimer is true', () => {
+      const workout = createWorkoutWithSuperset();
+      const dispatch = vi.fn();
+
+      executeCompleteSet({
+        workout,
+        exerciseIndex: 0,
+        setIndex: 0,
+        reps: 10,
+        weight: 100,
+        dispatch,
+        skipRestTimer: true,
+      });
+
+      expect(dispatch).toHaveBeenCalledWith(
+        completeSet({
+          exerciseIndex: 0,
+          setIndex: 0,
+          setData: { reps: 10, weight: 100 },
+          rir: undefined,
+        })
+      );
+      expect(dispatch).not.toHaveBeenCalledWith(expect.objectContaining({ type: expect.stringMatching(/startRestTimer|nextSupersetExercise/) }));
+    });
   });
 });
