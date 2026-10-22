@@ -83,7 +83,7 @@ describe('estimate', () => {
       ],
     };
     expect(currentEstimate(lift)).toEqual({ value: 265, fromLog: false });
-    expect(prescribe(lift, 'strength').sets[0].weight).toBe(225); // 0.85 x 265
+    expect(prescribe(lift, 'strength').sets[2].weight).toBe(225); // 0.85 x 265
   });
 
   it('prescribes from the new benchmark once a checkpoint best is accepted', () => {
@@ -93,7 +93,7 @@ describe('estimate', () => {
       session('checkpoint', [{ weight: 270, reps: 1 }]),
     ];
     const accepted = { ...bench, load: { kind: 'weight' as const, value: 270, unit: 'lb' as const }, sessions };
-    const next = prescribe(accepted, 'strength').sets[0].weight!;
+    const next = prescribe(accepted, 'strength').sets[2].weight!;
     expect(next).toBeGreaterThan(225); // up from the pre-checkpoint 225
     expect(next).toBe(230); // 0.85 x 270, rounded to 5
   });
@@ -110,11 +110,24 @@ describe('estimate', () => {
 });
 
 describe('prescribe (weighted)', () => {
-  it('strength: 4 x 3 at 85% of the estimate', () => {
-    const ex = prescribe(bench, 'strength');
-    expect(ex.sets).toEqual(Array(4).fill({ reps: 3, weight: 225, unit: 'lbs' }));
+  it('strength: 4 x 3, two lighter ramp sets (-10%, -5%) then two at 85% of the estimate', () => {
+    const ex = prescribe({ ...bench, step: 2.5 }, 'strength');
+    expect(ex.sets.map((s) => s.weight)).toEqual([202.5, 215, 225, 225]); // 225.25 target
+    expect(ex.sets.every((s) => s.reps === 3 && s.unit === 'lbs')).toBe(true);
     expect(ex.restTime).toBe(180);
     expect(ex.tracked).toEqual({ liftId: 'bench', goal: 'strength' });
+  });
+
+  it('strength ramp rounds to 5 for dumbbell lifts and 2.5 for barbell lifts', () => {
+    const db = prescribe({ ...bench, name: 'Dumbbell Bench Press' }, 'strength');
+    expect(db.sets.map((s) => s.weight)).toEqual([205, 215, 225, 225]);
+    const bb = prescribe({ ...bench, name: 'Barbell Bench Press' }, 'strength');
+    expect(bb.sets.map((s) => s.weight)).toEqual([202.5, 215, 225, 225]);
+  });
+
+  it('an explicit step overrides the equipment default', () => {
+    const ex = prescribe({ ...bench, name: 'Barbell Bench Press', step: 5 }, 'strength');
+    expect(ex.sets.map((s) => s.weight)).toEqual([205, 215, 225, 225]);
   });
 
   it('volume: 4 x 8-12 at ~67.5%', () => {

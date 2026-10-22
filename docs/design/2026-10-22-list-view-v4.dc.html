@@ -1,0 +1,233 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Proposed list view v4</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,100..900&display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+button{font-family:inherit}
+button:focus-visible{outline:2px solid #F4B740;outline-offset:2px}
+.reveal{animation:reveal .2s cubic-bezier(.2,.8,.2,1)}
+@keyframes reveal{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}
+.press:active{transform:scale(.985)}
+@media (prefers-reduced-motion: reduce){.reveal{animation:none}.press:active{transform:none}}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; box-sizing: border-box; position: relative; display: flex; flex-direction: column; background: #121826; color: #E8ECF4; font-family: 'Archivo', system-ui, sans-serif; overflow: hidden">
+
+  <div style="flex-shrink: 0; padding: 16px 16px 12px">
+    <div style="display: flex; align-items: center; justify-content: space-between">
+      <div style="display: flex; align-items: baseline; gap: 10px">
+        <div style="font-size: 20px; font-weight: 800; letter-spacing: -0.01em; font-stretch: 112%; line-height: 1.1">Push day</div>
+        <div style="font-size: 13px; font-weight: 600; color: #9AA5B8; font-variant-numeric: tabular-nums">12:40</div>
+      </div>
+      <div style="display: flex; align-items: center; gap: 8px">
+        <div style="display: flex; background: #1B2334; border-radius: 999px; padding: 3px">
+          <button type="button" style="border: 0; background: transparent; color: #9AA5B8; font-size: 12px; font-weight: 600; padding: 6px 12px; border-radius: 999px; min-height: 28px">Cards</button>
+          <button type="button" aria-pressed="true" style="border: 0; background: #263047; color: #E8ECF4; font-size: 12px; font-weight: 700; padding: 6px 12px; border-radius: 999px; min-height: 28px">List</button>
+        </div>
+        <button type="button" style="border: 0; background: #1B2334; color: #E8ECF4; font-size: 12px; font-weight: 700; padding: 6px 14px; border-radius: 999px; min-height: 34px">End</button>
+      </div>
+    </div>
+    <div style="display: flex; gap: 4px; margin-top: 12px" role="img" aria-label="{{ doneCount }} of {{ total }} cards logged">
+      <sc-for list="{{ segs }}" as="seg" hint-placeholder-count="4">
+        <div style="flex: 1; height: 4px; border-radius: 2px; {{ seg.style }}"></div>
+      </sc-for>
+    </div>
+  </div>
+
+  <div style="flex: 1; min-height: 0; overflow-y: auto; padding: 0 12px 16px; display: flex; flex-direction: column; gap: 12px">
+    <sc-for list="{{ groups }}" as="g" hint-placeholder-count="4">
+      <section style="flex-shrink: 0; background: #1B2334; border: 1px solid rgba(255,255,255,0.05); border-radius: 22px; padding: 16px 14px 14px; {{ g.cardStyle }}">
+
+        <div style="display: flex; flex-direction: column; gap: 5px; padding: 0 2px 10px">
+          <sc-for list="{{ g.titles }}" as="t" hint-placeholder-count="1">
+            <div style="display: flex; align-items: center; gap: 9px">
+              <sc-if value="{{ g.isSuperset }}" hint-placeholder-val="{{ false }}">
+                <span style="flex-shrink: 0; width: 11px; height: 11px; background: #7CC4F2; {{ t.shape }}"></span>
+              </sc-if>
+              <span style="font-size: 17px; font-weight: 800; letter-spacing: -0.01em; font-stretch: 108%; line-height: 1.2; {{ g.titleColor }}">{{ t.name }}</span>
+            </div>
+          </sc-for>
+        </div>
+
+        <sc-for list="{{ g.lines }}" as="ln" hint-placeholder-count="4">
+          <div style="display: flex; align-items: stretch">
+            <div style="flex-shrink: 0; width: 30px; display: flex; flex-direction: column; align-items: center" aria-hidden="true">
+              <span style="margin-top: 15px; width: 18px; height: 18px; box-sizing: border-box; display: flex; align-items: center; justify-content: center; flex-shrink: 0; position: relative; z-index: 1; {{ ln.nodeStyle }}">
+                <sc-if value="{{ g.isDone }}" hint-placeholder-val="{{ false }}">
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#121826" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>
+                </sc-if>
+              </span>
+              <sc-if value="{{ ln.showRail }}" hint-placeholder-val="{{ true }}">
+                <span style="flex: 1; width: 2px; min-height: 8px; margin-bottom: -15px; {{ g.railStyle }}"></span>
+              </sc-if>
+            </div>
+
+            <div style="flex: 1; min-width: 0">
+              <button type="button" class="press" aria-label="{{ ln.label }}" aria-expanded="{{ ln.isOpen }}" onClick="{{ ln.toggle }}" style="width: 100%; min-height: 48px; display: flex; align-items: baseline; border: 0; background: transparent; color: inherit; padding: 13px 0 11px; text-align: left; cursor: pointer; transition: transform .08s">
+                <sc-if value="{{ g.isSuperset }}" hint-placeholder-val="{{ false }}">
+                  <span style="flex-shrink: 0; width: 58px; font-size: 12px; font-weight: 700; color: #7C879B">{{ ln.tag }}</span>
+                </sc-if>
+                <span style="flex-shrink: 0; display: flex; align-items: baseline; gap: 5px; {{ g.lineColor }}">
+                  <span style="font-size: 22px; font-weight: 800; font-variant-numeric: tabular-nums; letter-spacing: -0.01em; line-height: 1">{{ ln.r }}</span>
+                  <span style="font-size: 13px; font-weight: 600; opacity: 0.7">Reps</span>
+                </span>
+                <span style="flex: 1; height: 0; margin: 0 10px; border-bottom: 2px dotted {{ g.leaderColor }}"></span>
+                <span style="flex-shrink: 0; display: flex; align-items: baseline; gap: 4px; {{ g.lineColor }}">
+                  <span style="font-size: 22px; font-weight: 800; font-variant-numeric: tabular-nums; letter-spacing: -0.01em; line-height: 1">{{ ln.w }}</span>
+                  <span style="font-size: 13px; font-weight: 600; opacity: 0.7">lb</span>
+                </span>
+              </button>
+
+              <sc-if value="{{ ln.isOpen }}" hint-placeholder-val="{{ false }}">
+                <div class="reveal" style="display: flex; gap: 8px; background: #121826; border-radius: 16px; padding: 8px; margin: 0 0 10px">
+                  <div style="flex: 1; display: flex; align-items: center; justify-content: space-between; background: #1B2334; border-radius: 12px; padding: 3px">
+                    <button type="button" aria-label="Decrease weight" onClick="{{ ln.wMinus }}" style="border: 0; background: #263047; color: #E8ECF4; width: 42px; height: 42px; border-radius: 10px; display: flex; align-items: center; justify-content: center; cursor: pointer">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M5 12h14"/></svg>
+                    </button>
+                    <div style="text-align: center">
+                      <div style="font-size: 20px; font-weight: 800; font-variant-numeric: tabular-nums; line-height: 1">{{ ln.w }}</div>
+                      <div style="font-size: 10px; font-weight: 600; color: #9AA5B8; margin-top: 3px">lb</div>
+                    </div>
+                    <button type="button" aria-label="Increase weight" onClick="{{ ln.wPlus }}" style="border: 0; background: #263047; color: #E8ECF4; width: 42px; height: 42px; border-radius: 10px; display: flex; align-items: center; justify-content: center; cursor: pointer">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+                    </button>
+                  </div>
+                  <div style="flex: 1; display: flex; align-items: center; justify-content: space-between; background: #1B2334; border-radius: 12px; padding: 3px">
+                    <button type="button" aria-label="Decrease reps" onClick="{{ ln.rMinus }}" style="border: 0; background: #263047; color: #E8ECF4; width: 42px; height: 42px; border-radius: 10px; display: flex; align-items: center; justify-content: center; cursor: pointer">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M5 12h14"/></svg>
+                    </button>
+                    <div style="text-align: center">
+                      <div style="font-size: 20px; font-weight: 800; font-variant-numeric: tabular-nums; line-height: 1; color: #7CC4F2">{{ ln.r }}</div>
+                      <div style="font-size: 10px; font-weight: 600; color: #9AA5B8; margin-top: 3px">reps</div>
+                    </div>
+                    <button type="button" aria-label="Increase reps" onClick="{{ ln.rPlus }}" style="border: 0; background: #263047; color: #E8ECF4; width: 42px; height: 42px; border-radius: 10px; display: flex; align-items: center; justify-content: center; cursor: pointer">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+                    </button>
+                  </div>
+                </div>
+              </sc-if>
+            </div>
+          </div>
+        </sc-for>
+
+        <div style="padding-top: 8px">
+          <button type="button" class="press" aria-label="{{ g.buttonLabel }}" onClick="{{ g.logAll }}" style="width: 100%; min-height: 50px; border-radius: 15px; font-size: 15px; font-weight: 800; letter-spacing: 0.005em; cursor: pointer; transition: transform .08s; {{ g.buttonStyle }}">{{ g.buttonText }}</button>
+        </div>
+
+      </section>
+    </sc-for>
+  </div>
+
+  <div style="flex-shrink: 0; padding: 10px 12px 16px; border-top: 1px solid #263047; background: #121826">
+    <sc-if value="{{ notAllDone }}" hint-placeholder-val="{{ true }}">
+      <button type="button" class="press" style="width: 100%; display: flex; align-items: center; justify-content: space-between; border: 0; background: #1B2334; color: #E8ECF4; border-radius: 16px; padding: 0 20px; min-height: 54px; font-size: 15px; font-weight: 700; cursor: pointer; transition: transform .08s">
+        <span style="display: flex; align-items: center; gap: 10px">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#9AA5B8" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2M9 2h6"/></svg>
+          Start rest
+        </span>
+        <span style="font-size: 18px; font-variant-numeric: tabular-nums; color: #9AA5B8; font-weight: 800">2:00</span>
+      </button>
+    </sc-if>
+    <sc-if value="{{ allDone }}" hint-placeholder-val="{{ false }}">
+      <button type="button" class="press" style="width: 100%; border: 0; background: #F4B740; color: #121826; border-radius: 16px; min-height: 54px; font-size: 16px; font-weight: 800; cursor: pointer; transition: transform .08s">Finish workout</button>
+    </sc-if>
+  </div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    // A card is one exercise, or a superset pair whose lines alternate A, B, A, B.
+    const rows = (n, w, r) => Array.from({ length: n }, (_, i) => ({ side: 0, tag: '', n: i + 1, w, r }));
+    const pair = (a, b, n) => {
+      const out = [];
+      for (let i = 0; i < n; i++) { out.push({ ...a, side: 0, n: i + 1 }); out.push({ ...b, side: 1, n: i + 1 }); }
+      return out;
+    };
+    const bench = rows(4, 100, 5);
+    bench[2] = { ...bench[2], w: 105 };
+    this.state = {
+      open: 'bench-2',
+      groups: [
+        { id: 'bench', titles: ['Barbell Bench Press'], isSuperset: false, done: false, lines: bench },
+        { id: 'ss1', titles: ['Incline Dumbbell Press', 'Dumbbell Lateral Raise'], isSuperset: true, done: false,
+          lines: pair({ tag: 'Incline', w: 40, r: 10 }, { tag: 'Raise', w: 20, r: 12 }, 3) },
+        { id: 'row', titles: ['Barbell Bent Over Row'], isSuperset: false, done: true, lines: rows(3, 80, 8) },
+        { id: 'pushdown', titles: ['Cable Triceps Pushdown'], isSuperset: false, done: false, lines: rows(3, 50, 12) }
+      ]
+    };
+  }
+
+  patchLine(gid, i, change) {
+    this.setState({
+      groups: this.state.groups.map((g) => g.id !== gid ? g : { ...g, lines: g.lines.map((l, j) => j !== i ? l : { ...l, ...change }) })
+    });
+  }
+
+  renderVals() {
+    const open = this.state.open;
+    const firstOpenIdx = this.state.groups.findIndex((g) => !g.done);
+    const shapeOf = (side) => side === 0 ? 'border-radius:999px' : 'border-radius:4px';
+
+    const groups = this.state.groups.map((g) => {
+      const lines = g.lines.map((l, i) => {
+        const key = g.id + '-' + i;
+        const isOpen = open === key;
+        const nodeStyle = (g.done
+          ? 'background:#7CC4F2;border:2px solid #7CC4F2;'
+          : (isOpen
+            ? 'background:#1B2334;border:2px solid #F4B740;box-shadow:0 0 0 4px rgba(244,183,64,0.2);'
+            : 'background:#1B2334;border:2px solid #5A6785;')) + shapeOf(l.side);
+        return {
+          tag: l.tag,
+          w: l.w,
+          r: l.r,
+          isOpen,
+          showRail: i < g.lines.length - 1,
+          nodeStyle,
+          label: (g.isSuperset ? l.tag + ' ' : '') + 'Set ' + l.n + ': ' + l.r + ' reps, ' + l.w + ' pounds. Tap to edit.',
+          toggle: () => this.setState({ open: isOpen ? null : key }),
+          wMinus: () => this.patchLine(g.id, i, { w: Math.max(0, l.w - 5) }),
+          wPlus: () => this.patchLine(g.id, i, { w: l.w + 5 }),
+          rMinus: () => this.patchLine(g.id, i, { r: Math.max(0, l.r - 1) }),
+          rPlus: () => this.patchLine(g.id, i, { r: l.r + 1 })
+        };
+      });
+      return {
+        titles: g.titles.map((name, ti) => ({ name, shape: shapeOf(ti) })),
+        isSuperset: g.isSuperset,
+        isDone: g.done,
+        cardStyle: g.done ? 'background:#18202F' : '',
+        titleColor: g.done ? 'color:#7CC4F2' : 'color:#E8ECF4',
+        lineColor: g.done ? 'color:#7CC4F2' : 'color:#E8ECF4',
+        leaderColor: g.done ? 'rgba(124,196,242,0.35)' : '#3A4560',
+        railStyle: g.done ? 'background:rgba(124,196,242,0.5)' : 'background:#2C3750',
+        lines,
+        buttonText: g.done ? 'Logged. Tap to undo' : 'Log workout',
+        buttonLabel: g.done ? 'Logged. Tap to undo.' : 'Log all sets of ' + g.titles.join(' and ') + ' as shown',
+        buttonStyle: g.done ? 'border:2px solid rgba(124,196,242,0.6);background:transparent;color:#7CC4F2' : 'border:0;background:#F4B740;color:#121826;box-shadow:0 1px 0 rgba(255,255,255,0.35) inset',
+        logAll: () => this.setState({ open: null, groups: this.state.groups.map((x) => x.id !== g.id ? x : { ...x, done: !x.done }) })
+      };
+    });
+    const segs = this.state.groups.map((g, gi) => ({
+      style: g.done ? 'background:#7CC4F2' : (gi === firstOpenIdx ? 'background:#F4B740' : 'background:#263047')
+    }));
+    const doneCount = this.state.groups.filter((g) => g.done).length;
+    const total = this.state.groups.length;
+    return { groups, segs, doneCount, total, allDone: doneCount === total, notAllDone: doneCount !== total };
+  }
+}
+</script>
+</body>
+</html>

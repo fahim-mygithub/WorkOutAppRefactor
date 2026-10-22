@@ -42,6 +42,21 @@ function loadStep(unit: WeightUnit, step?: number): number {
   return step !== undefined && Number.isFinite(step) && step > 0 ? step : unit === 'kg' ? 2.5 : 5;
 }
 
+/** Strength-day working load as a fraction of the estimated 1RM. */
+const STRENGTH_FRACTION = 0.85;
+
+/**
+ * The lift's loadable step: the equipment `step` when set, else 5 lb for a
+ * dumbbell lift and 2.5 lb for a barbell lift (by name), else the unit default.
+ */
+function equipmentStep(lift: TrackedLift): number | undefined {
+  if (lift.step !== undefined) return lift.step;
+  if (lift.load.kind !== 'weight' || lift.load.unit !== 'lb') return undefined;
+  if (/dumbbell|\bdb\b/i.test(lift.name)) return 5;
+  if (/barbell|\bbb\b/i.test(lift.name)) return 2.5;
+  return undefined;
+}
+
 /** Round to the loadable increment (clean to 4 decimals, so 0.1 steps stay 0.7, not 0.7000000000000001). */
 export function roundLoad(value: number, unit: WeightUnit, step?: number): number {
   const inc = loadStep(unit, step);
@@ -166,9 +181,21 @@ export function prescribe(lift: TrackedLift, goal: SessionGoal): TrackedParsedEx
   if (load.kind === 'weight') {
     const estimate = currentEstimate(lift)?.value ?? load.value;
     const unit = parsedUnit(load.unit);
-    const at = (fraction: number) => roundLoad(estimate * fraction, load.unit, lift.step);
+    const stepFor = equipmentStep(lift);
+    const at = (fraction: number) => roundLoad(estimate * fraction, load.unit, stepFor);
     if (goal === 'strength') {
-      return { ...base, restTime: 180, sets: repeat(4, { reps: 3, weight: at(0.85), unit }) };
+      const set = (fraction: number) => ({ reps: 3, weight: at(fraction), unit });
+      // Ramp: 10% and 5% under the day's target, then two sets at it.
+      return {
+        ...base,
+        restTime: 180,
+        sets: [
+          set(STRENGTH_FRACTION * 0.9),
+          set(STRENGTH_FRACTION * 0.95),
+          set(STRENGTH_FRACTION),
+          set(STRENGTH_FRACTION),
+        ],
+      };
     }
     if (goal === 'volume') {
       return {
