@@ -1,9 +1,15 @@
 import type { Store } from '@reduxjs/toolkit';
 import type { RootState } from './index';
+import { activeWorkoutRestored } from './slices/workoutSlice';
 import {
   saveWorkoutSnapshot,
   clearWorkoutSnapshot,
   getStoredPlanContext,
+  clearStoredPlanContext,
+  setStoredPlanContext,
+  loadWorkoutSnapshot,
+  getSafeLocalStorage,
+  getSafeSessionStorage,
   type StorageLike,
 } from '../lib/workoutSession';
 
@@ -15,16 +21,57 @@ export interface PersistWorkoutOptions {
   documentObj?: Document | null;
 }
 
+/**
+ * Restore a saved workout into the store before first render. An ad-hoc
+ * snapshot (no plan context) clears any stale stored plan context. Never throws.
+ */
+export function restoreWorkoutSession(
+  store: Store<RootState>,
+  storage: StorageLike | null = getSafeLocalStorage(),
+  sessionStore: StorageLike | null = getSafeSessionStorage(),
+): void {
+  try {
+    const snapshot = loadWorkoutSnapshot(storage);
+    if (!snapshot) return;
+    store.dispatch(
+      activeWorkoutRestored({
+        activeWorkout: snapshot.activeWorkout,
+        restTimer: snapshot.restTimer,
+      }),
+    );
+    if (snapshot.planContext) {
+      setStoredPlanContext(snapshot.planContext, storage);
+    } else {
+      clearStoredPlanContext(storage, sessionStore);
+    }
+  } catch {
+    // Corrupt snapshot / throwing storage is ignored safely
+  }
+}
+
+const NOOP_HANDLE = { flush: () => {}, unsubscribe: () => {} };
+
 export function initWorkoutPersistence(
   store: Store<RootState>,
   options: PersistWorkoutOptions = {},
 ) {
+  try {
+    return startWorkoutPersistence(store, options);
+  } catch {
+    return NOOP_HANDLE;
+  }
+}
+
+function startWorkoutPersistence(
+  store: Store<RootState>,
+  options: PersistWorkoutOptions,
+) {
   const storage = options.storage !== undefined
     ? options.storage
-    : (typeof window !== 'undefined' ? window.localStorage : null);
+    : getSafeLocalStorage();
   const sessionStore = options.sessionStorage !== undefined
     ? options.sessionStorage
-    : (typeof window !== 'undefined' ? window.sessionStorage : null);
+    : getSafeSessionStorage();
   const debounceMs = options.debounceMs ?? 300;
   const win = options.windowObj !== undefined
     ? options.windowObj
@@ -82,6 +129,7 @@ export function initWorkoutPersistence(
       }
       if (prevActiveWorkout !== null) {
         clearWorkoutSnapshot(storage);
+        clearStoredPlanContext(storage, sessionStore);
       }
       prevActiveWorkout = null;
       prevRestTimer = restTimer;

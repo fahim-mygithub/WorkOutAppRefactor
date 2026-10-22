@@ -6,6 +6,8 @@ import { prescribedFloor } from '../../lib/progression/setPrescription';
 
 export interface WorkoutState {
   activeWorkout: ActiveWorkout | null;
+  /** True only for a workout restored from storage at launch, until the user picks Resume or it ends. */
+  restoredFromSnapshot: boolean;
   restTimer: RestTimer;
   workoutHistory: string[];
   showCompletionModal: boolean;
@@ -33,6 +35,7 @@ const initialRestTimer: RestTimer = {
 
 const initialState: WorkoutState = {
   activeWorkout: null,
+  restoredFromSnapshot: false,
   restTimer: initialRestTimer,
   workoutHistory: [],
   showCompletionModal: false,
@@ -49,6 +52,7 @@ const workoutSlice = createSlice({
     startWorkout: (state, action: PayloadAction<{ name: string; exercises: WorkoutExercise[] }>) => {
       const { name, exercises } = action.payload;
       const firstExercise = exercises[0];
+      state.restoredFromSnapshot = false;
       state.activeWorkout = {
         id: `workout-${Date.now()}`,
         name,
@@ -65,6 +69,7 @@ const workoutSlice = createSlice({
     },
 
     endWorkout: (state) => {
+      state.restoredFromSnapshot = false;
       if (state.activeWorkout) {
         state.workoutHistory.unshift(state.activeWorkout.id);
         state.activeWorkout = null;
@@ -80,9 +85,14 @@ const workoutSlice = createSlice({
       }>
     ) => {
       state.activeWorkout = action.payload.activeWorkout;
+      state.restoredFromSnapshot = true;
       if (action.payload.restTimer) {
         state.restTimer = action.payload.restTimer;
       }
+    },
+
+    resumeAcknowledged: (state) => {
+      state.restoredFromSnapshot = false;
     },
 
     nextExercise: (state) => {
@@ -495,6 +505,7 @@ export const {
   startWorkout,
   endWorkout,
   activeWorkoutRestored,
+  resumeAcknowledged,
   nextExercise,
   previousExercise,
   nextSet,

@@ -4,9 +4,7 @@ import '@/styles/tokens.css';
 import '@/styles/fonts.css';
 import { StoreProvider } from './providers/StoreProvider';
 import { store } from './store';
-import { activeWorkoutRestored } from './store/slices/workoutSlice';
-import { loadWorkoutSnapshot, setStoredPlanContext } from './lib/workoutSession';
-import { initWorkoutPersistence } from './store/persistWorkout';
+import { initWorkoutPersistence, restoreWorkoutSession } from './store/persistWorkout';
 import App from './App';
 
 // Self-heal stale deploys: when a lazily-imported route chunk fails to load
@@ -25,22 +23,7 @@ window.addEventListener('vite:preloadError', () => {
 });
 
 // Restore active workout session before first render
-try {
-  const snapshot = loadWorkoutSnapshot();
-  if (snapshot) {
-    store.dispatch(
-      activeWorkoutRestored({
-        activeWorkout: snapshot.activeWorkout,
-        restTimer: snapshot.restTimer,
-      }),
-    );
-    if (snapshot.planContext) {
-      setStoredPlanContext(snapshot.planContext);
-    }
-  }
-} catch {
-  // Corrupt snapshot / throwing storage is ignored safely
-}
+restoreWorkoutSession(store);
 
 // Start autosave and flush listeners
 initWorkoutPersistence(store);

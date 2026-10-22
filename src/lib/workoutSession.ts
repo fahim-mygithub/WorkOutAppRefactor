@@ -205,3 +205,15 @@ export function clearStoredPlanContext(
     // Non-fatal
   }
 }
+
+/** Whether this tab is a shared-workout session (stored by the shared-workout flow). */
+export function readSharedSessionFlag(
+  sessionStore: StorageLike | null = getSafeSessionStorage(),
+): boolean {
+  try {
+    const raw = sessionStore?.getItem('sharedWorkoutContext');
+    return raw ? !!JSON.parse(raw)?.isSharedSession : false;
+  } catch {
+    return false;
+  }
+}
