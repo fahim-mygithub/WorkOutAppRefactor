@@ -31,6 +31,7 @@ import { SharedWorkoutLoader } from '../components/SharedWorkoutLoader';
 import { ShareWorkoutModal } from '../components/ShareWorkoutModal';
 import { useParams } from 'react-router-dom';
 import { CreateSharedWorkoutData, SharedWorkout } from '../services/sharedWorkoutService';
+import type { CustomExercise } from '../services/customExerciseService';
 import {
   AlertTriangle,
   Loader2,
@@ -43,7 +44,10 @@ import {
   LayoutGrid,
   FileText,
   Sparkles,
+  Calendar,
 } from 'lucide-react';
+import { planAdded } from '../store/slices/plannedWorkoutsSlice';
+import { PlanDateModal } from '../components/plan/PlanDateModal';
 import { Button } from '@/components/ui/button';
 import { Card, CardBody } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -214,6 +218,7 @@ export default function BuildPage() {
   }, [exerciseDatabase.length]);
   const parser = useMemo(() => new WorkoutParser(), []);
   const [isSaving, setIsSaving] = useState(false);
+  const [isPlanDateModalOpen, setIsPlanDateModalOpen] = useState(false);
   const [saveError, setSaveError] = useState('');
   const [shareData, setShareData] = useState<CreateSharedWorkoutData | null>(null);
 
@@ -641,6 +646,29 @@ export default function BuildPage() {
     }
   };
 
+  const handleSaveForLater = (chosenDateKey: string) => {
+    setWorkoutNameError('');
+    const workoutToUse = editedWorkout || (parseResult?.workout ? prepareWorkoutForConfigurator(parseResult.workout) : null);
+    if (!workoutToUse) {
+      alert('No valid workout found');
+      return;
+    }
+    const exercises = convertToWorkoutExercises(workoutToUse);
+    if (exercises.length === 0) {
+      alert('No valid exercises found');
+      return;
+    }
+    const sanitizedExercises = sanitizeWorkoutExercisesForRedux(exercises);
+    dispatch(
+      planAdded({
+        name: workoutName.trim() || 'Custom Workout',
+        dateKey: chosenDateKey,
+        exercises: sanitizedExercises,
+      }),
+    );
+    navigate('/');
+  };
+
   const handleSaveWorkout = async () => {
     console.log('handleSaveWorkout called, checking service availability...');
 
@@ -686,19 +714,17 @@ export default function BuildPage() {
 
     try {
       // Get custom exercises from workout
-      const customExercises = convertToWorkoutExercises(workoutToUse)
+      const customExercises: CustomExercise[] = convertToWorkoutExercises(workoutToUse)
         .filter(exercise => exercise.exercise.id.startsWith('fallback-'))
         .map(exercise => ({
+          ...exercise.exercise,
           id: exercise.exercise.id,
-          name: exercise.exercise.name,
-          muscleGroup: exercise.exercise.muscleGroup,
-          equipment: exercise.exercise.equipment,
-          instructions: exercise.exercise.instructions,
-          difficulty: exercise.exercise.difficulty as 'Beginner' | 'Intermediate' | 'Advanced',
-          isCustom: true,
-          createdBy: user.uid,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString()
+          userId: user.uid,
+          isCustom: true as const,
+          originalName: exercise.exercise.name,
+          usageCount: 1,
+          createdAt: new Date(),
+          updatedAt: new Date(),
         }));
 
       console.log('About to call WorkoutStorageService.saveWorkout with:', {
@@ -871,6 +897,15 @@ export default function BuildPage() {
             </Button>
           )}
         </div>
+
+        <Button
+          variant="secondary"
+          size="lg"
+          onClick={() => setIsPlanDateModalOpen(true)}
+        >
+          <Calendar className="h-5 w-5" aria-hidden="true" />
+          Save for later
+        </Button>
 
         {saveError && (
           <Stack direction="row" align="center" gap={2} className="text-body-sm text-danger" role="alert">
@@ -1061,6 +1096,14 @@ export default function BuildPage() {
         actionButtons={parseErrorsSection}
       />
 
+      <PlanDateModal
+        open={isPlanDateModalOpen}
+        onOpenChange={setIsPlanDateModalOpen}
+        title="Save for later"
+        description="Pick a date to plan this workout."
+        confirmLabel="Save plan"
+        onConfirm={handleSaveForLater}
+      />
       {/* Share Workout Modal */}
       {shareData && (
         <ShareWorkoutModal

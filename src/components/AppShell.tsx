@@ -3,6 +3,7 @@ import { BottomNavigation } from './BottomNavigation';
 import { useAppViewport } from '../hooks/useAppViewport';
 import { useScheduleSync } from '../hooks/useScheduleSync';
 import { useTrackedLiftsSync } from '../hooks/useTrackedLiftsSync';
+import { usePlannedWorkoutsSync } from '../hooks/usePlannedWorkoutsSync';
 import { NewBestSheet } from './build/NewBestSheet';
 import { ResumeWorkoutSheet } from './workout/ResumeWorkoutSheet';
 import { AskAiHost } from './ai/AskAiHost';
@@ -42,6 +43,8 @@ export const AppShell: React.FC<AppShellProps> = ({
   useScheduleSync();
   // Tracked lifts: hydrated app-wide so the player can record sessions.
   useTrackedLiftsSync();
+  // Planned workouts: hydrated and synced app-wide.
+  usePlannedWorkoutsSync();
 
   // On iOS, pin the shell to the visual viewport so the keyboard doesn't shove
   // content off-screen. Launched from the home screen with the keyboard closed,
