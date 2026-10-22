@@ -6,7 +6,7 @@ service cloud.firestore {
     match /users/{userId} {
       allow read, write: if request.auth != null && request.auth.uid == userId;
 
-      // Nested collections under users (like savedWorkouts)
+      // Nested collections under users (like savedWorkouts, schedule, plannedWorkouts)
       match /{collection}/{docId} {
         allow read, write: if request.auth != null && request.auth.uid == userId;
       }

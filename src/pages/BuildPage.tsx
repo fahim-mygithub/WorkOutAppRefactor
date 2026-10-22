@@ -43,7 +43,10 @@ import {
   LayoutGrid,
   FileText,
   Sparkles,
+  Calendar,
 } from 'lucide-react';
+import { planAdded } from '../store/slices/plannedWorkoutsSlice';
+import { PlanDateModal } from '../components/plan/PlanDateModal';
 import { Button } from '@/components/ui/button';
 import { Card, CardBody } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -214,6 +217,7 @@ export default function BuildPage() {
   }, [exerciseDatabase.length]);
   const parser = useMemo(() => new WorkoutParser(), []);
   const [isSaving, setIsSaving] = useState(false);
+  const [isPlanDateModalOpen, setIsPlanDateModalOpen] = useState(false);
   const [saveError, setSaveError] = useState('');
   const [shareData, setShareData] = useState<CreateSharedWorkoutData | null>(null);
 
@@ -641,6 +645,29 @@ export default function BuildPage() {
     }
   };
 
+  const handleSaveForLater = (chosenDateKey: string) => {
+    setWorkoutNameError('');
+    const workoutToUse = editedWorkout || (parseResult?.workout ? prepareWorkoutForConfigurator(parseResult.workout) : null);
+    if (!workoutToUse) {
+      alert('No valid workout found');
+      return;
+    }
+    const exercises = convertToWorkoutExercises(workoutToUse);
+    if (exercises.length === 0) {
+      alert('No valid exercises found');
+      return;
+    }
+    const sanitizedExercises = sanitizeWorkoutExercisesForRedux(exercises);
+    dispatch(
+      planAdded({
+        name: workoutName.trim() || 'Custom Workout',
+        dateKey: chosenDateKey,
+        exercises: sanitizedExercises,
+      }),
+    );
+    navigate('/');
+  };
+
   const handleSaveWorkout = async () => {
     console.log('handleSaveWorkout called, checking service availability...');
 
@@ -872,6 +899,15 @@ export default function BuildPage() {
           )}
         </div>
 
+        <Button
+          variant="secondary"
+          size="lg"
+          onClick={() => setIsPlanDateModalOpen(true)}
+        >
+          <Calendar className="h-5 w-5" aria-hidden="true" />
+          Save for later
+        </Button>
+
         {saveError && (
           <Stack direction="row" align="center" gap={2} className="text-body-sm text-danger" role="alert">
             <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden="true" />
@@ -1061,6 +1097,14 @@ export default function BuildPage() {
         actionButtons={parseErrorsSection}
       />
 
+      <PlanDateModal
+        open={isPlanDateModalOpen}
+        onOpenChange={setIsPlanDateModalOpen}
+        title="Save for later"
+        description="Pick a date to plan this workout."
+        confirmLabel="Save plan"
+        onConfirm={handleSaveForLater}
+      />
       {/* Share Workout Modal */}
       {shareData && (
         <ShareWorkoutModal

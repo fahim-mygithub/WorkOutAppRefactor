@@ -6,10 +6,11 @@ export const ACTIVE_PLAN_CONTEXT_KEY = 'activePlanContext';
 
 export interface ActivePlanContext {
   dateKey: string;
-  templateId: 'charlie-split';
-  dayType: 'push' | 'pull' | 'legs';
-  cycleOrdinal: number;
+  templateId: 'charlie-split' | 'planned-workout';
+  dayType?: 'push' | 'pull' | 'legs';
+  cycleOrdinal?: number;
   isRetest?: boolean;
+  plannedWorkoutId?: string;
 }
 
 export interface WorkoutSessionSnapshot {
@@ -79,7 +80,12 @@ export function validateWorkoutSnapshot(data: unknown): data is WorkoutSessionSn
   if (d.planContext !== null && d.planContext !== undefined) {
     if (typeof d.planContext !== 'object') return false;
     const p = d.planContext as Record<string, unknown>;
-    if (typeof p.dateKey !== 'string' || p.templateId !== 'charlie-split' || typeof p.dayType !== 'string') {
+    if (typeof p.dateKey !== 'string') return false;
+    if (p.templateId === 'charlie-split') {
+      if (typeof p.dayType !== 'string') return false;
+    } else if (p.templateId === 'planned-workout') {
+      if (typeof p.plannedWorkoutId !== 'string') return false;
+    } else {
       return false;
     }
   }
@@ -152,7 +158,11 @@ export function getStoredPlanContext(
       const raw = storage.getItem(ACTIVE_PLAN_CONTEXT_KEY);
       if (raw) {
         const parsed = JSON.parse(raw);
-        if (parsed && typeof parsed.dateKey === 'string' && parsed.templateId === 'charlie-split') {
+        if (
+          parsed &&
+          typeof parsed.dateKey === 'string' &&
+          (parsed.templateId === 'charlie-split' || parsed.templateId === 'planned-workout')
+        ) {
           return parsed as ActivePlanContext;
         }
       }
@@ -166,7 +176,11 @@ export function getStoredPlanContext(
       const raw = sessionFallback.getItem(ACTIVE_PLAN_CONTEXT_KEY);
       if (raw) {
         const parsed = JSON.parse(raw);
-        if (parsed && typeof parsed.dateKey === 'string' && parsed.templateId === 'charlie-split') {
+        if (
+          parsed &&
+          typeof parsed.dateKey === 'string' &&
+          (parsed.templateId === 'charlie-split' || parsed.templateId === 'planned-workout')
+        ) {
           return parsed as ActivePlanContext;
         }
       }

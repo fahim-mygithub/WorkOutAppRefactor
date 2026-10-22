@@ -3,12 +3,15 @@ import { renderHook, act } from '@testing-library/react';
 import React from 'react';
 import { Provider } from 'react-redux';
 import { configureStore } from '@reduxjs/toolkit';
-import workoutReducer, { activeWorkoutRestored } from '../store/slices/workoutSlice';
+import workoutReducer, { activeWorkoutRestored, endWorkout } from '../store/slices/workoutSlice';
 import scheduleReducer from '../store/slices/scheduleSlice';
 import trackedLiftsReducer from '../store/slices/trackedLiftsSlice';
+import plannedWorkoutsReducer, { planAdded } from '../store/slices/plannedWorkoutsSlice';
 import { useFinishWorkout, buildLocalSummary } from './useFinishWorkout';
 import {
   setStoredPlanContext,
+  clearStoredPlanContext,
+  clearWorkoutSnapshot,
   saveWorkoutSnapshot,
   loadWorkoutSnapshot,
   ACTIVE_PLAN_CONTEXT_KEY,
@@ -109,6 +112,7 @@ function setupStore() {
       workout: workoutReducer,
       schedule: scheduleReducer,
       trackedLifts: trackedLiftsReducer,
+      plannedWorkouts: plannedWorkoutsReducer,
     },
   });
   store.dispatch(
@@ -186,5 +190,68 @@ describe('useFinishWorkout', () => {
     const scheduleState = store.getState().schedule;
     expect(scheduleState.overrides['2026-10-22']?.status).toBe('completed');
     expect(sessionStorage.getItem(ACTIVE_PLAN_CONTEXT_KEY)).toBeNull();
+  });
+
+  it('marks a planned workout as done when finishWorkout completes', async () => {
+    const store = setupStore();
+    store.dispatch(
+      planAdded({
+        id: 'plan-custom-1',
+        dateKey: '2026-10-22',
+        name: 'Custom Push',
+        exercises: [],
+      }),
+    );
+
+    const plannedContext: ActivePlanContext = {
+      templateId: 'planned-workout',
+      dateKey: '2026-10-22',
+      plannedWorkoutId: 'plan-custom-1',
+    };
+    setStoredPlanContext(plannedContext);
+
+    const wrapper = ({ children }: { children: React.ReactNode }) =>
+      React.createElement(Provider, { store, children });
+
+    const { result } = renderHook(() => useFinishWorkout(), { wrapper });
+
+    await act(async () => {
+      await result.current.finishWorkout();
+    });
+
+    // Plan should be marked done
+    const plans = store.getState().plannedWorkouts.plans;
+    expect(plans.find((p) => p.id === 'plan-custom-1')?.status).toBe('done');
+    expect(mockNavigate).toHaveBeenCalledWith('/');
+  });
+
+  it('leaves the planned workout in planned status when workout is discarded', () => {
+    const store = setupStore();
+    store.dispatch(
+      planAdded({
+        id: 'plan-custom-2',
+        dateKey: '2026-10-22',
+        name: 'Leg Day',
+        exercises: [],
+      }),
+    );
+
+    const plannedContext: ActivePlanContext = {
+      templateId: 'planned-workout',
+      dateKey: '2026-10-22',
+      plannedWorkoutId: 'plan-custom-2',
+    };
+    setStoredPlanContext(plannedContext);
+
+    // Discarding a workout dispatches endWorkout, clears snapshot & plan context without calling finishWorkout
+    act(() => {
+      store.dispatch(endWorkout());
+      clearWorkoutSnapshot();
+      clearStoredPlanContext();
+    });
+
+    // The plan in store must still be 'planned'
+    const plans = store.getState().plannedWorkouts.plans;
+    expect(plans.find((p) => p.id === 'plan-custom-2')?.status).toBe('planned');
   });
 });

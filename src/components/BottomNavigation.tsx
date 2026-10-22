@@ -3,6 +3,7 @@ import { NavLink, useLocation } from 'react-router-dom';
 import { Home, Dumbbell, Plus, List, User } from 'lucide-react';
 import { useAppSelector } from '@/store/hooks';
 import { cn } from '@/lib/utils';
+import { toDateKey } from '@/lib/dateKey';
 
 interface NavItem {
   path: string;
@@ -49,8 +50,16 @@ function navItems(hasActiveWorkout: boolean): NavItem[] {
  * the quietest thing on screen.
  */
 export const BottomNavigation: React.FC<BottomNavigationProps> = ({ className }) => {
-  const hasActiveWorkout = useAppSelector((s) => !!s.workout.activeWorkout);
+  const hasActiveWorkout = useAppSelector((s) => !!s.workout?.activeWorkout);
   const { pathname } = useLocation();
+
+  const todayKey = toDateKey(new Date());
+  const hasPlanDueToday = useAppSelector((s) => {
+    const plans = (s as unknown as { plannedWorkouts?: { plans?: Array<{ dateKey: string; status: string }> } })
+      ?.plannedWorkouts?.plans;
+    return Array.isArray(plans) && plans.some((p) => p.dateKey === todayKey && p.status === 'planned');
+  });
+
   return (
     <nav
       aria-label="Main"
@@ -80,7 +89,16 @@ export const BottomNavigation: React.FC<BottomNavigationProps> = ({ className })
               );
             }}
           >
-            {item.icon}
+            <div className="relative flex items-center justify-center">
+              {item.icon}
+              {item.path === '/' && hasPlanDueToday && (
+                <span
+                  data-testid="today-plan-badge"
+                  aria-label="Planned workout due today"
+                  className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-accent"
+                />
+              )}
+            </div>
             <span className="leading-none">{item.label}</span>
           </NavLink>
         ))}

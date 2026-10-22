@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { WelcomeHero } from '../components/home/WelcomeHero';
 import { WorkoutCalendar } from '../components/home/WorkoutCalendar';
 import { TodayWorkout } from '../components/home/TodayWorkout';
+import { PlannedWorkoutsSection } from '../components/plan/PlannedWorkoutsSection';
 import { HomeStats } from '../components/home/HomeStats';
 import { BodyMuscleMap } from '../components/home/BodyMuscleMap';
 import { WorkoutDayModal } from '../components/home/WorkoutDayModal';
@@ -69,6 +70,8 @@ export default function HomePage() {
       <WelcomeHero />
 
       <TodayWorkout workoutHistory={workoutHistory} isLoading={isCalendarLoading} />
+
+      <PlannedWorkoutsSection />
 
       <section aria-label="Calendar" className="border-t border-hairline pt-5">
         <WorkoutCalendar

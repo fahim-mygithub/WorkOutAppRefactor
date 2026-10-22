@@ -2,7 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAppSelector, useAppDispatch } from '../store/hooks';
 import { useAuth } from '../contexts/AuthContext';
-import { setWeightUnit, setUnitSystem, setDefaultRestTime, toggleAutoStartTimer, setDefaultProgressionRate, toggleKeyboardShortcuts, toggleKeyboardShortcutsDisplay } from '../store/slices/userSlice';
+import { setWeightUnit, setUnitSystem, setDefaultRestTime, toggleAutoStartTimer, setDefaultProgressionRate, toggleKeyboardShortcuts, toggleKeyboardShortcutsDisplay, updateNotificationPreferences } from '../store/slices/userSlice';
 import { loadWorkoutHistory } from '../store/slices/exerciseHistorySlice';
 import { ExerciseHistoryService } from '../services/exerciseHistoryService';
 import { startWorkout } from '../store/slices/workoutSlice';
@@ -18,6 +18,7 @@ import { WorkoutSummary } from '../types/exerciseHistory';
 import { convertSavedWorkoutToExercises, sanitizeWorkoutExercisesForRedux } from '../utils/workoutConversion';
 import { useExercises } from '../hooks/useExercises';
 import { Button } from '../components/ui/button';
+import { Input } from '../components/ui/input';
 import { Skeleton } from '../components/ui/skeleton';
 import { Switch } from '../components/ui/switch';
 import { Label } from '../components/ui/label';
@@ -584,6 +585,24 @@ export default function ProfilePage() {
                 </dl>
               </SettingsRow>
             )}
+          </SettingsGroup>
+
+          <SettingsGroup title="Notifications">
+            <SettingsRow>
+              <div className="flex flex-col">
+                <span className="text-body font-medium text-ink">Daily reminder time</span>
+                <span className="text-caption text-ink-muted">Default reminder time for planned workouts</span>
+              </div>
+              <Input
+                type="time"
+                value={preferences.notifications?.reminderTime ?? '08:00'}
+                onChange={(e) =>
+                  dispatch(updateNotificationPreferences({ reminderTime: e.target.value }))
+                }
+                className="w-32 text-center"
+                aria-label="Daily reminder time"
+              />
+            </SettingsRow>
           </SettingsGroup>
 
           <SettingsGroup title="App">

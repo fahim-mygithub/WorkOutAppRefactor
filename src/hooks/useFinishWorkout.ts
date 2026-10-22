@@ -5,6 +5,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { endWorkout } from '../store/slices/workoutSlice';
 import { sessionsRecorded } from '../store/slices/trackedLiftsSlice';
 import { dayOverrideSet, retestAdvanced } from '../store/slices/scheduleSlice';
+import { planMarkedDone } from '../store/slices/plannedWorkoutsSlice';
 import { trackedSessionsFromWorkout } from '../lib/trackedLiftProgression';
 import { MuscleLogService } from '../services/muscleLogService';
 import { ScheduleService } from '../services/scheduleService';
@@ -107,23 +108,30 @@ export function useFinishWorkout() {
 
       const completePlanDay = () => {
         if (!planCtx) return;
-        const idKey = user?.uid ?? 'anon';
-        const summary = buildLocalSummary(targetWorkout, idKey);
-        ScheduleService.appendPerformedLocal(idKey, summary);
-        dispatch(
-          dayOverrideSet({
-            dateKey: planCtx.dateKey,
-            status: 'completed',
-            dayType: planCtx.dayType,
-            cycleOrdinal: planCtx.cycleOrdinal,
-            completedSummaryId: summary.id,
-            updatedAt: new Date().toISOString(),
-          }),
-        );
-        if (planCtx.isRetest) {
-          dispatch(retestAdvanced({ testedAtKey: planCtx.dateKey }));
+        if (planCtx.templateId === 'planned-workout' && planCtx.plannedWorkoutId) {
+          dispatch(planMarkedDone(planCtx.plannedWorkoutId));
+          clearStoredPlanContext();
+          return;
         }
-        clearStoredPlanContext();
+        if (planCtx.templateId === 'charlie-split' && planCtx.dayType) {
+          const idKey = user?.uid ?? 'anon';
+          const summary = buildLocalSummary(targetWorkout, idKey);
+          ScheduleService.appendPerformedLocal(idKey, summary);
+          dispatch(
+            dayOverrideSet({
+              dateKey: planCtx.dateKey,
+              status: 'completed',
+              dayType: planCtx.dayType,
+              cycleOrdinal: planCtx.cycleOrdinal ?? 1,
+              completedSummaryId: summary.id,
+              updatedAt: new Date().toISOString(),
+            }),
+          );
+          if (planCtx.isRetest) {
+            dispatch(retestAdvanced({ testedAtKey: planCtx.dateKey }));
+          }
+          clearStoredPlanContext();
+        }
       };
 
       try {

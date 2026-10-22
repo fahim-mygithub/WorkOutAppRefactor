@@ -7,6 +7,7 @@ import exerciseHistoryReducer from './slices/exerciseHistorySlice';
 import sharedWorkoutReducer from './slices/sharedWorkoutSlice';
 import scheduleReducer from './slices/scheduleSlice';
 import trackedLiftsReducer from './slices/trackedLiftsSlice';
+import plannedWorkoutsReducer from './slices/plannedWorkoutsSlice';
 import aiReducer from './slices/aiSlice';
 
 export const store = configureStore({
@@ -19,14 +20,15 @@ export const store = configureStore({
     sharedWorkout: sharedWorkoutReducer,
     schedule: scheduleReducer,
     trackedLifts: trackedLiftsReducer,
+    plannedWorkouts: plannedWorkoutsReducer,
     ai: aiReducer,
   },
   middleware: (getDefaultMiddleware) =>
-    getDefaultMiddleware({
-      serializableCheck: {
-        ignoredActions: ['persist/PERSIST', 'persist/REHYDRATE'],
-      },
-    }),
+  getDefaultMiddleware({
+    serializableCheck: {
+      ignoredActions: ['persist/PERSIST', 'persist/REHYDRATE'],
+    },
+  }),
 });
 
 export type RootState = ReturnType<typeof store.getState>;

@@ -4,11 +4,27 @@ import { Provider } from 'react-redux';
 import { configureStore } from '@reduxjs/toolkit';
 import { MemoryRouter } from 'react-router-dom';
 import workout, { startWorkout } from '../store/slices/workoutSlice';
+import plannedWorkouts, { planAdded } from '../store/slices/plannedWorkoutsSlice';
+import { toDateKey } from '../lib/dateKey';
 import { BottomNavigation } from './BottomNavigation';
 
-function renderNav(path: string, active = false) {
-  const store = configureStore({ reducer: { workout } });
+function renderNav(path: string, active = false, hasPlanToday = false) {
+  const store = configureStore({
+    reducer: {
+      workout,
+      plannedWorkouts,
+    },
+  });
   if (active) store.dispatch(startWorkout({ name: 'Push', exercises: [] }));
+  if (hasPlanToday) {
+    store.dispatch(
+      planAdded({
+        dateKey: toDateKey(new Date()),
+        name: 'Bench Day',
+        exercises: [],
+      }),
+    );
+  }
   render(
     <Provider store={store}>
       <MemoryRouter initialEntries={[path]}>
@@ -43,5 +59,10 @@ describe('BottomNavigation', () => {
     renderNav('/build/custom');
     expect(lit('Build')).toBe(true);
     expect(lit('Workout')).toBe(false);
+  });
+
+  it('shows badge on Today tab when a plan is due today', () => {
+    renderNav('/', false, true);
+    expect(screen.getByTestId('today-plan-badge')).toBeInTheDocument();
   });
 });

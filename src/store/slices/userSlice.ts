@@ -15,6 +15,7 @@ export interface UserPreferences {
     workoutReminders: boolean;
     restTimerAlerts: boolean;
     achievements: boolean;
+    reminderTime?: string;
   };
 }
 
@@ -61,6 +62,7 @@ const initialPreferences: UserPreferences = {
     workoutReminders: true,
     restTimerAlerts: true,
     achievements: true,
+    reminderTime: '08:00',
   },
 };
 
