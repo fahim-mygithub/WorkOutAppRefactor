@@ -480,6 +480,26 @@ export default function WorkoutPage() {
     }));
   };
 
+  // List mode: the cursor (current exercise/set) follows what the lifter is working
+  // on, so the rest overlay's "Up next" and the progression recommendation, both of
+  // which read the cursor, describe that exercise rather than the last one touched.
+  const pointCursorAt = (exerciseIndex: number, setIndex: number) => {
+    if (
+      exerciseIndex === activeWorkout.currentExerciseIndex &&
+      setIndex === activeWorkout.currentSetIndex
+    ) {
+      return;
+    }
+    dispatch(jumpToSet({ exerciseIndex, setIndex }));
+  };
+
+  const handleFocusExercise = (exerciseIndex: number) => {
+    if (exerciseIndex === activeWorkout.currentExerciseIndex) return;
+    const sets = activeWorkout.exercises[exerciseIndex]?.sets ?? [];
+    const firstOpen = sets.findIndex((s) => !s.completed);
+    pointCursorAt(exerciseIndex, firstOpen === -1 ? 0 : firstOpen);
+  };
+
   const handleSelectExercise = (exerciseIndex: number) => {
     if (viewMode === 'list') {
       const el = document.getElementById(`workout-exercise-${exerciseIndex}`);
@@ -741,8 +761,12 @@ export default function WorkoutPage() {
             previousPerformances={previousPerformances}
             appliedWeights={appliedWeights}
             suggestion={suggestion}
-            onCompleteSet={handleCompleteSet}
+            onCompleteSet={(exerciseIndex, setIndex, reps, weight, rir) => {
+              pointCursorAt(exerciseIndex, setIndex);
+              handleCompleteSet(exerciseIndex, setIndex, reps, weight, rir);
+            }}
             onUncompleteSet={handleUncompleteSet}
+            onFocusExercise={handleFocusExercise}
             onApplySuggestion={handleApplySuggestion}
             onKeepSuggestion={handleKeepSuggestion}
             onEditSets={handleEditExercise}

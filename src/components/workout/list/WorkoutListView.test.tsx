@@ -205,4 +205,20 @@ describe('WorkoutListView', () => {
     expect(screen.getByText('Bench Press')).toBeInTheDocument();
     expect(screen.getByText('0 of 0 sets done')).toBeInTheDocument();
   });
+  it('reports the exercise being worked on when its card is touched', async () => {
+    const user = userEvent.setup();
+    const onFocusExercise = vi.fn();
+    render(
+      <WorkoutListView
+        workout={createMockWorkout()}
+        onCompleteSet={vi.fn()}
+        onUncompleteSet={vi.fn()}
+        onEditSets={vi.fn()}
+        onFocusExercise={onFocusExercise}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: /edit sets for dumbbell flye/i }));
+    expect(onFocusExercise).toHaveBeenCalledWith(1);
+  });
 });

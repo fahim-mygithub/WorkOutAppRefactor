@@ -35,6 +35,9 @@ export interface WorkoutListViewProps {
   onEditSets?: (exercise: WorkoutExercise) => void;
   onChangeExercise?: (exercise: WorkoutExercise) => void;
   onAskCoach?: (exercise: WorkoutExercise) => void;
+  /** The lifter touched this exercise's card — lets the page point its
+   *  per-exercise state (progression recommendation) at it. */
+  onFocusExercise?: (exerciseIndex: number) => void;
   recommendations?: Record<string, { recommendedWeight?: number; recommendedReps?: number }>;
 }
 
@@ -50,6 +53,7 @@ export const WorkoutListView: React.FC<WorkoutListViewProps> = ({
   onEditSets,
   onChangeExercise,
   onAskCoach,
+  onFocusExercise,
   recommendations,
 }) => {
   // Sets that the lifter has tapped to reopen for editing or undoing
@@ -102,6 +106,8 @@ export const WorkoutListView: React.FC<WorkoutListViewProps> = ({
             key={exercise.id || exerciseIndex}
             id={`workout-exercise-${exerciseIndex}`}
             data-exercise-index={exerciseIndex}
+            onPointerDownCapture={() => onFocusExercise?.(exerciseIndex)}
+            onFocusCapture={() => onFocusExercise?.(exerciseIndex)}
             elevation={1}
             className="p-4 space-y-3"
           >
