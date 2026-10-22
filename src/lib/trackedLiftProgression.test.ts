@@ -58,7 +58,22 @@ describe('estimate', () => {
     expect(currentEstimate(bench)).toEqual({ value: 265, fromLog: false });
   });
 
-  it('prefers the median of the last 3 logged sessions', () => {
+  it('uses the median of the last 3 logged sessions when it beats the benchmark', () => {
+    const lift = {
+      ...bench,
+      sessions: [
+        session('strength', [{ weight: 250, reps: 3 }]), // 275
+        session('strength', [{ weight: 255, reps: 3 }]), // 280.5
+        session('volume', [{ weight: 200, reps: 10 }]), // 266.7
+      ],
+    };
+    expect(currentEstimate(lift)?.value).toBeCloseTo(275);
+    expect(currentEstimate(lift)?.fromLog).toBe(true);
+  });
+
+  it('never lets submaximal logs pull the estimate below the benchmark', () => {
+    // Volume/Strength days are submaximal by design, so without RIR they read
+    // low (225 x 3 = 247.5). Only a checkpoint is allowed to move the benchmark.
     const lift = {
       ...bench,
       sessions: [
@@ -67,8 +82,20 @@ describe('estimate', () => {
         session('volume', [{ weight: 180, reps: 10 }]), // 240
       ],
     };
-    expect(currentEstimate(lift)?.value).toBeCloseTo(247.5);
-    expect(currentEstimate(lift)?.fromLog).toBe(true);
+    expect(currentEstimate(lift)).toEqual({ value: 265, fromLog: false });
+    expect(prescribe(lift, 'strength').sets[0].weight).toBe(225); // 0.85 x 265
+  });
+
+  it('prescribes from the new benchmark once a checkpoint best is accepted', () => {
+    const sessions = [
+      session('volume', [{ weight: 180, reps: 8 }]),
+      session('strength', [{ weight: 225, reps: 3 }]),
+      session('checkpoint', [{ weight: 270, reps: 1 }]),
+    ];
+    const accepted = { ...bench, load: { kind: 'weight' as const, value: 270, unit: 'lb' as const }, sessions };
+    const next = prescribe(accepted, 'strength').sets[0].weight!;
+    expect(next).toBeGreaterThan(225); // up from the pre-checkpoint 225
+    expect(next).toBe(230); // 0.85 x 270, rounded to 5
   });
 
   it('has no estimate for loads without a formula', () => {

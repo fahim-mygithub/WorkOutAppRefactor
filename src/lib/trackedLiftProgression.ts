@@ -69,8 +69,12 @@ export function benchmarkE1RM(lift: TrackedLift): number | null {
 
 /**
  * Current estimated 1RM for a weighted progression lift: the median of the
- * last 3 sessions' best effort-adjusted sets from its own log, else the
- * benchmark. `null` for loads without a formula.
+ * last 3 sessions' best effort-adjusted sets from its own log, floored at the
+ * benchmark. Volume and Strength days are submaximal by design, so without RIR
+ * they read low; left to drag the estimate down, each session would prescribe
+ * lighter than the last. Logs can raise the estimate; only a checkpoint (a new
+ * best accepted onto the benchmark) moves it from there. `null` for loads
+ * without a formula.
  */
 export function currentEstimate(lift: TrackedLift): { value: number; fromLog: boolean } | null {
   if (lift.load.kind !== 'weight') return null;
@@ -80,8 +84,8 @@ export function currentEstimate(lift: TrackedLift): { value: number; fromLog: bo
       .map((set) => ({ weight: set.weight!, reps: set.reps, rir: set.rir })),
   );
   const fromLog = smoothedSessionE1RM(logged);
-  if (fromLog != null) return { value: fromLog, fromLog: true };
   const bench = benchmarkE1RM(lift);
+  if (fromLog != null && (bench == null || fromLog > bench)) return { value: fromLog, fromLog: true };
   return bench != null ? { value: bench, fromLog: false } : null;
 }
 
