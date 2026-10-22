@@ -298,26 +298,3 @@
   -webkit-box-decoration-break: clone;
   transition: background-color 0.3s ease;
 }
-
-
-/* Workout list ledger line editor reveal */
-@keyframes ledgerReveal {
-  from {
-    opacity: 0;
-    transform: translateY(-4px);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
-}
-
-.ledger-reveal {
-  animation: ledgerReveal 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .ledger-reveal {
-    animation: none !important;
-  }
-}

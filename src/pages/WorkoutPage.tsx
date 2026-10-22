@@ -110,10 +110,6 @@ export function executeCompleteSet({
       : null);
   }
 
-  if (skipRestTimer) {
-    return;
-  }
-
   // Check if current exercise is part of a superset
   const isCurrentExerciseInSuperset = exercise.isSuperset && exercise.supersetId;
 
@@ -130,24 +126,28 @@ export function executeCompleteSet({
 
       if (isLastExerciseInSuperset && isLastSet) {
         // Completed all sets of superset - start rest timer and move to next exercise group
-        dispatch(startRestTimer({ duration: exercise.restTime || 120 }));
+        if (!skipRestTimer) {
+          dispatch(startRestTimer({ duration: exercise.restTime || 120 }));
+        }
         dispatch(completeSuperset());
       } else if (isLastExerciseInSuperset && !isLastSet) {
         // Completed a round of the superset (last exercise of current set) - start rest timer
-        dispatch(startRestTimer({ duration: exercise.restTime || 120 }));
+        if (!skipRestTimer) {
+          dispatch(startRestTimer({ duration: exercise.restTime || 120 }));
+        }
       } else {
         // Move to next exercise in superset (within the same set)
         dispatch(nextSupersetExercise());
       }
     } else {
       // Single exercise marked as superset, treat as regular exercise
-      if (exercise.restTime) {
+      if (!skipRestTimer && exercise.restTime) {
         dispatch(startRestTimer({ duration: exercise.restTime }));
       }
     }
   } else {
     // Regular exercise: start rest timer
-    if (exercise.restTime) {
+    if (!skipRestTimer && exercise.restTime) {
       dispatch(startRestTimer({ duration: exercise.restTime }));
     }
   }
@@ -383,7 +383,7 @@ export default function WorkoutPage() {
   };
 
   const handleUpdateSet = useCallback(
-    (exerciseIndex: number, setIndex: number, reps: number, weight: number) => {
+    (exerciseIndex: number, setIndex: number, reps: number, weight: number, time?: number) => {
       const exercise = activeWorkout.exercises[exerciseIndex];
       if (!exercise) return;
       const currentSet = exercise.sets[setIndex];
@@ -391,18 +391,18 @@ export default function WorkoutPage() {
         handleCompleteSet(exerciseIndex, setIndex, reps, weight, undefined, true);
       } else {
         const updatedSets = exercise.sets.map((s, idx) =>
-          idx === setIndex ? { ...s, reps, weight } : s,
+          idx === setIndex ? { ...s, reps, weight, ...(time !== undefined ? { time } : {}) } : s,
         );
         dispatch(
           updateExercise({
             exerciseId: exercise.id,
             sets: updatedSets,
-            restTime: exercise.restTime || 120,
+            restTime: exercise.restTime as number,
           }),
         );
       }
     },
-    [activeWorkout.exercises, dispatch],
+    [activeWorkout.exercises, dispatch, handleCompleteSet],
   );
 
   const handleUncompleteSet = (

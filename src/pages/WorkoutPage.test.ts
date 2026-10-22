@@ -183,7 +183,7 @@ describe('executeCompleteSet (lifted handler)', () => {
       expect(dispatch).toHaveBeenCalledWith(startRestTimer({ duration: 120 }));
     });
 
-    it('skips rest timer and superset advancement when skipRestTimer is true', () => {
+    it('skips rest timer but still advances to next superset exercise when skipRestTimer is true', () => {
       const workout = createWorkoutWithSuperset();
       const dispatch = vi.fn();
 
@@ -205,7 +205,59 @@ describe('executeCompleteSet (lifted handler)', () => {
           rir: undefined,
         })
       );
-      expect(dispatch).not.toHaveBeenCalledWith(expect.objectContaining({ type: expect.stringMatching(/startRestTimer|nextSupersetExercise/) }));
+      expect(dispatch).toHaveBeenCalledWith(nextSupersetExercise());
+      expect(dispatch).not.toHaveBeenCalledWith(expect.objectContaining({ type: expect.stringMatching(/startRestTimer/) }));
+    });
+
+    it('skips rest timer but completes superset at final set of last exercise when skipRestTimer is true', () => {
+      const workout = createWorkoutWithSuperset();
+      const dispatch = vi.fn();
+
+      executeCompleteSet({
+        workout,
+        exerciseIndex: 1,
+        setIndex: 1,
+        reps: 12,
+        weight: 30,
+        dispatch,
+        skipRestTimer: true,
+      });
+
+      expect(dispatch).toHaveBeenCalledWith(
+        completeSet({
+          exerciseIndex: 1,
+          setIndex: 1,
+          setData: { reps: 12, weight: 30 },
+          rir: undefined,
+        })
+      );
+      expect(dispatch).toHaveBeenCalledWith(completeSuperset());
+      expect(dispatch).not.toHaveBeenCalledWith(expect.objectContaining({ type: expect.stringMatching(/startRestTimer/) }));
+    });
+
+    it('skips rest timer for regular exercise when skipRestTimer is true', () => {
+      const workout = createWorkoutRegular();
+      const dispatch = vi.fn();
+
+      executeCompleteSet({
+        workout,
+        exerciseIndex: 0,
+        setIndex: 0,
+        reps: 8,
+        weight: 135,
+        dispatch,
+        skipRestTimer: true,
+      });
+
+      expect(dispatch).toHaveBeenCalledWith(
+        completeSet({
+          exerciseIndex: 0,
+          setIndex: 0,
+          setData: { reps: 8, weight: 135 },
+          rir: undefined,
+        })
+      );
+      expect(dispatch).not.toHaveBeenCalledWith(expect.objectContaining({ type: expect.stringMatching(/startRestTimer/) }));
     });
   });
 });

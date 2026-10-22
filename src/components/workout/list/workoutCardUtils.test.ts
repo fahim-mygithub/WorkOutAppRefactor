@@ -1,5 +1,13 @@
 import { describe, it, expect } from 'vitest';
-import { groupWorkoutCards, getExerciseTag } from './workoutCardUtils';
+import {
+  groupWorkoutCards,
+  getExerciseTag,
+  nudgeWeight,
+  nudgeReps,
+  nudgeTime,
+  WEIGHT_STEP,
+  TIME_STEP,
+} from './workoutCardUtils';
 import type { WorkoutExercise, Exercise } from '../../../types/exercise';
 
 const dummyExercise = {
@@ -31,11 +39,30 @@ describe('workoutCardUtils', () => {
   });
 
   it('generates unambiguous exercise tags A, B, C based on index in card', () => {
-    const exA = { id: 'we-1', exercise: { ...dummyExercise, name: 'Dumbbell Bench Press' }, sets: [] };
-    const exB = { id: 'we-2', exercise: { ...dummyExercise, name: 'Incline Dumbbell Bench Press' }, sets: [] };
+    expect(getExerciseTag(0)).toBe('A');
+    expect(getExerciseTag(1)).toBe('B');
+    expect(getExerciseTag(2)).toBe('C');
+  });
 
-    expect(getExerciseTag(exA, 0)).toBe('A');
-    expect(getExerciseTag(exB, 1)).toBe('B');
-    expect(getExerciseTag(exA, 2)).toBe('C');
+  describe('nudge helpers', () => {
+    it('nudges weight by default step and never goes below zero', () => {
+      expect(nudgeWeight(100, 1)).toBe(105);
+      expect(nudgeWeight(100, -1)).toBe(95);
+      expect(nudgeWeight(2, -1)).toBe(0);
+      expect(nudgeWeight(100, 1, 2.5)).toBe(102.5);
+    });
+
+    it('nudges reps by 1 and never goes below zero', () => {
+      expect(nudgeReps(8, 1)).toBe(9);
+      expect(nudgeReps(8, -1)).toBe(7);
+      expect(nudgeReps(0, -1)).toBe(0);
+    });
+
+    it('nudges time by 5s step and never goes below zero', () => {
+      expect(nudgeTime(30, 1)).toBe(35);
+      expect(nudgeTime(30, -1)).toBe(25);
+      expect(nudgeTime(2, -1)).toBe(0);
+      expect(nudgeTime(30, 1, 10)).toBe(40);
+    });
   });
 });

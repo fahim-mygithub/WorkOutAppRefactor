@@ -3,7 +3,7 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ActiveWorkout, Exercise, WorkoutExercise } from '../../../types/exercise';
 import { WorkoutListView } from './WorkoutListView';
-import { WEIGHT_STEP } from '@/components/SetInput';
+import { WEIGHT_STEP } from './workoutCardUtils';
 
 const benchEx = {
   id: 'x-bench',
@@ -39,6 +39,15 @@ const shoulderPressEx = {
   equipment: 'Dumbbells',
   instructions: ['Sit up', 'Press dumbbells overhead'],
   difficulty: 'Intermediate',
+} as unknown as Exercise;
+
+const plankEx = {
+  id: 'x-plank',
+  name: 'Plank Hold',
+  muscleGroup: 'Core',
+  equipment: 'Bodyweight',
+  instructions: ['Hold plank position'],
+  difficulty: 'Beginner',
 } as unknown as Exercise;
 
 function createMockWorkout(exercises?: WorkoutExercise[]): ActiveWorkout {
@@ -111,11 +120,11 @@ describe('WorkoutListView', () => {
     expect(lineButtons).toHaveLength(5);
 
     // Superset tags are A and B, and accessible names include tag and full exercise name
-    expect(lineButtons[0]).toHaveAccessibleName(/^a \(incline dumbbell press\): set 1: 10 reps, 40 lb/i);
-    expect(lineButtons[1]).toHaveAccessibleName(/^b \(dumbbell lateral raise\): set 1: 12 reps, 20 lb/i);
-    expect(lineButtons[2]).toHaveAccessibleName(/^a \(incline dumbbell press\): set 2: 10 reps, 40 lb/i);
-    expect(lineButtons[3]).toHaveAccessibleName(/^b \(dumbbell lateral raise\): set 2: 12 reps, 20 lb/i);
-    expect(lineButtons[4]).toHaveAccessibleName(/^a \(incline dumbbell press\): set 3: 10 reps, 40 lb/i);
+    expect(lineButtons[0]).toHaveAccessibleName(/^a \(incline dumbbell press\): set 1: 10 reps, 40 lbs?/i);
+    expect(lineButtons[1]).toHaveAccessibleName(/^b \(dumbbell lateral raise\): set 1: 12 reps, 20 lbs?/i);
+    expect(lineButtons[2]).toHaveAccessibleName(/^a \(incline dumbbell press\): set 2: 10 reps, 40 lbs?/i);
+    expect(lineButtons[3]).toHaveAccessibleName(/^b \(dumbbell lateral raise\): set 2: 12 reps, 20 lbs?/i);
+    expect(lineButtons[4]).toHaveAccessibleName(/^a \(incline dumbbell press\): set 3: 10 reps, 40 lbs?/i);
   });
 
   it('superset partners sharing first word get unambiguous A and B tags and labels', () => {
@@ -149,8 +158,8 @@ describe('WorkoutListView', () => {
 
     const lineButtons = screen.getAllByRole('button', { name: /set \d/i });
     expect(lineButtons).toHaveLength(2);
-    expect(lineButtons[0]).toHaveAccessibleName(/^a \(incline dumbbell press\): set 1: 8 reps, 50 lb/i);
-    expect(lineButtons[1]).toHaveAccessibleName(/^b \(dumbbell shoulder press\): set 1: 8 reps, 45 lb/i);
+    expect(lineButtons[0]).toHaveAccessibleName(/^a \(incline dumbbell press\): set 1: 8 reps, 50 lbs?/i);
+    expect(lineButtons[1]).toHaveAccessibleName(/^b \(dumbbell shoulder press\): set 1: 8 reps, 45 lbs?/i);
   });
 
   it('one line per set: displays each set as a ledger line', () => {
@@ -166,9 +175,9 @@ describe('WorkoutListView', () => {
     const lineButtons = screen.getAllByRole('button', { name: /set \d/i });
     expect(lineButtons).toHaveLength(4);
 
-    // Each displays 5 Reps and 100 lb
+    // Each displays 5 Reps and 100 lbs
     lineButtons.forEach((btn, idx) => {
-      expect(btn).toHaveAccessibleName(new RegExp(`^set ${idx + 1}: 5 reps, 100 lb`, 'i'));
+      expect(btn).toHaveAccessibleName(new RegExp(`^set ${idx + 1}: 5 reps, 100 lbs?`, 'i'));
     });
   });
 
@@ -194,23 +203,23 @@ describe('WorkoutListView', () => {
     const increaseWeight = screen.getByRole('button', { name: /increase weight/i });
     await user.click(increaseWeight); // 100 -> 100 + WEIGHT_STEP (105)
 
-    expect(onUpdateSet).toHaveBeenCalledWith(0, 2, 5, 100 + WEIGHT_STEP);
+    expect(onUpdateSet).toHaveBeenCalledWith(0, 2, 5, 100 + WEIGHT_STEP, undefined);
 
     const increaseReps = screen.getByRole('button', { name: /increase reps/i });
     await user.click(increaseReps); // 5 -> 6
 
-    expect(onUpdateSet).toHaveBeenCalledWith(0, 2, 6, 105);
+    expect(onUpdateSet).toHaveBeenCalledWith(0, 2, 6, 105, undefined);
 
-    // Line 3 now reflects 6 reps and 105 lb
+    // Line 3 now reflects 6 reps and 105 lbs
     expect(screen.getAllByRole('button', { name: /set \d/i })[2]).toHaveAccessibleName(
-      /set 3: 6 reps, 105 lb/i
+      /set 3: 6 reps, 105 lbs?/i
     );
 
-    // Lines 1, 2, 4 remain unchanged (5 reps, 100 lb)
+    // Lines 1, 2, 4 remain unchanged (5 reps, 100 lbs)
     const updatedButtons = screen.getAllByRole('button', { name: /set \d/i });
-    expect(updatedButtons[0]).toHaveAccessibleName(/set 1: 5 reps, 100 lb/i);
-    expect(updatedButtons[1]).toHaveAccessibleName(/set 2: 5 reps, 100 lb/i);
-    expect(updatedButtons[3]).toHaveAccessibleName(/set 4: 5 reps, 100 lb/i);
+    expect(updatedButtons[0]).toHaveAccessibleName(/set 1: 5 reps, 100 lbs?/i);
+    expect(updatedButtons[1]).toHaveAccessibleName(/set 2: 5 reps, 100 lbs?/i);
+    expect(updatedButtons[3]).toHaveAccessibleName(/set 4: 5 reps, 100 lbs?/i);
   });
 
   it('Log workout button accessible name matches visible text exactly, logs all sets and starts exactly one rest', async () => {
@@ -396,5 +405,82 @@ describe('WorkoutListView', () => {
 
     await user.click(screen.getByRole('button', { name: /edit sets for barbell bench press/i }));
     expect(onFocusExercise).toHaveBeenCalledWith(0);
+  });
+
+  it('timed set: logs own reps value (0, not 8) and displays time in seconds', async () => {
+    const user = userEvent.setup();
+    const onCompleteSet = vi.fn();
+    const onStartRest = vi.fn();
+    const timedWorkout = createMockWorkout([
+      {
+        id: 'we-plank',
+        exercise: plankEx,
+        restTime: 60,
+        sets: [
+          { id: 'plank-1', reps: 0, time: 45, completed: false },
+        ],
+      },
+    ]);
+
+    render(
+      <WorkoutListView
+        workout={timedWorkout}
+        onCompleteSet={onCompleteSet}
+        onUncompleteSet={vi.fn()}
+        onStartRest={onStartRest}
+      />
+    );
+
+    const lineBtn = screen.getByRole('button', { name: /set 1: 45 seconds/i });
+    expect(lineBtn).toBeInTheDocument();
+
+    const logBtn = screen.getByRole('button', { name: /^log workout$/i });
+    await user.click(logBtn);
+
+    // Must log reps: 0 (its own reps), NOT 8!
+    expect(onCompleteSet).toHaveBeenCalledTimes(1);
+    expect(onCompleteSet).toHaveBeenCalledWith(0, 0, 0, 0, undefined);
+  });
+
+  it('timed set editor: shows ONLY time stepper (no weight or reps steppers)', async () => {
+    const user = userEvent.setup();
+    const onUpdateSet = vi.fn();
+    const timedWorkout = createMockWorkout([
+      {
+        id: 'we-plank',
+        exercise: plankEx,
+        restTime: 60,
+        sets: [
+          { id: 'plank-1', reps: 0, time: 45, completed: false },
+        ],
+      },
+    ]);
+
+    render(
+      <WorkoutListView
+        workout={timedWorkout}
+        onCompleteSet={vi.fn()}
+        onUncompleteSet={vi.fn()}
+        onUpdateSet={onUpdateSet}
+      />
+    );
+
+    const lineBtn = screen.getByRole('button', { name: /set 1: 45 seconds/i });
+    await user.click(lineBtn);
+
+    // Only time steppers should be visible
+    expect(screen.getByRole('button', { name: /decrease time/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /increase time/i })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /decrease weight/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /increase weight/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /decrease reps/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /increase reps/i })).not.toBeInTheDocument();
+
+    // Step time up: 45 -> 50
+    await user.click(screen.getByRole('button', { name: /increase time/i }));
+    expect(onUpdateSet).toHaveBeenCalledWith(0, 0, 0, 0, 50);
+
+    // Accessible name updates to 50 seconds
+    expect(screen.getByRole('button', { name: /set 1: 50 seconds/i })).toBeInTheDocument();
   });
 });

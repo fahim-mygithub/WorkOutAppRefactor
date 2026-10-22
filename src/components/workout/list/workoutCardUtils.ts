@@ -10,6 +10,24 @@ export interface WorkoutCardGroup {
   titles: string[];
 }
 
+export const WEIGHT_STEP = 5;
+export const TIME_STEP = 5;
+
+/** Weight nudge helper with 2-decimal-place rounding. */
+export function nudgeWeight(value: number, dir: 1 | -1, step = WEIGHT_STEP): number {
+  return Math.max(0, Math.round((value + dir * step) * 100) / 100);
+}
+
+/** Reps nudge helper. */
+export function nudgeReps(value: number, dir: 1 | -1, step = 1): number {
+  return Math.max(0, Math.round(value + dir * step));
+}
+
+/** Timed set duration nudge helper. */
+export function nudgeTime(value: number, dir: 1 | -1, step = TIME_STEP): number {
+  return Math.max(0, Math.round(value + dir * step));
+}
+
 export function groupWorkoutCards(exercises: WorkoutExercise[]): WorkoutCardGroup[] {
   const groups: WorkoutCardGroup[] = [];
   const supersetMap = new Map<string, WorkoutCardGroup>();
@@ -55,6 +73,6 @@ export function groupWorkoutCards(exercises: WorkoutExercise[]): WorkoutCardGrou
  * Labels superset exercises unambiguously as 'A', 'B', etc.
  * based on their position in the superset group.
  */
-export function getExerciseTag(exercise?: WorkoutExercise, indexInCard = 0): string {
+export function getExerciseTag(indexInCard = 0): string {
   return String.fromCharCode(65 + (indexInCard % 26));
 }

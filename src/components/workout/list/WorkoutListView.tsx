@@ -6,8 +6,15 @@ import type { InSessionDecision } from '@/types/progression';
 import { IconButton } from '@/components/ui/icon-button';
 import { Modal, ModalContent, ModalTitle, ModalDescription } from '@/components/ui/modal';
 import { prescribedFloor } from '@/lib/progression/setPrescription';
-import { groupWorkoutCards, getExerciseTag } from './workoutCardUtils';
-import { WEIGHT_STEP, nudgeWeight, nudgeReps } from '@/components/SetInput';
+import {
+  groupWorkoutCards,
+  getExerciseTag,
+  WEIGHT_STEP,
+  nudgeWeight,
+  nudgeReps,
+  nudgeTime,
+} from './workoutCardUtils';
+import './ledger.css';
 import { cn } from '@/lib/utils';
 
 export interface WorkoutListViewProps {
@@ -32,6 +39,7 @@ export interface WorkoutListViewProps {
     setIndex: number,
     reps: number,
     weight: number,
+    time?: number,
   ) => void;
   onStartRest?: (duration: number) => void;
   onApplySuggestion?: (weight: number, exerciseId: string) => void;
@@ -59,8 +67,8 @@ export const WorkoutListView: React.FC<WorkoutListViewProps> = ({
   // Key of the currently open line for editing: `${cardId}-${lineIndex}`
   const [openLineKey, setOpenLineKey] = useState<string | null>(null);
 
-  // Per-line edits: key -> { reps: number; weight: number }
-  const [lineEdits, setLineEdits] = useState<Record<string, { reps: number; weight: number }>>({});
+  // Per-line edits: key -> { reps: number; weight: number; time?: number }
+  const [lineEdits, setLineEdits] = useState<Record<string, { reps: number; weight: number; time?: number }>>({});
 
   // Instructions modal target exercise
   const [selectedInstructions, setSelectedInstructions] = useState<WorkoutExercise | null>(null);
@@ -88,6 +96,7 @@ export const WorkoutListView: React.FC<WorkoutListViewProps> = ({
             lineKey: string;
             currentReps: number;
             currentWeight: number;
+            currentTime: number;
             unit: string;
             isTimed: boolean;
             isCompleted: boolean;
@@ -100,6 +109,7 @@ export const WorkoutListView: React.FC<WorkoutListViewProps> = ({
 
               const exerciseIndex = card.exerciseIndices[exInCardIdx];
               const lineKey = `${ex.id || exerciseIndex}-s-${set.id || round}`;
+              const isTimed = set.time != null && set.time > 0;
 
               // Resolve initial weight & reps
               let defaultWeight = 0;
@@ -114,17 +124,22 @@ export const WorkoutListView: React.FC<WorkoutListViewProps> = ({
               }
 
               let defaultReps = 8;
-              if (set.completed && set.reps) {
+              if (isTimed) {
+                defaultReps = set.reps ?? 0;
+              } else if (set.completed && set.reps !== undefined) {
                 defaultReps = set.reps;
               } else if (recommendations?.[ex.exercise.id]?.recommendedReps !== undefined) {
                 defaultReps = recommendations[ex.exercise.id].recommendedReps!;
-              } else if (set.reps) {
+              } else if (set.reps !== undefined && set.reps > 0) {
                 defaultReps = prescribedFloor(set);
               }
+
+              const defaultTime = set.time ?? 0;
 
               const edited = lineEdits[lineKey];
               const currentReps = edited?.reps ?? defaultReps;
               const currentWeight = edited?.weight ?? defaultWeight;
+              const currentTime = edited?.time ?? defaultTime;
 
               lines.push({
                 exercise: ex,
@@ -132,12 +147,13 @@ export const WorkoutListView: React.FC<WorkoutListViewProps> = ({
                 setIndex: round,
                 set,
                 side: exInCardIdx === 0 ? 0 : 1,
-                tag: getExerciseTag(ex, exInCardIdx),
+                tag: getExerciseTag(exInCardIdx),
                 lineKey,
                 currentReps,
                 currentWeight,
-                unit: set.unit || 'lb',
-                isTimed: set.time != null && set.time > 0,
+                currentTime,
+                unit: set.unit || 'lbs',
+                isTimed,
                 isCompleted: Boolean(set.completed),
               });
             });
@@ -156,14 +172,19 @@ export const WorkoutListView: React.FC<WorkoutListViewProps> = ({
             newReps: number,
             newWeight: number,
             isCompleted: boolean,
+            newTime?: number,
           ) => {
             setLineEdits((prev) => ({
               ...prev,
-              [lineKey]: { reps: newReps, weight: newWeight },
+              [lineKey]: {
+                reps: newReps,
+                weight: newWeight,
+                ...(newTime !== undefined ? { time: newTime } : {}),
+              },
             }));
 
             if (onUpdateSet) {
-              onUpdateSet(exerciseIndex, setIndex, newReps, newWeight);
+              onUpdateSet(exerciseIndex, setIndex, newReps, newWeight, newTime);
             } else if (isCompleted) {
               onCompleteSet(exerciseIndex, setIndex, newReps, newWeight, undefined);
             }
@@ -306,10 +327,10 @@ export const WorkoutListView: React.FC<WorkoutListViewProps> = ({
                   const isWeighted = ln.currentWeight > 0;
                   const exTitle = ln.exercise.customTitle || ln.exercise.exercise.name;
 
-                  // Label for accessibility (includes unambiguous tag + full title in supersets)
+                  // Label for accessibility (includes Information + tag in supersets)
                   const tagPrefix = card.isSuperset ? `${ln.tag} (${exTitle}): ` : '';
                   const accessibleLabel = ln.isTimed
-                    ? `${tagPrefix}Set ${setNumber}: ${ln.set.time} seconds. Tap to edit.`
+                    ? `${tagPrefix}Set ${setNumber}: ${ln.currentTime} seconds. Tap to edit.`
                     : isWeighted
                       ? `${tagPrefix}Set ${setNumber}: ${ln.currentReps} reps, ${ln.currentWeight} ${ln.unit}. Tap to edit.`
                       : `${tagPrefix}Set ${setNumber}: ${ln.currentReps} reps. Tap to edit.`;
@@ -378,7 +399,7 @@ export const WorkoutListView: React.FC<WorkoutListViewProps> = ({
                                 )}
                               >
                                 <span className="text-[22px] font-extrabold font-num font-tabular tracking-tight leading-none">
-                                  {ln.set.time}
+                                  {ln.currentTime}
                                 </span>
                                 <span className="text-[13px] font-semibold opacity-70">Sec</span>
                               </span>
@@ -427,97 +448,150 @@ export const WorkoutListView: React.FC<WorkoutListViewProps> = ({
                       {isOpen && (
                         <div className="pl-[30px] pb-2">
                           <div className="ledger-reveal motion-reduce:animate-none flex gap-2 bg-surface rounded-2xl p-2 mb-2">
-                            {/* Weight Stepper */}
-                            <div className="flex-1 flex items-center justify-between bg-surface-subtle rounded-xl p-1">
-                              <button
-                                type="button"
-                                aria-label="Decrease weight"
-                                onClick={() =>
-                                  handleUpdateLine(
-                                    ln.lineKey,
-                                    ln.exerciseIndex,
-                                    ln.setIndex,
-                                    ln.currentReps,
-                                    nudgeWeight(ln.currentWeight, -1, WEIGHT_STEP),
-                                    ln.isCompleted,
-                                  )
-                                }
-                                className="h-[42px] w-[42px] rounded-[10px] bg-surface-raised text-ink hover:bg-surface-raised/80 flex items-center justify-center cursor-pointer transition-transform active:scale-95 border-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
-                              >
-                                <Minus size={16} strokeWidth={2.6} aria-hidden="true" />
-                              </button>
-                              <div className="text-center">
-                                <div className="text-[20px] font-extrabold font-num font-tabular text-ink leading-none">
-                                  {ln.currentWeight}
+                            {ln.isTimed ? (
+                              /* Timed set: ONLY Time Stepper */
+                              <div className="flex-1 flex items-center justify-between bg-surface-subtle rounded-xl p-1">
+                                <button
+                                  type="button"
+                                  aria-label="Decrease time"
+                                  onClick={() =>
+                                    handleUpdateLine(
+                                      ln.lineKey,
+                                      ln.exerciseIndex,
+                                      ln.setIndex,
+                                      ln.currentReps,
+                                      ln.currentWeight,
+                                      ln.isCompleted,
+                                      nudgeTime(ln.currentTime, -1),
+                                    )
+                                  }
+                                  className="h-[42px] w-[42px] rounded-[10px] bg-surface-raised text-ink hover:bg-surface-raised/80 flex items-center justify-center cursor-pointer transition-transform active:scale-95 border-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                                >
+                                  <Minus size={16} strokeWidth={2.6} aria-hidden="true" />
+                                </button>
+                                <div className="text-center">
+                                  <div className="text-[20px] font-extrabold font-num font-tabular text-accent-2 leading-none">
+                                    {ln.currentTime}
+                                  </div>
+                                  <div className="text-[10px] font-semibold text-ink-muted uppercase mt-0.5">
+                                    sec
+                                  </div>
                                 </div>
-                                <div className="text-[10px] font-semibold text-ink-muted uppercase mt-0.5">
-                                  {ln.unit}
-                                </div>
+                                <button
+                                  type="button"
+                                  aria-label="Increase time"
+                                  onClick={() =>
+                                    handleUpdateLine(
+                                      ln.lineKey,
+                                      ln.exerciseIndex,
+                                      ln.setIndex,
+                                      ln.currentReps,
+                                      ln.currentWeight,
+                                      ln.isCompleted,
+                                      nudgeTime(ln.currentTime, 1),
+                                    )
+                                  }
+                                  className="h-[42px] w-[42px] rounded-[10px] bg-surface-raised text-ink hover:bg-surface-raised/80 flex items-center justify-center cursor-pointer transition-transform active:scale-95 border-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                                >
+                                  <Plus size={16} strokeWidth={2.6} aria-hidden="true" />
+                                </button>
                               </div>
-                              <button
-                                type="button"
-                                aria-label="Increase weight"
-                                onClick={() =>
-                                  handleUpdateLine(
-                                    ln.lineKey,
-                                    ln.exerciseIndex,
-                                    ln.setIndex,
-                                    ln.currentReps,
-                                    nudgeWeight(ln.currentWeight, 1, WEIGHT_STEP),
-                                    ln.isCompleted,
-                                  )
-                                }
-                                className="h-[42px] w-[42px] rounded-[10px] bg-surface-raised text-ink hover:bg-surface-raised/80 flex items-center justify-center cursor-pointer transition-transform active:scale-95 border-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
-                              >
-                                <Plus size={16} strokeWidth={2.6} aria-hidden="true" />
-                              </button>
-                            </div>
+                            ) : (
+                              /* Regular set: Weight and Reps Steppers */
+                              <>
+                                {/* Weight Stepper */}
+                                <div className="flex-1 flex items-center justify-between bg-surface-subtle rounded-xl p-1">
+                                  <button
+                                    type="button"
+                                    aria-label="Decrease weight"
+                                    onClick={() =>
+                                      handleUpdateLine(
+                                        ln.lineKey,
+                                        ln.exerciseIndex,
+                                        ln.setIndex,
+                                        ln.currentReps,
+                                        nudgeWeight(ln.currentWeight, -1, WEIGHT_STEP),
+                                        ln.isCompleted,
+                                      )
+                                    }
+                                    className="h-[42px] w-[42px] rounded-[10px] bg-surface-raised text-ink hover:bg-surface-raised/80 flex items-center justify-center cursor-pointer transition-transform active:scale-95 border-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                                  >
+                                    <Minus size={16} strokeWidth={2.6} aria-hidden="true" />
+                                  </button>
+                                  <div className="text-center">
+                                    <div className="text-[20px] font-extrabold font-num font-tabular text-ink leading-none">
+                                      {ln.currentWeight}
+                                    </div>
+                                    <div className="text-[10px] font-semibold text-ink-muted uppercase mt-0.5">
+                                      {ln.unit}
+                                    </div>
+                                  </div>
+                                  <button
+                                    type="button"
+                                    aria-label="Increase weight"
+                                    onClick={() =>
+                                      handleUpdateLine(
+                                        ln.lineKey,
+                                        ln.exerciseIndex,
+                                        ln.setIndex,
+                                        ln.currentReps,
+                                        nudgeWeight(ln.currentWeight, 1, WEIGHT_STEP),
+                                        ln.isCompleted,
+                                      )
+                                    }
+                                    className="h-[42px] w-[42px] rounded-[10px] bg-surface-raised text-ink hover:bg-surface-raised/80 flex items-center justify-center cursor-pointer transition-transform active:scale-95 border-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                                  >
+                                    <Plus size={16} strokeWidth={2.6} aria-hidden="true" />
+                                  </button>
+                                </div>
 
-                            {/* Reps Stepper */}
-                            <div className="flex-1 flex items-center justify-between bg-surface-subtle rounded-xl p-1">
-                              <button
-                                type="button"
-                                aria-label="Decrease reps"
-                                onClick={() =>
-                                  handleUpdateLine(
-                                    ln.lineKey,
-                                    ln.exerciseIndex,
-                                    ln.setIndex,
-                                    nudgeReps(ln.currentReps, -1),
-                                    ln.currentWeight,
-                                    ln.isCompleted,
-                                  )
-                                }
-                                className="h-[42px] w-[42px] rounded-[10px] bg-surface-raised text-ink hover:bg-surface-raised/80 flex items-center justify-center cursor-pointer transition-transform active:scale-95 border-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
-                              >
-                                <Minus size={16} strokeWidth={2.6} aria-hidden="true" />
-                              </button>
-                              <div className="text-center">
-                                <div className="text-[20px] font-extrabold font-num font-tabular text-accent-2 leading-none">
-                                  {ln.currentReps}
+                                {/* Reps Stepper */}
+                                <div className="flex-1 flex items-center justify-between bg-surface-subtle rounded-xl p-1">
+                                  <button
+                                    type="button"
+                                    aria-label="Decrease reps"
+                                    onClick={() =>
+                                      handleUpdateLine(
+                                        ln.lineKey,
+                                        ln.exerciseIndex,
+                                        ln.setIndex,
+                                        nudgeReps(ln.currentReps, -1),
+                                        ln.currentWeight,
+                                        ln.isCompleted,
+                                      )
+                                    }
+                                    className="h-[42px] w-[42px] rounded-[10px] bg-surface-raised text-ink hover:bg-surface-raised/80 flex items-center justify-center cursor-pointer transition-transform active:scale-95 border-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                                  >
+                                    <Minus size={16} strokeWidth={2.6} aria-hidden="true" />
+                                  </button>
+                                  <div className="text-center">
+                                    <div className="text-[20px] font-extrabold font-num font-tabular text-accent-2 leading-none">
+                                      {ln.currentReps}
+                                    </div>
+                                    <div className="text-[10px] font-semibold text-ink-muted uppercase mt-0.5">
+                                      reps
+                                    </div>
+                                  </div>
+                                  <button
+                                    type="button"
+                                    aria-label="Increase reps"
+                                    onClick={() =>
+                                      handleUpdateLine(
+                                        ln.lineKey,
+                                        ln.exerciseIndex,
+                                        ln.setIndex,
+                                        nudgeReps(ln.currentReps, 1),
+                                        ln.currentWeight,
+                                        ln.isCompleted,
+                                      )
+                                    }
+                                    className="h-[42px] w-[42px] rounded-[10px] bg-surface-raised text-ink hover:bg-surface-raised/80 flex items-center justify-center cursor-pointer transition-transform active:scale-95 border-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                                  >
+                                    <Plus size={16} strokeWidth={2.6} aria-hidden="true" />
+                                  </button>
                                 </div>
-                                <div className="text-[10px] font-semibold text-ink-muted uppercase mt-0.5">
-                                  reps
-                                </div>
-                              </div>
-                              <button
-                                type="button"
-                                aria-label="Increase reps"
-                                onClick={() =>
-                                  handleUpdateLine(
-                                    ln.lineKey,
-                                    ln.exerciseIndex,
-                                    ln.setIndex,
-                                    nudgeReps(ln.currentReps, 1),
-                                    ln.currentWeight,
-                                    ln.isCompleted,
-                                  )
-                                }
-                                className="h-[42px] w-[42px] rounded-[10px] bg-surface-raised text-ink hover:bg-surface-raised/80 flex items-center justify-center cursor-pointer transition-transform active:scale-95 border-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
-                              >
-                                <Plus size={16} strokeWidth={2.6} aria-hidden="true" />
-                              </button>
-                            </div>
+                              </>
+                            )}
                           </div>
                         </div>
                       )}
