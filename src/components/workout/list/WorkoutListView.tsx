@@ -7,6 +7,7 @@ import { IconButton } from '@/components/ui/icon-button';
 import { Modal, ModalContent, ModalTitle, ModalDescription } from '@/components/ui/modal';
 import { prescribedFloor } from '@/lib/progression/setPrescription';
 import { groupWorkoutCards, getExerciseTag } from './workoutCardUtils';
+import { WEIGHT_STEP, nudgeWeight, nudgeReps } from '@/components/SetInput';
 import { cn } from '@/lib/utils';
 
 export interface WorkoutListViewProps {
@@ -26,6 +27,12 @@ export interface WorkoutListViewProps {
     rir?: number,
   ) => void;
   onUncompleteSet: (exerciseIndex: number, setIndex: number) => void;
+  onUpdateSet?: (
+    exerciseIndex: number,
+    setIndex: number,
+    reps: number,
+    weight: number,
+  ) => void;
   onStartRest?: (duration: number) => void;
   onApplySuggestion?: (weight: number, exerciseId: string) => void;
   onKeepSuggestion?: () => void;
@@ -36,13 +43,12 @@ export interface WorkoutListViewProps {
   recommendations?: Record<string, { recommendedWeight?: number; recommendedReps?: number }>;
 }
 
-const WEIGHT_STEP = 5;
-
 export const WorkoutListView: React.FC<WorkoutListViewProps> = ({
   workout,
   appliedWeights,
   onCompleteSet,
   onUncompleteSet,
+  onUpdateSet,
   onStartRest,
   onEditSets,
   onChangeExercise,
@@ -64,27 +70,6 @@ export const WorkoutListView: React.FC<WorkoutListViewProps> = ({
 
   return (
     <>
-      <style>{`
-        .reveal {
-          animation: reveal 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
-        }
-        @keyframes reveal {
-          from {
-            opacity: 0;
-            transform: translateY(-4px);
-          }
-          to {
-            opacity: 1;
-            transform: none;
-          }
-        }
-        @media (prefers-reduced-motion: reduce) {
-          .reveal {
-            animation: none !important;
-          }
-        }
-      `}</style>
-
       <div className="flex-1 min-h-0 overflow-y-auto px-3 pb-28 pt-2 space-y-3 [scrollbar-width:none]">
         {cardGroups.map((card, cardIndex) => {
           // Flatten lines: interleave sets across exercises in this card
@@ -147,7 +132,7 @@ export const WorkoutListView: React.FC<WorkoutListViewProps> = ({
                 setIndex: round,
                 set,
                 side: exInCardIdx === 0 ? 0 : 1,
-                tag: getExerciseTag(ex),
+                tag: getExerciseTag(ex, exInCardIdx),
                 lineKey,
                 currentReps,
                 currentWeight,
@@ -177,13 +162,15 @@ export const WorkoutListView: React.FC<WorkoutListViewProps> = ({
               [lineKey]: { reps: newReps, weight: newWeight },
             }));
 
-            // If set was already completed, update it live
-            if (isCompleted) {
+            if (onUpdateSet) {
+              onUpdateSet(exerciseIndex, setIndex, newReps, newWeight);
+            } else if (isCompleted) {
               onCompleteSet(exerciseIndex, setIndex, newReps, newWeight, undefined);
             }
           };
 
           const handleLogCard = () => {
+            if (lines.length === 0) return;
             setOpenLineKey(null);
             if (isCardDone) {
               // Undo all sets in this card
@@ -317,9 +304,10 @@ export const WorkoutListView: React.FC<WorkoutListViewProps> = ({
                   const showRail = lineIdx < lines.length - 1;
                   const setNumber = ln.setIndex + 1;
                   const isWeighted = ln.currentWeight > 0;
+                  const exTitle = ln.exercise.customTitle || ln.exercise.exercise.name;
 
-                  // Label for accessibility
-                  const tagPrefix = card.isSuperset ? `${ln.tag} ` : '';
+                  // Label for accessibility (includes unambiguous tag + full title in supersets)
+                  const tagPrefix = card.isSuperset ? `${ln.tag} (${exTitle}): ` : '';
                   const accessibleLabel = ln.isTimed
                     ? `${tagPrefix}Set ${setNumber}: ${ln.set.time} seconds. Tap to edit.`
                     : isWeighted
@@ -377,7 +365,7 @@ export const WorkoutListView: React.FC<WorkoutListViewProps> = ({
                             )}
                           >
                             {card.isSuperset && (
-                              <span className="shrink-0 w-14 text-caption font-bold text-ink-subtle truncate mr-1">
+                              <span className="shrink-0 w-6 text-caption font-bold text-ink-subtle truncate mr-1.5">
                                 {ln.tag}
                               </span>
                             )}
@@ -438,7 +426,7 @@ export const WorkoutListView: React.FC<WorkoutListViewProps> = ({
                       {/* Inline Stepper Editor */}
                       {isOpen && (
                         <div className="pl-[30px] pb-2">
-                          <div className="reveal motion-reduce:animate-none flex gap-2 bg-surface rounded-2xl p-2 mb-2">
+                          <div className="ledger-reveal motion-reduce:animate-none flex gap-2 bg-surface rounded-2xl p-2 mb-2">
                             {/* Weight Stepper */}
                             <div className="flex-1 flex items-center justify-between bg-surface-subtle rounded-xl p-1">
                               <button
@@ -450,7 +438,7 @@ export const WorkoutListView: React.FC<WorkoutListViewProps> = ({
                                     ln.exerciseIndex,
                                     ln.setIndex,
                                     ln.currentReps,
-                                    Math.max(0, ln.currentWeight - WEIGHT_STEP),
+                                    nudgeWeight(ln.currentWeight, -1, WEIGHT_STEP),
                                     ln.isCompleted,
                                   )
                                 }
@@ -475,7 +463,7 @@ export const WorkoutListView: React.FC<WorkoutListViewProps> = ({
                                     ln.exerciseIndex,
                                     ln.setIndex,
                                     ln.currentReps,
-                                    ln.currentWeight + WEIGHT_STEP,
+                                    nudgeWeight(ln.currentWeight, 1, WEIGHT_STEP),
                                     ln.isCompleted,
                                   )
                                 }
@@ -495,7 +483,7 @@ export const WorkoutListView: React.FC<WorkoutListViewProps> = ({
                                     ln.lineKey,
                                     ln.exerciseIndex,
                                     ln.setIndex,
-                                    Math.max(0, ln.currentReps - 1),
+                                    nudgeReps(ln.currentReps, -1),
                                     ln.currentWeight,
                                     ln.isCompleted,
                                   )
@@ -520,7 +508,7 @@ export const WorkoutListView: React.FC<WorkoutListViewProps> = ({
                                     ln.lineKey,
                                     ln.exerciseIndex,
                                     ln.setIndex,
-                                    ln.currentReps + 1,
+                                    nudgeReps(ln.currentReps, 1),
                                     ln.currentWeight,
                                     ln.isCompleted,
                                   )
@@ -543,17 +531,14 @@ export const WorkoutListView: React.FC<WorkoutListViewProps> = ({
                 <button
                   type="button"
                   onClick={handleLogCard}
-                  aria-label={
-                    isCardDone
-                      ? 'Logged. Tap to undo.'
-                      : `Log all sets of ${card.titles.join(' and ')} as shown`
-                  }
+                  disabled={lines.length === 0}
                   className={cn(
                     'w-full min-h-[50px] rounded-[15px] font-extrabold text-[15px] cursor-pointer transition-transform active:scale-[0.985]',
                     'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface',
+                    'disabled:pointer-events-none disabled:opacity-50 disabled:cursor-not-allowed',
                     isCardDone
                       ? 'border-2 border-accent-2/60 bg-transparent text-accent-2 hover:bg-accent-2/10'
-                      : 'border-0 bg-accent text-accent-fg shadow-[inset_0_1px_0_rgba(255,255,255,0.35)] hover:bg-accent/90',
+                      : 'border-0 bg-accent text-accent-fg hover:bg-accent/90',
                   )}
                 >
                   {isCardDone ? 'Logged. Tap to undo' : 'Log workout'}

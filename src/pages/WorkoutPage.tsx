@@ -382,6 +382,29 @@ export default function WorkoutPage() {
     });
   };
 
+  const handleUpdateSet = useCallback(
+    (exerciseIndex: number, setIndex: number, reps: number, weight: number) => {
+      const exercise = activeWorkout.exercises[exerciseIndex];
+      if (!exercise) return;
+      const currentSet = exercise.sets[setIndex];
+      if (currentSet?.completed) {
+        handleCompleteSet(exerciseIndex, setIndex, reps, weight, undefined, true);
+      } else {
+        const updatedSets = exercise.sets.map((s, idx) =>
+          idx === setIndex ? { ...s, reps, weight } : s,
+        );
+        dispatch(
+          updateExercise({
+            exerciseId: exercise.id,
+            sets: updatedSets,
+            restTime: exercise.restTime || 120,
+          }),
+        );
+      }
+    },
+    [activeWorkout.exercises, dispatch],
+  );
+
   const handleUncompleteSet = (
     exerciseIndex = activeWorkout.currentExerciseIndex,
     setIndex = activeWorkout.currentSetIndex
@@ -679,6 +702,7 @@ export default function WorkoutPage() {
               handleCompleteSet(exerciseIndex, setIndex, reps, weight, rir, true);
             }}
             onUncompleteSet={handleUncompleteSet}
+            onUpdateSet={handleUpdateSet}
             onStartRest={(duration) => {
               dispatch(startRestTimer({ duration }));
             }}

@@ -340,7 +340,17 @@ export const SetInput: React.FC<SetInputProps> = ({
   );
 };
 
-const WEIGHT_STEP = 5;
+export const WEIGHT_STEP = 5;
+
+/** Shared weight nudge helper with SetInput's 2-decimal-place rounding. */
+export function nudgeWeight(value: number, dir: 1 | -1, step = WEIGHT_STEP): number {
+  return Math.max(0, Math.round((value + dir * step) * 100) / 100);
+}
+
+/** Shared reps nudge helper. */
+export function nudgeReps(value: number, dir: 1 | -1, step = 1): number {
+  return Math.max(0, Math.round(value + dir * step));
+}
 
 interface StepperProps {
   id: string;

@@ -51,13 +51,10 @@ export function groupWorkoutCards(exercises: WorkoutExercise[]): WorkoutCardGrou
   return groups;
 }
 
-export function getExerciseTag(exercise: WorkoutExercise): string {
-  const name = exercise.customTitle || exercise.exercise.name;
-  if (/\braise\b/i.test(name)) return 'Raise';
-  if (/\bincline\b/i.test(name)) return 'Incline';
-  const nonEquipWords = name.split(/\s+/).filter(
-    (w) => !/^(barbell|dumbbell|cable|machine|smith|weighted)$/i.test(w),
-  );
-  if (nonEquipWords.length > 0) return nonEquipWords[0];
-  return name.split(/\s+/)[0] || 'Set';
+/**
+ * Labels superset exercises unambiguously as 'A', 'B', etc.
+ * based on their position in the superset group.
+ */
+export function getExerciseTag(exercise?: WorkoutExercise, indexInCard = 0): string {
+  return String.fromCharCode(65 + (indexInCard % 26));
 }
