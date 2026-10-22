@@ -96,14 +96,14 @@ export const RestTimerBar: React.FC = () => {
       const workout = activeWorkoutRef.current;
       if (workout) {
         const exercise = workout.exercises[workout.currentExerciseIndex];
-        const isLastExercise = workout.currentExerciseIndex === workout.exercises.length - 1;
-        const isLastSet = workout.currentSetIndex === exercise.sets.length - 1;
         const totalSets = workout.exercises.reduce((t, ex) => t + ex.sets.length, 0);
         const completedSets = workout.exercises.reduce(
           (t, ex) => t + ex.sets.filter((set) => set.completed).length,
           0,
         );
-        if (isLastExercise && isLastSet && completedSets === totalSets) {
+        // Cursor-independent: list mode logs cards out of order, so a finished
+        // rest on a fully logged workout opens the modal wherever the cursor sits.
+        if (completedSets === totalSets) {
           dispatch(setShowCompletionModal(true));
         } else if (exercise.isSuperset && exercise.supersetId) {
           dispatch(advanceToNextSupersetRound());
@@ -185,6 +185,9 @@ export const RestTimerBar: React.FC = () => {
 
   const active = restTimer.isActive;
   const remaining = restTimer.timeRemaining;
+  const allLogged =
+    !!activeWorkout &&
+    activeWorkout.exercises.every((ex) => ex.sets.every((set) => set.completed));
   const remainingFraction =
     active && restTimer.duration > 0 ? Math.max(0, Math.min(1, remaining / restTimer.duration)) : 1;
 
@@ -280,18 +283,29 @@ export const RestTimerBar: React.FC = () => {
       {!active && (
         <div className="shrink-0 px-3 pb-3 pt-2">
           <div className="flex items-center gap-2">
-            <Button
-              variant="secondary"
-              size="lg"
-              onClick={() => startDuration(defaultDuration)}
-              className="relative flex-1 justify-start pl-5"
-            >
-              <Timer size={18} aria-hidden="true" className="text-ink-muted" />
-              <span>Start rest</span>
-              <span className="ml-auto pr-1 font-num font-tabular text-ink-muted">
-                {formatTime(defaultDuration)}
-              </span>
-            </Button>
+            {allLogged ? (
+              <Button
+                variant="primary"
+                size="lg"
+                onClick={() => dispatch(setShowCompletionModal(true))}
+                className="flex-1"
+              >
+                Finish workout
+              </Button>
+            ) : (
+              <Button
+                variant="secondary"
+                size="lg"
+                onClick={() => startDuration(defaultDuration)}
+                className="relative flex-1 justify-start pl-5"
+              >
+                <Timer size={18} aria-hidden="true" className="text-ink-muted" />
+                <span>Start rest</span>
+                <span className="ml-auto pr-1 font-num font-tabular text-ink-muted">
+                  {formatTime(defaultDuration)}
+                </span>
+              </Button>
+            )}
             <IconButton
               variant="secondary"
               size="lg"
