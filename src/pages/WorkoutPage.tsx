@@ -36,6 +36,7 @@ import { WorkoutTopBar } from '../components/workout/player/WorkoutTopBar';
 import { ExerciseDeck } from '../components/workout/player/ExerciseDeck';
 import { ExercisePlayCard } from '../components/workout/player/ExercisePlayCard';
 import { WorkoutListView } from '../components/workout/list/WorkoutListView';
+import { groupWorkoutCards } from '../components/workout/list/workoutCardUtils';
 import { RestTimerBar } from '../components/workout/player/RestTimerBar';
 import { WelcomeBackSuggestion } from '../components/workout/player/WelcomeBackSuggestion';
 import { useProgressionRecommendation } from '../hooks/useProgressionRecommendation';
@@ -65,6 +66,7 @@ export interface CompleteWorkoutSetArgs {
     logged: { reps: number; weight: number; unit?: string };
     planned: WorkoutSet;
   } | null) => void;
+  skipRestTimer?: boolean;
 }
 
 /** Lifted complete-set logic: dispatches Redux completeSet with explicit indices,
@@ -79,6 +81,7 @@ export function executeCompleteSet({
   rir,
   dispatch,
   onSuggestion,
+  skipRestTimer = false,
 }: CompleteWorkoutSetArgs): void {
   const exercise = workout.exercises[exerciseIndex];
   if (!exercise) return;
@@ -123,24 +126,28 @@ export function executeCompleteSet({
 
       if (isLastExerciseInSuperset && isLastSet) {
         // Completed all sets of superset - start rest timer and move to next exercise group
-        dispatch(startRestTimer({ duration: exercise.restTime || 120 }));
+        if (!skipRestTimer) {
+          dispatch(startRestTimer({ duration: exercise.restTime || 120 }));
+        }
         dispatch(completeSuperset());
       } else if (isLastExerciseInSuperset && !isLastSet) {
         // Completed a round of the superset (last exercise of current set) - start rest timer
-        dispatch(startRestTimer({ duration: exercise.restTime || 120 }));
+        if (!skipRestTimer) {
+          dispatch(startRestTimer({ duration: exercise.restTime || 120 }));
+        }
       } else {
         // Move to next exercise in superset (within the same set)
         dispatch(nextSupersetExercise());
       }
     } else {
       // Single exercise marked as superset, treat as regular exercise
-      if (exercise.restTime) {
+      if (!skipRestTimer && exercise.restTime) {
         dispatch(startRestTimer({ duration: exercise.restTime }));
       }
     }
   } else {
     // Regular exercise: start rest timer
-    if (exercise.restTime) {
+    if (!skipRestTimer && exercise.restTime) {
       dispatch(startRestTimer({ duration: exercise.restTime }));
     }
   }
@@ -349,12 +356,18 @@ export default function WorkoutPage() {
         .map((ex) => ex.customTitle || ex.exercise.name)
     : [];
 
+  const workoutCards = useMemo(
+    () => groupWorkoutCards(activeWorkout.exercises),
+    [activeWorkout.exercises],
+  );
+
   const handleCompleteSet = (
     exerciseIndex: number,
     setIndex: number,
     reps: number,
     weight: number,
-    rir?: number
+    rir?: number,
+    skipRestTimer?: boolean,
   ) => {
     executeCompleteSet({
       workout: activeWorkout,
@@ -365,8 +378,32 @@ export default function WorkoutPage() {
       rir,
       dispatch,
       onSuggestion: setSuggestion,
+      skipRestTimer,
     });
   };
+
+  const handleUpdateSet = useCallback(
+    (exerciseIndex: number, setIndex: number, reps: number, weight: number, time?: number) => {
+      const exercise = activeWorkout.exercises[exerciseIndex];
+      if (!exercise) return;
+      const currentSet = exercise.sets[setIndex];
+      if (currentSet?.completed) {
+        handleCompleteSet(exerciseIndex, setIndex, reps, weight, undefined, true);
+      } else {
+        const updatedSets = exercise.sets.map((s, idx) =>
+          idx === setIndex ? { ...s, reps, weight, ...(time !== undefined ? { time } : {}) } : s,
+        );
+        dispatch(
+          updateExercise({
+            exerciseId: exercise.id,
+            sets: updatedSets,
+            restTime: exercise.restTime as number,
+          }),
+        );
+      }
+    },
+    [activeWorkout.exercises, dispatch, handleCompleteSet],
+  );
 
   const handleUncompleteSet = (
     exerciseIndex = activeWorkout.currentExerciseIndex,
@@ -462,7 +499,12 @@ export default function WorkoutPage() {
 
   const handleSelectExercise = (exerciseIndex: number) => {
     if (viewMode === 'list') {
-      const el = document.getElementById(`workout-exercise-${exerciseIndex}`);
+      const card = workoutCards[exerciseIndex];
+      const targetIndex = card ? card.firstExerciseIndex : exerciseIndex;
+      handleFocusExercise(targetIndex);
+      const el =
+        document.getElementById(`workout-exercise-${targetIndex}`) ||
+        document.getElementById(`workout-card-${exerciseIndex}`);
       el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
   };
@@ -625,13 +667,24 @@ export default function WorkoutPage() {
           overallPercentage={progress.percentage}
           currentExerciseNumber={activeWorkout.currentExerciseIndex + 1}
           totalExercises={activeWorkout.exercises.length}
-          segments={activeWorkout.exercises.map((ex, i) =>
-            ex.sets.length > 0 && ex.sets.every((s) => s.completed)
-              ? 'done'
-              : i === activeWorkout.currentExerciseIndex
-                ? 'current'
-                : 'todo',
-          )}
+          segments={
+            viewMode === 'list'
+              ? workoutCards.map((card) => {
+                  const allDone = card.exercises.every(
+                    (ex) => ex.sets.length > 0 && ex.sets.every((s) => s.completed),
+                  );
+                  if (allDone) return 'done';
+                  const isCurrent = card.exerciseIndices.includes(activeWorkout.currentExerciseIndex);
+                  return isCurrent ? 'current' : 'todo';
+                })
+              : activeWorkout.exercises.map((ex, i) =>
+                  ex.sets.length > 0 && ex.sets.every((s) => s.completed)
+                    ? 'done'
+                    : i === activeWorkout.currentExerciseIndex
+                      ? 'current'
+                      : 'todo',
+                )
+          }
           onEndWorkout={handleEndWorkoutClick}
           viewMode={viewMode}
           onViewModeChange={setViewMode}
@@ -646,9 +699,13 @@ export default function WorkoutPage() {
             suggestion={suggestion}
             onCompleteSet={(exerciseIndex, setIndex, reps, weight, rir) => {
               pointCursorAt(exerciseIndex, setIndex);
-              handleCompleteSet(exerciseIndex, setIndex, reps, weight, rir);
+              handleCompleteSet(exerciseIndex, setIndex, reps, weight, rir, true);
             }}
             onUncompleteSet={handleUncompleteSet}
+            onUpdateSet={handleUpdateSet}
+            onStartRest={(duration) => {
+              dispatch(startRestTimer({ duration }));
+            }}
             onFocusExercise={handleFocusExercise}
             onApplySuggestion={handleApplySuggestion}
             onKeepSuggestion={handleKeepSuggestion}
