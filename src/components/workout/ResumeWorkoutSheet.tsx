@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAppDispatch, useAppSelector } from '../../store/hooks';
-import { endWorkout } from '../../store/slices/workoutSlice';
-import { useFinishWorkout } from '../../hooks/useFinishWorkout';
+import { endWorkout, resumeAcknowledged } from '../../store/slices/workoutSlice';
+import { useFinishWorkout, useIsAnonymousWorkoutUser } from '../../hooks/useFinishWorkout';
 import {
   loadWorkoutSnapshot,
   clearWorkoutSnapshot,
@@ -43,7 +43,9 @@ export function ResumeWorkoutSheet() {
   const navigate = useNavigate();
   const { pathname } = useLocation();
   const activeWorkout = useAppSelector((state) => state.workout.activeWorkout);
+  const restoredFromSnapshot = useAppSelector((state) => state.workout.restoredFromSnapshot);
   const { finishWorkout } = useFinishWorkout();
+  const isAnonymousUser = useIsAnonymousWorkoutUser();
 
   const [dismissed, setDismissed] = useState(false);
   const [confirmDiscard, setConfirmDiscard] = useState(false);
@@ -55,9 +57,24 @@ export function ResumeWorkoutSheet() {
     setConfirmDiscard(false);
   }, [activeWorkout?.id]);
 
-  const onWorkoutPage = pathname === '/workout' || pathname.startsWith('/workout');
+  const onWorkoutPage = pathname.startsWith('/workout');
   const hasValidWorkout = Boolean(activeWorkout && activeWorkout.exercises && activeWorkout.exercises.length > 0);
-  const open = hasValidWorkout && !onWorkoutPage && !dismissed;
+  // Only a workout restored from storage at launch is offered for resume; a live
+  // workout the user is running and merely navigated away from is not.
+  const open = restoredFromSnapshot && hasValidWorkout && !onWorkoutPage && !dismissed;
+
+  // Landing on /workout (by any route) counts as resuming.
+  useEffect(() => {
+    if (restoredFromSnapshot && onWorkoutPage) dispatch(resumeAcknowledged());
+  }, [restoredFromSnapshot, onWorkoutPage, dispatch]);
+
+  // Read the stored save time once per workout rather than on every render.
+  const workoutId = activeWorkout?.id;
+  const savedTime = useMemo(
+    () => loadWorkoutSnapshot()?.savedAt ?? activeWorkout?.startTime,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [workoutId],
+  );
 
   if (!activeWorkout || !hasValidWorkout) return null;
 
@@ -67,18 +84,17 @@ export function ResumeWorkoutSheet() {
     0,
   );
 
-  const snapshot = loadWorkoutSnapshot();
-  const savedTime = snapshot?.savedAt ?? activeWorkout.startTime;
-  const timeAgo = formatTimeAgo(savedTime);
+  const timeAgo = formatTimeAgo(savedTime ?? activeWorkout.startTime);
 
   const handleResume = () => {
+    dispatch(resumeAcknowledged());
     navigate('/workout');
   };
 
   const handleFinish = async () => {
     setIsFinishing(true);
     try {
-      await finishWorkout();
+      await finishWorkout({ isAnonymousUser });
     } finally {
       setIsFinishing(false);
     }
@@ -123,7 +139,7 @@ export function ResumeWorkoutSheet() {
             size="lg"
             className="w-full"
             onClick={handleFinish}
-            disabled={isFinishing}
+            disabled={isFinishing || completedSets === 0}
           >
             {isFinishing ? 'Saving...' : 'Finish & save'}
           </Button>

@@ -77,3 +77,18 @@ describe('workoutSlice - activeWorkoutRestored', () => {
     expect(nextState.restTimer).toEqual(defaultTimer);
   });
 });
+
+describe('workoutSlice - restoredFromSnapshot flag', () => {
+  it('is set by activeWorkoutRestored and cleared by resumeAcknowledged, endWorkout and startWorkout', async () => {
+    const { activeWorkoutRestored: restored, resumeAcknowledged, endWorkout, startWorkout } = await import('./workoutSlice');
+    let state = reducer(undefined, { type: '@@INIT' });
+    expect(state.restoredFromSnapshot).toBe(false);
+    state = reducer(state, restored({ activeWorkout: sampleWorkout }));
+    expect(state.restoredFromSnapshot).toBe(true);
+    expect(reducer(state, resumeAcknowledged()).restoredFromSnapshot).toBe(false);
+    expect(reducer(state, endWorkout()).restoredFromSnapshot).toBe(false);
+    expect(
+      reducer(state, startWorkout({ name: 'x', exercises: sampleWorkout.exercises })).restoredFromSnapshot,
+    ).toBe(false);
+  });
+});

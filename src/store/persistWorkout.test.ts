@@ -6,9 +6,10 @@ import workoutReducer, {
   completeSet,
   startRestTimer,
 } from './slices/workoutSlice';
-import { initWorkoutPersistence } from './persistWorkout';
+import { initWorkoutPersistence, restoreWorkoutSession } from './persistWorkout';
 import {
   WORKOUT_SNAPSHOT_KEY,
+  ACTIVE_PLAN_CONTEXT_KEY,
   type StorageLike,
 } from '../lib/workoutSession';
 import type { WorkoutExercise } from '../types/exercise';
@@ -181,5 +182,79 @@ describe('persistWorkout', () => {
     expect(storage.getItem(WORKOUT_SNAPSHOT_KEY)).toBeNull();
 
     unsubscribe();
+  });
+
+  it('never throws when window.localStorage / sessionStorage getters throw', () => {
+    const ls = vi.spyOn(window, 'localStorage', 'get').mockImplementation(() => {
+      throw new DOMException('denied', 'SecurityError');
+    });
+    const ss = vi.spyOn(window, 'sessionStorage', 'get').mockImplementation(() => {
+      throw new DOMException('denied', 'SecurityError');
+    });
+    try {
+      let handle: ReturnType<typeof initWorkoutPersistence> | undefined;
+      expect(() => {
+        handle = initWorkoutPersistence(store as any);
+      }).not.toThrow();
+      store.dispatch(startWorkout({ name: 'Chest Day', exercises: [mockExercise] }));
+      expect(() => vi.advanceTimersByTime(500)).not.toThrow();
+      expect(() => handle?.flush()).not.toThrow();
+      handle?.unsubscribe();
+    } finally {
+      ls.mockRestore();
+      ss.mockRestore();
+    }
+  });
+
+  it('clears the stored plan context whenever the workout ends', () => {
+    const session = new MockStorage();
+    const ctx = { dateKey: '2026-10-22', templateId: 'charlie-split', dayType: 'push', cycleOrdinal: 1 };
+    storage.setItem(ACTIVE_PLAN_CONTEXT_KEY, JSON.stringify(ctx));
+    session.setItem(ACTIVE_PLAN_CONTEXT_KEY, JSON.stringify(ctx));
+    const { unsubscribe } = initWorkoutPersistence(store as any, { storage, sessionStorage: session });
+    store.dispatch(startWorkout({ name: 'Chest Day', exercises: [mockExercise] }));
+    store.dispatch(endWorkout());
+    expect(storage.getItem(ACTIVE_PLAN_CONTEXT_KEY)).toBeNull();
+    expect(session.getItem(ACTIVE_PLAN_CONTEXT_KEY)).toBeNull();
+    unsubscribe();
+  });
+});
+
+describe('restoreWorkoutSession', () => {
+  const ctx = { dateKey: '2026-10-22', templateId: 'charlie-split', dayType: 'push', cycleOrdinal: 1 };
+  const snap = (planContext: unknown) => ({
+    version: 1,
+    savedAt: '2026-10-22T10:00:00.000Z',
+    activeWorkout: {
+      id: 'w1', name: 'W', exercises: [{ ...mockExercise }], currentExerciseIndex: 0,
+      currentSetIndex: 0, startTime: '2026-10-22T10:00:00.000Z', duration: 0, isActive: true,
+    },
+    restTimer: null,
+    planContext,
+  });
+
+  it('an ad-hoc snapshot clears a stale stored plan context', () => {
+    const storage = new MockStorage();
+    storage.setItem(ACTIVE_PLAN_CONTEXT_KEY, JSON.stringify(ctx));
+    storage.setItem(WORKOUT_SNAPSHOT_KEY, JSON.stringify(snap(null)));
+    const store = createTestStore();
+    restoreWorkoutSession(store as any, storage, null);
+    expect(store.getState().workout.activeWorkout?.id).toBe('w1');
+    expect(store.getState().workout.restoredFromSnapshot).toBe(true);
+    expect(storage.getItem(ACTIVE_PLAN_CONTEXT_KEY)).toBeNull();
+  });
+
+  it('a plan snapshot writes its plan context', () => {
+    const storage = new MockStorage();
+    storage.setItem(WORKOUT_SNAPSHOT_KEY, JSON.stringify(snap(ctx)));
+    restoreWorkoutSession(createTestStore() as any, storage, null);
+    expect(JSON.parse(storage.getItem(ACTIVE_PLAN_CONTEXT_KEY)!).dateKey).toBe('2026-10-22');
+  });
+
+  it('does not throw when storage throws', () => {
+    const bad: StorageLike = {
+      getItem() { throw new Error('x'); }, setItem() { throw new Error('x'); }, removeItem() { throw new Error('x'); },
+    };
+    expect(() => restoreWorkoutSession(createTestStore() as any, bad, bad)).not.toThrow();
   });
 });

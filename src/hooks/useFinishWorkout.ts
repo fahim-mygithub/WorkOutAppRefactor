@@ -13,6 +13,7 @@ import {
   getStoredPlanContext,
   clearStoredPlanContext,
   clearWorkoutSnapshot,
+  readSharedSessionFlag,
   type ActivePlanContext,
 } from '../lib/workoutSession';
 import type { ActiveWorkout } from '../types/exercise';
@@ -53,6 +54,16 @@ export function buildLocalSummary(workout: ActiveWorkout, userId: string): Worko
     totalVolume,
     exercisesSummary,
   };
+}
+
+/**
+ * True for a signed-out viewer of a shared workout session — the value
+ * WorkoutPage passes to `finishWorkout`. `shareId` is the route param, when the
+ * caller is on a shared route.
+ */
+export function useIsAnonymousWorkoutUser(shareId?: string): boolean {
+  const { user } = useAuth();
+  return (!!shareId || readSharedSessionFlag()) && !user;
 }
 
 export interface FinishWorkoutOptions {

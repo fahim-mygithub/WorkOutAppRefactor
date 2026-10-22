@@ -4,7 +4,7 @@ import React from 'react';
 import { Provider } from 'react-redux';
 import { configureStore } from '@reduxjs/toolkit';
 import { MemoryRouter } from 'react-router-dom';
-import workoutReducer, { activeWorkoutRestored } from '../../store/slices/workoutSlice';
+import workoutReducer, { activeWorkoutRestored, startWorkout } from '../../store/slices/workoutSlice';
 import { ResumeWorkoutSheet } from './ResumeWorkoutSheet';
 import {
   saveWorkoutSnapshot,
@@ -23,10 +23,12 @@ vi.mock('react-router-dom', async () => {
 });
 
 const mockFinishWorkout = vi.fn().mockResolvedValue(true);
+let mockIsAnonymous = false;
 vi.mock('../../hooks/useFinishWorkout', () => ({
   useFinishWorkout: () => ({
     finishWorkout: mockFinishWorkout,
   }),
+  useIsAnonymousWorkoutUser: () => mockIsAnonymous,
 }));
 
 const sampleWorkout: ActiveWorkout = {
@@ -66,15 +68,21 @@ const sampleWorkout: ActiveWorkout = {
   isActive: true,
 };
 
-function renderSheet(initialPath = '/', workout: ActiveWorkout | null = sampleWorkout) {
+function renderSheet(
+  initialPath = '/',
+  workout: ActiveWorkout | null = sampleWorkout,
+  { restored = true }: { restored?: boolean } = {},
+) {
   const store = configureStore({
     reducer: {
       workout: workoutReducer,
     },
   });
 
-  if (workout) {
+  if (workout && restored) {
     store.dispatch(activeWorkoutRestored({ activeWorkout: workout }));
+  } else if (workout) {
+    store.dispatch(startWorkout({ name: workout.name, exercises: workout.exercises }));
   }
 
   return {
@@ -93,6 +101,7 @@ describe('ResumeWorkoutSheet', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     localStorage.clear();
+    mockIsAnonymous = false;
   });
 
   it('renders workout name, set counts, saved time, and all three actions', () => {
@@ -172,5 +181,58 @@ describe('ResumeWorkoutSheet', () => {
     renderSheet('/', null);
 
     expect(screen.queryByText('In-progress workout')).not.toBeInTheDocument();
+  });
+
+  it('stays closed for a live (non-restored) workout off /workout', () => {
+    renderSheet('/', sampleWorkout, { restored: false });
+    expect(screen.queryByText('In-progress workout')).not.toBeInTheDocument();
+  });
+
+  it('opens for a restored workout and does not reopen after Resume', async () => {
+    const { store } = renderSheet('/');
+    expect(screen.getByText('In-progress workout')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Resume' }));
+    expect(mockNavigate).toHaveBeenCalledWith('/workout');
+    expect(store.getState().workout.restoredFromSnapshot).toBe(false);
+    expect(store.getState().workout.activeWorkout).not.toBeNull();
+    await waitFor(() =>
+      expect(screen.queryByText('In-progress workout')).not.toBeInTheDocument(),
+    );
+  });
+
+  it('disables Finish & save when no set is completed; Discard and Resume remain', () => {
+    const empty: ActiveWorkout = {
+      ...sampleWorkout,
+      exercises: [{
+        ...sampleWorkout.exercises[0],
+        sets: sampleWorkout.exercises[0].sets.map((st) => ({ ...st, completed: false })),
+      }],
+    };
+    renderSheet('/', empty);
+    expect(screen.getByRole('button', { name: 'Finish & save' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Resume' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Discard' })).toBeEnabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Finish & save' }));
+    expect(mockFinishWorkout).not.toHaveBeenCalled();
+  });
+
+  it('passes the same isAnonymousUser value WorkoutPage would to finishWorkout', async () => {
+    mockIsAnonymous = true;
+    renderSheet('/');
+    fireEvent.click(screen.getByRole('button', { name: 'Finish & save' }));
+    await waitFor(() => {
+      expect(mockFinishWorkout).toHaveBeenCalledWith({ isAnonymousUser: true });
+    });
+  });
+
+  it('does not read the snapshot from storage on every render', () => {
+    saveWorkoutSnapshot({ activeWorkout: sampleWorkout });
+    const spy = vi.spyOn(Storage.prototype, 'getItem');
+    renderSheet('/');
+    const afterMount = spy.mock.calls.length;
+    fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(spy.mock.calls.length).toBe(afterMount);
+    spy.mockRestore();
   });
 });
