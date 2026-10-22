@@ -14,6 +14,8 @@ import { toDateKey, addDaysKey } from '../../lib/dateKey';
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from '../ui/sheet';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
+import { useToast } from '../../hooks/useToast';
+import { ToastContainer } from '../Toast';
 import { cn } from '../../lib/utils';
 import { formatDateTime, formatDuration, formatShortDate } from './historyFormat';
 
@@ -52,6 +54,7 @@ export const CompletedWorkoutCard: React.FC<CompletedWorkoutCardProps> = ({
   const { exercises: exerciseDatabase, isLoading: isLoadingExercises } = useExercises();
   const trackedLifts = useAppSelector((state) => state.trackedLifts.lifts);
   const goal = useAppSelector((state) => state.trackedLifts.lastGoal) ?? 'volume';
+  const { toasts, removeToast, showError, showInfo } = useToast();
 
   const [isDetailOpen, setIsDetailOpen] = useState(false);
   const [isUseAgainOpen, setIsUseAgainOpen] = useState(false);
@@ -85,7 +88,7 @@ export const CompletedWorkoutCard: React.FC<CompletedWorkoutCardProps> = ({
       onWorkoutDeleted?.();
     } catch (error) {
       console.error('Error deleting workout:', error);
-      alert('Failed to delete workout. Please try again.');
+      showError('Failed to delete workout. Please try again.');
     } finally {
       setIsDeleting(false);
     }
@@ -104,13 +107,13 @@ export const CompletedWorkoutCard: React.FC<CompletedWorkoutCardProps> = ({
     );
 
     if (!histories.length) {
-      alert('Unable to load workout details. The workout may not have detailed exercise information.');
+      showError("This workout has no exercise details, so it can't be reused.");
       return null;
     }
 
     const exercises = reuseWorkoutExercises(histories, exerciseDatabase, trackedLifts);
     if (exercises.length === 0) {
-      alert('No valid exercises found in this workout.');
+      showError('No valid exercises found in this workout.');
       return null;
     }
     return exercises;
@@ -118,7 +121,7 @@ export const CompletedWorkoutCard: React.FC<CompletedWorkoutCardProps> = ({
 
   const handleStartToday = async () => {
     if (isLoadingExercises || !exerciseDatabase.length) {
-      alert('Exercise database is still loading. Please wait a moment and try again.');
+      showInfo('Exercise database is still loading. Please wait a moment and try again.');
       return;
     }
 
@@ -151,7 +154,7 @@ export const CompletedWorkoutCard: React.FC<CompletedWorkoutCardProps> = ({
       navigate('/workout');
     } catch (error) {
       console.error('Error starting workout from history:', error);
-      alert('Failed to start workout. Please try again.');
+      showError('Failed to start workout. Please try again.');
     } finally {
       setIsLoadingStart(false);
     }
@@ -161,7 +164,7 @@ export const CompletedWorkoutCard: React.FC<CompletedWorkoutCardProps> = ({
     const today = toDateKey(new Date());
     if (!pickedDateKey || pickedDateKey < today) return;
     if (isLoadingExercises || !exerciseDatabase.length) {
-      alert('Exercise database is still loading. Please wait a moment and try again.');
+      showInfo('Exercise database is still loading. Please wait a moment and try again.');
       return;
     }
 
@@ -185,7 +188,7 @@ export const CompletedWorkoutCard: React.FC<CompletedWorkoutCardProps> = ({
       navigate('/');
     } catch (error) {
       console.error('Error planning workout from history:', error);
-      alert('Failed to plan workout. Please try again.');
+      showError('Failed to plan workout. Please try again.');
     } finally {
       setIsLoadingStart(false);
     }
@@ -354,6 +357,7 @@ export const CompletedWorkoutCard: React.FC<CompletedWorkoutCardProps> = ({
           workout={workout}
         />
       )}
+      <ToastContainer toasts={toasts} onRemove={removeToast} />
     </li>
   );
 };

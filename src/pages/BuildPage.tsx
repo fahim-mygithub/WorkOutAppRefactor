@@ -48,6 +48,8 @@ import {
 } from 'lucide-react';
 import { planAdded } from '../store/slices/plannedWorkoutsSlice';
 import { PlanDateModal } from '../components/plan/PlanDateModal';
+import { useToast } from '../hooks/useToast';
+import { ToastContainer } from '../components/Toast';
 import { Button } from '@/components/ui/button';
 import { Card, CardBody } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -150,6 +152,7 @@ const SharedWorkoutBuildView: React.FC<SharedWorkoutBuildViewProps> = ({
 };
 
 export default function BuildPage() {
+  const { toasts, removeToast, showError } = useToast();
   const {
     value: workoutText,
     setValue: setWorkoutText,
@@ -650,12 +653,12 @@ export default function BuildPage() {
     setWorkoutNameError('');
     const workoutToUse = editedWorkout || (parseResult?.workout ? prepareWorkoutForConfigurator(parseResult.workout) : null);
     if (!workoutToUse) {
-      alert('No valid workout found');
+      showError('No valid workout found');
       return;
     }
     const exercises = convertToWorkoutExercises(workoutToUse);
     if (exercises.length === 0) {
-      alert('No valid exercises found');
+      showError('No valid exercises found');
       return;
     }
     const sanitizedExercises = sanitizeWorkoutExercisesForRedux(exercises);
@@ -1112,6 +1115,8 @@ export default function BuildPage() {
           workoutData={shareData}
         />
       )}
+
+      <ToastContainer toasts={toasts} onRemove={removeToast} />
     </>
   );
 }
