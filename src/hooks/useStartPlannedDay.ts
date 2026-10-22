@@ -1,8 +1,8 @@
 /**
  * Launch a Charlie-Split planned day into the live workout player. Mirrors the
  * BuildWizard launch path (sanitize → startWorkout → /workout) and stashes an
- * `activePlanContext` in sessionStorage (reload-safe, like the shared-workout
- * pattern) so WorkoutPage completion can flip the planned day to completed.
+ * `activePlanContext` in localStorage (durable across PWA kills on iOS) so
+ * WorkoutPage completion or the resume sheet can flip the planned day to completed.
  */
 import { useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -12,14 +12,9 @@ import { usePlannedSchedule } from './usePlannedSchedule';
 import { startWorkout } from '../store/slices/workoutSlice';
 import { sanitizeWorkoutExercisesForRedux } from '../utils/workoutConversion';
 import type { PlannedDay } from '../types/schedule';
+import { setStoredPlanContext, type ActivePlanContext } from '../lib/workoutSession';
 
-export interface ActivePlanContext {
-  dateKey: string;
-  templateId: 'charlie-split';
-  dayType: PlannedDay['dayType'];
-  cycleOrdinal: number;
-  isRetest?: boolean;
-}
+export type { ActivePlanContext };
 
 export function useStartPlannedDay(): (planned: PlannedDay) => void {
   const navigate = useNavigate();
@@ -39,11 +34,7 @@ export function useStartPlannedDay(): (planned: PlannedDay) => void {
         cycleOrdinal: planned.cycleOrdinal,
         isRetest: planned.isRetest,
       };
-      try {
-        sessionStorage.setItem('activePlanContext', JSON.stringify(context));
-      } catch {
-        /* sessionStorage unavailable — non-fatal */
-      }
+      setStoredPlanContext(context);
       const sanitized = sanitizeWorkoutExercisesForRedux(gen.exercises);
       dispatch(startWorkout({ name: gen.name, exercises: sanitized }));
       navigate('/workout');

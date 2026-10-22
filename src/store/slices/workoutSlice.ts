@@ -72,6 +72,19 @@ const workoutSlice = createSlice({
       }
     },
 
+    activeWorkoutRestored: (
+      state,
+      action: PayloadAction<{
+        activeWorkout: ActiveWorkout;
+        restTimer?: RestTimer | null;
+      }>
+    ) => {
+      state.activeWorkout = action.payload.activeWorkout;
+      if (action.payload.restTimer) {
+        state.restTimer = action.payload.restTimer;
+      }
+    },
+
     nextExercise: (state) => {
       if (state.activeWorkout && state.activeWorkout.currentExerciseIndex < state.activeWorkout.exercises.length - 1) {
         state.activeWorkout.currentExerciseIndex += 1;
@@ -481,6 +494,7 @@ const workoutSlice = createSlice({
 export const {
   startWorkout,
   endWorkout,
+  activeWorkoutRestored,
   nextExercise,
   previousExercise,
   nextSet,
