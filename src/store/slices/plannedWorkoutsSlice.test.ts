@@ -5,6 +5,7 @@ import reducer, {
   planRemoved,
   planMarkedDone,
   planSkipped,
+  plansMerged,
   plannedWorkoutsHydrated,
   selectOverduePlans,
   selectPlansForToday,
@@ -45,6 +46,7 @@ describe('plannedWorkoutsSlice', () => {
     expect(next.plans[0].status).toBe('planned');
     expect(typeof next.plans[0].id).toBe('string');
     expect(typeof next.plans[0].createdAt).toBe('string');
+    expect(typeof next.plans[0].updatedAt).toBe('string');
   });
 
   it('moves a plan to a new dateKey', () => {
@@ -81,6 +83,86 @@ describe('plannedWorkoutsSlice', () => {
     };
     const next = reducer(initial, planSkipped('plan-1'));
     expect(next.plans[0].status).toBe('skipped');
+  });
+
+  describe('plansMerged', () => {
+    it('merges incoming remote plans into an empty state', () => {
+      const initial: PlannedWorkoutsState = { status: 'idle', plans: [] };
+      const next = reducer(initial, plansMerged([samplePlan]));
+      expect(next.status).toBe('ready');
+      expect(next.plans).toEqual([samplePlan]);
+    });
+
+    it('preserves locally created offline plans not present on remote', () => {
+      const localPlan: PlannedWorkout = {
+        id: 'local-offline',
+        dateKey: '2026-10-24',
+        name: 'Offline Plan',
+        exercises: [],
+        status: 'planned',
+        createdAt: '2026-10-22T11:00:00.000Z',
+      };
+      const remotePlan: PlannedWorkout = {
+        id: 'remote-1',
+        dateKey: '2026-10-25',
+        name: 'Remote Plan',
+        exercises: [],
+        status: 'planned',
+        createdAt: '2026-10-22T09:00:00.000Z',
+      };
+      const initial: PlannedWorkoutsState = { status: 'ready', plans: [localPlan] };
+      const next = reducer(initial, plansMerged([remotePlan]));
+      expect(next.plans.map((p) => p.id)).toEqual(['local-offline', 'remote-1']);
+    });
+
+    it('favors completed status when merging duplicate plan ids', () => {
+      const localPlan: PlannedWorkout = {
+        id: 'shared-1',
+        dateKey: '2026-10-24',
+        name: 'Workout 1',
+        exercises: [],
+        status: 'planned',
+        createdAt: '2026-10-22T08:00:00.000Z',
+      };
+      const remotePlan: PlannedWorkout = {
+        id: 'shared-1',
+        dateKey: '2026-10-24',
+        name: 'Workout 1',
+        exercises: [],
+        status: 'done',
+        createdAt: '2026-10-22T08:00:00.000Z',
+        updatedAt: '2026-10-22T09:00:00.000Z',
+      };
+      const initial: PlannedWorkoutsState = { status: 'ready', plans: [localPlan] };
+      const next = reducer(initial, plansMerged([remotePlan]));
+      expect(next.plans.length).toBe(1);
+      expect(next.plans[0].status).toBe('done');
+    });
+
+    it('favors more recent updatedAt when duplicate plan ids have different properties', () => {
+      const localPlan: PlannedWorkout = {
+        id: 'shared-1',
+        dateKey: '2026-10-25',
+        name: 'Workout 1',
+        exercises: [],
+        status: 'planned',
+        createdAt: '2026-10-22T08:00:00.000Z',
+        updatedAt: '2026-10-22T10:00:00.000Z',
+      };
+      const remotePlan: PlannedWorkout = {
+        id: 'shared-1',
+        dateKey: '2026-10-24',
+        name: 'Workout 1',
+        exercises: [],
+        status: 'planned',
+        createdAt: '2026-10-22T08:00:00.000Z',
+        updatedAt: '2026-10-22T08:30:00.000Z',
+      };
+      const initial: PlannedWorkoutsState = { status: 'ready', plans: [localPlan] };
+      const next = reducer(initial, plansMerged([remotePlan]));
+      expect(next.plans.length).toBe(1);
+      expect(next.plans[0].dateKey).toBe('2026-10-25');
+    });
   });
 
   describe('selectors', () => {

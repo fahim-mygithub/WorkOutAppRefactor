@@ -12,6 +12,7 @@ export interface PlannedWorkout {
   source?: { historyId?: string };
   status: PlanStatus;
   createdAt: string;
+  updatedAt?: string;
 }
 
 export interface PlannedWorkoutsState {
@@ -40,6 +41,31 @@ export const plannedWorkoutsSlice = createSlice({
       state.status = 'ready';
     },
 
+    plansMerged(state, action: PayloadAction<PlannedWorkout[]>) {
+      const incoming = action.payload;
+      if (!Array.isArray(incoming) || incoming.length === 0) {
+        state.status = 'ready';
+        return;
+      }
+      const existingMap = new Map<string, PlannedWorkout>(state.plans.map((p) => [p.id, p]));
+      for (const item of incoming) {
+        const existing = existingMap.get(item.id);
+        if (!existing) {
+          existingMap.set(item.id, item);
+        } else {
+          const existingTime = existing.updatedAt || existing.createdAt || '';
+          const itemTime = item.updatedAt || item.createdAt || '';
+          if (itemTime > existingTime) {
+            existingMap.set(item.id, item);
+          } else if (existing.status === 'planned' && item.status !== 'planned') {
+            existingMap.set(item.id, { ...existing, status: item.status });
+          }
+        }
+      }
+      state.plans = Array.from(existingMap.values());
+      state.status = 'ready';
+    },
+
     planAdded: {
       reducer(state, action: PayloadAction<PlannedWorkout>) {
         state.plans.push(action.payload);
@@ -48,15 +74,18 @@ export const plannedWorkoutsSlice = createSlice({
         plan: Omit<PlannedWorkout, 'id' | 'createdAt' | 'status'> & {
           id?: string;
           createdAt?: string;
+          updatedAt?: string;
           status?: PlanStatus;
         },
       ) {
+        const now = new Date().toISOString();
         return {
           payload: {
             ...plan,
             id: plan.id ?? generatePlanId(),
             status: plan.status ?? 'planned',
-            createdAt: plan.createdAt ?? new Date().toISOString(),
+            createdAt: plan.createdAt ?? now,
+            updatedAt: plan.updatedAt ?? plan.createdAt ?? now,
           },
         };
       },
@@ -66,6 +95,7 @@ export const plannedWorkoutsSlice = createSlice({
       const plan = state.plans.find((p) => p.id === action.payload.id);
       if (plan) {
         plan.dateKey = action.payload.dateKey;
+        plan.updatedAt = new Date().toISOString();
       }
     },
 
@@ -78,6 +108,7 @@ export const plannedWorkoutsSlice = createSlice({
       const plan = state.plans.find((p) => p.id === id);
       if (plan) {
         plan.status = 'done';
+        plan.updatedAt = new Date().toISOString();
       }
     },
 
@@ -86,6 +117,7 @@ export const plannedWorkoutsSlice = createSlice({
       const plan = state.plans.find((p) => p.id === id);
       if (plan) {
         plan.status = 'skipped';
+        plan.updatedAt = new Date().toISOString();
       }
     },
 
@@ -97,6 +129,7 @@ export const plannedWorkoutsSlice = createSlice({
 
 export const {
   plannedWorkoutsHydrated,
+  plansMerged,
   planAdded,
   planMoved,
   planRemoved,
@@ -122,6 +155,10 @@ export function selectPlansByDateKey(state: RootStateSlice, dateKey: DateKey): P
 }
 
 export function selectPlansForToday(state: RootStateSlice, todayKey: DateKey): PlannedWorkout[] {
+  return selectPlansForTodayInternal(state, todayKey);
+}
+
+function selectPlansForTodayInternal(state: RootStateSlice, todayKey: DateKey): PlannedWorkout[] {
   return selectPlannedWorkouts(state).filter(
     (p) => p.dateKey === todayKey && p.status === 'planned',
   );
@@ -145,5 +182,5 @@ export function selectUpcomingPlans(
 }
 
 export function selectHasPlanDueToday(state: RootStateSlice, todayKey: DateKey): boolean {
-  return selectPlansForToday(state, todayKey).length > 0;
+  return selectPlansForTodayInternal(state, todayKey).length > 0;
 }

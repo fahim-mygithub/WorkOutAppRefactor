@@ -1,6 +1,6 @@
 import type { WorkoutExercise, WorkoutSet, Exercise } from '../types/exercise';
 import type { TrackedLift, SessionGoal } from '../types/trackedLifts';
-import type { ExerciseHistory, WorkoutSummary } from '../types/exerciseHistory';
+import type { ExerciseHistory } from '../types/exerciseHistory';
 import { prescribe } from './trackedLiftProgression';
 import type { PlannedWorkout } from '../store/slices/plannedWorkoutsSlice';
 

@@ -158,7 +158,8 @@ export const CompletedWorkoutCard: React.FC<CompletedWorkoutCardProps> = ({
   };
 
   const handlePlanForDate = async () => {
-    if (!pickedDateKey) return;
+    const today = toDateKey(new Date());
+    if (!pickedDateKey || pickedDateKey < today) return;
     if (isLoadingExercises || !exerciseDatabase.length) {
       alert('Exercise database is still loading. Please wait a moment and try again.');
       return;
@@ -325,6 +326,7 @@ export const CompletedWorkoutCard: React.FC<CompletedWorkoutCardProps> = ({
                 <Input
                   id={`pick-date-${workout.id}`}
                   type="date"
+                  min={toDateKey(new Date())}
                   value={pickedDateKey}
                   onChange={(e) => setPickedDateKey(e.target.value)}
                   className="flex-1"
@@ -332,7 +334,7 @@ export const CompletedWorkoutCard: React.FC<CompletedWorkoutCardProps> = ({
                 <Button
                   variant="secondary"
                   onClick={handlePlanForDate}
-                  disabled={!pickedDateKey || isLoadingStart}
+                  disabled={!pickedDateKey || pickedDateKey < toDateKey(new Date()) || isLoadingStart}
                 >
                   <Calendar className="h-4 w-4" aria-hidden="true" />
                   Save plan

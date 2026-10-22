@@ -740,7 +740,7 @@ export default function BuildPage() {
         description: `Workout created from build page with ${workoutToUse.exercises.length + workoutToUse.supersets.length} exercises`,
         workoutText: workoutText.trim(),
         parsedWorkout: workoutToUse,
-        customExercises,
+        customExercises: customExercises as any,
         tags: ['Build Page'],
         category: 'Strength',
         difficulty: 'Intermediate'

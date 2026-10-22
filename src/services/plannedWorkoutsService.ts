@@ -67,9 +67,9 @@ export class PlannedWorkoutsService {
     if (!this.shouldMirror(uid)) return null;
     try {
       const snap = await getDoc(doc(db, 'users', uid, 'schedule', 'plannedWorkouts'));
-      if (!snap.exists()) return null;
+      if (!snap.exists()) return [];
       const data = fromFirestore(snap.data()) as { plans?: PlannedWorkout[]; schemaVersion?: number };
-      return Array.isArray(data?.plans) ? data.plans : null;
+      return Array.isArray(data?.plans) ? data.plans : [];
     } catch (err) {
       console.warn('[plannedWorkoutsService] getRemote failed', err);
       return null;

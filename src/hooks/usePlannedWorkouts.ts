@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useAppDispatch, useAppSelector } from '../store/hooks';
 import {
   planAdded,
@@ -20,7 +20,36 @@ export function usePlannedWorkouts() {
   const allPlans = useAppSelector(selectPlannedWorkouts);
   const startPlannedWorkout = useStartPlannedWorkout();
 
-  const todayKey = useMemo(() => toDateKey(new Date()), []);
+  const [currentDateKey, setCurrentDateKey] = useState<DateKey>(() => toDateKey(new Date()));
+
+  useEffect(() => {
+    const updateToday = () => {
+      const nextKey = toDateKey(new Date());
+      setCurrentDateKey((prev) => (prev === nextKey ? prev : nextKey));
+    };
+
+    updateToday();
+
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', updateToday);
+    }
+    if (typeof window !== 'undefined') {
+      window.addEventListener('focus', updateToday);
+    }
+
+    return () => {
+      if (typeof document !== 'undefined') {
+        document.removeEventListener('visibilitychange', updateToday);
+      }
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('focus', updateToday);
+      }
+    };
+  }, []);
+
+  // Compute todayKey from live date on render or visibility change
+  const liveDateKey = toDateKey(new Date());
+  const todayKey = liveDateKey !== currentDateKey ? liveDateKey : currentDateKey;
 
   const todayPlans = useMemo(
     () => selectPlansForToday({ plannedWorkouts: { plans: allPlans, status: 'ready' } }, todayKey),
@@ -75,6 +104,7 @@ export function usePlannedWorkouts() {
   );
 
   return {
+    todayKey,
     allPlans,
     todayPlans,
     overduePlans,

@@ -24,18 +24,23 @@ export const PlanDateModal: React.FC<PlanDateModalProps> = ({
   confirmLabel = 'Save plan',
   onConfirm,
 }) => {
-  const tomorrow = addDaysKey(toDateKey(new Date()), 1);
-  const [dateKey, setDateKey] = useState<string>(initialDateKey || tomorrow);
+  const today = toDateKey(new Date());
+  const tomorrow = addDaysKey(today, 1);
+  const initialKey = initialDateKey && initialDateKey >= today ? initialDateKey : tomorrow;
+
+  const [dateKey, setDateKey] = useState<string>(initialKey);
 
   useEffect(() => {
     if (open) {
-      setDateKey(initialDateKey || tomorrow);
+      setDateKey(initialKey);
     }
-  }, [open, initialDateKey, tomorrow]);
+  }, [open, initialKey]);
+
+  const isInvalid = !dateKey || dateKey < today;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!dateKey) return;
+    if (isInvalid) return;
     onConfirm(dateKey);
     onOpenChange(false);
   };
@@ -56,6 +61,7 @@ export const PlanDateModal: React.FC<PlanDateModalProps> = ({
             <Input
               id="plan-date-input"
               type="date"
+              min={today}
               value={dateKey}
               onChange={(e) => setDateKey(e.target.value)}
               className="w-full"
@@ -74,7 +80,7 @@ export const PlanDateModal: React.FC<PlanDateModalProps> = ({
             <Button
               type="submit"
               variant="primary"
-              disabled={!dateKey}
+              disabled={isInvalid}
             >
               {confirmLabel}
             </Button>
