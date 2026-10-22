@@ -1,12 +1,7 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { useAppDispatch, useAppSelector } from '../store/hooks';
-import { useAuth } from '../contexts/AuthContext';
-import { endWorkout, setShowCompletionModal } from '../store/slices/workoutSlice';
-import { WorkoutStorageService } from '../services/workoutStorageService';
-import { sessionsRecorded } from '../store/slices/trackedLiftsSlice';
-import { trackedSessionsFromWorkout } from '../lib/trackedLiftProgression';
-import { MuscleLogService } from '../services/muscleLogService';
+import { setShowCompletionModal } from '../store/slices/workoutSlice';
+import { useFinishWorkout, useIsAnonymousWorkoutUser } from '../hooks/useFinishWorkout';
 import {
   Sheet,
   SheetContent,
@@ -24,11 +19,10 @@ export const WorkoutCompletionModal: React.FC<WorkoutCompletionModalProps> = ({
   isOpen,
   onClose
 }) => {
-  const navigate = useNavigate();
   const dispatch = useAppDispatch();
   const { activeWorkout } = useAppSelector((state) => state.workout);
-  const trackedLifts = useAppSelector((state) => state.trackedLifts.lifts);
-  const { user } = useAuth();
+  const { finishWorkout } = useFinishWorkout();
+  const isAnonymousUser = useIsAnonymousWorkoutUser();
   const [isCompleting, setIsCompleting] = useState(false);
   // Compact clock for the summary: 1:05:09 / 42:07.
   const formatTime = (seconds: number): string => {
@@ -65,44 +59,10 @@ export const WorkoutCompletionModal: React.FC<WorkoutCompletionModalProps> = ({
   };
 
   const handleCompleteWorkout = async () => {
-    if (!activeWorkout || !user?.uid) {
-      console.error('Missing required data for workout completion');
-      return;
-    }
-
     setIsCompleting(true);
     try {
-      await WorkoutStorageService.saveCompletedWorkout(user.uid, activeWorkout);
-      console.log('Workout saved successfully');
-      // Tracked lifts: log the sessions, move each cycle, queue new bests.
-      dispatch(
-        sessionsRecorded({
-          date: new Date().toISOString(),
-          entries: trackedSessionsFromWorkout(activeWorkout.exercises, trackedLifts),
-        }),
-      );
-      MuscleLogService.recordWorkout(user?.uid ?? 'anon', activeWorkout);
-      dispatch(endWorkout());
+      await finishWorkout({ isAnonymousUser });
       dispatch(setShowCompletionModal(false));
-      navigate('/profile', { state: { showWorkoutComplete: true } });
-    } catch (error) {
-      console.error('Error saving workout:', error);
-
-      // Show user-friendly error message
-      alert('Failed to save workout. Your progress will still be ended. Please check your connection and try again.');
-
-      // Tracked lifts: log the sessions, move each cycle, queue new bests.
-      dispatch(
-        sessionsRecorded({
-          date: new Date().toISOString(),
-          entries: trackedSessionsFromWorkout(activeWorkout.exercises, trackedLifts),
-        }),
-      );
-      MuscleLogService.recordWorkout(user?.uid ?? 'anon', activeWorkout);
-      // Still end the workout even if save fails to prevent user from being stuck
-      dispatch(endWorkout());
-      dispatch(setShowCompletionModal(false));
-      navigate('/profile');
     } finally {
       setIsCompleting(false);
     }
