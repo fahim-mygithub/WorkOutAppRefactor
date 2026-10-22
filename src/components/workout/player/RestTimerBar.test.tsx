@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { Provider } from 'react-redux';
 import { configureStore } from '@reduxjs/toolkit';
 import workoutReducer, { activeWorkoutRestored } from '../../../store/slices/workoutSlice';
@@ -72,7 +72,15 @@ function createWorkout(exercises: WorkoutExercise[], currentExerciseIndex = 0, c
   } as unknown as ActiveWorkout;
 }
 
-function renderBar(workout: ActiveWorkout) {
+function renderBar(
+  workout: ActiveWorkout,
+  restTimer: { isActive: boolean; duration: number; timeRemaining: number; targetEndTime: number | null } = {
+    isActive: true,
+    duration: 90,
+    timeRemaining: 90,
+    targetEndTime: Date.now() + 90_000,
+  },
+) {
   const store = configureStore({
     reducer: {
       workout: workoutReducer,
@@ -82,12 +90,7 @@ function renderBar(workout: ActiveWorkout) {
   store.dispatch(
     activeWorkoutRestored({
       activeWorkout: workout,
-      restTimer: {
-        isActive: true,
-        duration: 90,
-        timeRemaining: 90,
-        targetEndTime: Date.now() + 90_000,
-      },
+      restTimer,
     }),
   );
 
@@ -226,5 +229,58 @@ describe('RestTimerBar Up next', () => {
     renderBar(workout);
 
     expect(screen.queryByText(/Up next:/i)).not.toBeInTheDocument();
+  });
+});
+
+const idleTimer = { isActive: false, duration: 0, timeRemaining: 0, targetEndTime: null };
+
+function loggedSingle(id: string, completed: boolean): WorkoutExercise {
+  return {
+    id,
+    exercise: benchEx,
+    restTime: 60,
+    sets: [{ id: `${id}-s1`, reps: 8, weight: 185, unit: 'lbs', completed }],
+  };
+}
+
+describe('RestTimerBar finish workout', () => {
+  it('all sets logged: idle bar shows "Finish workout" instead of "Start rest"', () => {
+    renderBar(createWorkout([loggedSingle('a', true), loggedSingle('b', true)], 0, 0), idleTimer);
+
+    expect(screen.getByRole('button', { name: 'Finish workout' })).toBeInTheDocument();
+    expect(screen.queryByText('Start rest')).not.toBeInTheDocument();
+  });
+
+  it('clicking "Finish workout" opens the completion modal', () => {
+    const { store } = renderBar(createWorkout([loggedSingle('a', true)], 0, 0), idleTimer);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Finish workout' }));
+
+    expect(store.getState().workout.showCompletionModal).toBe(true);
+  });
+
+  it('partially logged: idle bar still shows "Start rest" and no finish button', () => {
+    renderBar(createWorkout([loggedSingle('a', true), loggedSingle('b', false)], 0, 0), idleTimer);
+
+    expect(screen.getByText('Start rest')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Finish workout' })).not.toBeInTheDocument();
+  });
+
+  it('finished rest with all sets logged opens the modal even when the cursor is not on the last exercise', () => {
+    vi.useFakeTimers();
+    try {
+      const { store } = renderBar(
+        createWorkout([loggedSingle('a', true), loggedSingle('b', true)], 0, 0),
+        { isActive: true, duration: 90, timeRemaining: 0, targetEndTime: Date.now() - 1000 },
+      );
+
+      act(() => {
+        vi.advanceTimersByTime(1000);
+      });
+
+      expect(store.getState().workout.showCompletionModal).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
