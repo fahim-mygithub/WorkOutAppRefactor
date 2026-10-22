@@ -15,7 +15,7 @@ export interface WorkoutIcsOptions {
   title: string;
   description?: string;
   dateKey: string; // 'YYYY-MM-DD'
-  reminderTime: string; // 'HH:mm'
+  reminderTime?: string; // 'HH:mm' (defaults to '08:00')
   durationMinutes?: number;
   dtstamp?: string; // Optional override for deterministic tests
 }
@@ -79,9 +79,10 @@ export function foldLine(line: string): string {
  * Converts a dateKey ('YYYY-MM-DD') and reminderTime ('HH:mm') to local floating DTSTART.
  * Example: '2026-10-23', '08:00' -> '20261023T080000'. No 'Z' suffix.
  */
-export function formatFloatingDateTime(dateKey: string, reminderTime: string): string {
+export function formatFloatingDateTime(dateKey: string, reminderTime?: string): string {
   const [y, m, d] = dateKey.split('-').map((s) => s.padStart(2, '0'));
-  const [hh = '08', mm = '00'] = reminderTime.split(':').map((s) => s.padStart(2, '0'));
+  const safeTime = reminderTime && reminderTime.trim().length > 0 ? reminderTime.trim() : '08:00';
+  const [hh = '08', mm = '00'] = safeTime.split(':').map((s) => s.padStart(2, '0'));
   return `${y}${m}${d}T${hh}${mm}00`;
 }
 

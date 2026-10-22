@@ -34,7 +34,7 @@ export const PlannedWorkoutsSection: React.FC = () => {
   } = usePlannedWorkouts();
 
   const reminderTime = useAppSelector(
-    (s) => s.user?.preferences?.notifications?.reminderTime ?? '08:00',
+    (s) => s.user?.preferences?.notifications?.reminderTime || '08:00',
   );
 
   const [movingPlan, setMovingPlan] = useState<PlannedWorkout | null>(null);

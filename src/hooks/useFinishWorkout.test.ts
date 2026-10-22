@@ -243,11 +243,14 @@ describe('useFinishWorkout', () => {
     };
     setStoredPlanContext(plannedContext);
 
-    // Discarding a workout dispatches endWorkout, clears snapshot & plan context without calling finishWorkout
+    const wrapper = ({ children }: { children: React.ReactNode }) =>
+      React.createElement(Provider, { store, children });
+
+    const { result } = renderHook(() => useFinishWorkout(), { wrapper });
+
+    // Discarding a workout invokes discardWorkout, clearing snapshot & plan context without marking the plan done
     act(() => {
-      store.dispatch(endWorkout());
-      clearWorkoutSnapshot();
-      clearStoredPlanContext();
+      result.current.discardWorkout();
     });
 
     // The plan in store must still be 'planned'

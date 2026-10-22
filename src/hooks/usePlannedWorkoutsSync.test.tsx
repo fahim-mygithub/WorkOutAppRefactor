@@ -3,7 +3,7 @@ import { renderHook, act } from '@testing-library/react';
 import React from 'react';
 import { Provider } from 'react-redux';
 import { configureStore } from '@reduxjs/toolkit';
-import userReducer from '../store/slices/userSlice';
+import userReducer, { setProfile } from '../store/slices/userSlice';
 import plannedWorkoutsReducer, {
   type PlannedWorkout,
 } from '../store/slices/plannedWorkoutsSlice';
@@ -47,34 +47,20 @@ function createTestStore(uid?: string) {
       gDM({
         serializableCheck: false,
       }),
-    preloadedState: uid
-      ? {
-          user: {
-            profile: {
-              uid,
-              email: 'test@example.com',
-              displayName: 'Test',
-              isAnonymous: false,
-              createdAt: new Date(),
-              lastLoginAt: new Date(),
-            },
-            preferences: {
-              theme: 'system' as const,
-              unitSystem: 'imperial' as const,
-              weightUnit: 'lbs' as const,
-              defaultRestTime: 90,
-              autoStartTimer: true,
-              keyboardShortcuts: { enabled: true, showInWorkout: true },
-              notifications: { workoutReminders: true, restTimerAlerts: true, achievements: true },
-            },
-            status: 'authenticated' as const,
-            error: null,
-            isOnline: true,
-            syncStatus: { pendingChanges: 0, isSyncing: false },
-          },
-        }
-      : undefined,
   });
+
+  if (uid) {
+    store.dispatch(
+      setProfile({
+        uid,
+        email: 'test@example.com',
+        displayName: 'Test',
+        createdAt: '2026-10-22T08:00:00.000Z',
+        lastActiveAt: '2026-10-22T08:00:00.000Z',
+      }),
+    );
+  }
+
   return store;
 }
 

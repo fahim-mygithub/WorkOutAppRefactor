@@ -595,8 +595,9 @@ export default function ProfilePage() {
               </div>
               <Input
                 type="time"
-                value={preferences.notifications?.reminderTime ?? '08:00'}
+                value={preferences.notifications?.reminderTime || '08:00'}
                 onChange={(e) =>
+                  e.target.value &&
                   dispatch(updateNotificationPreferences({ reminderTime: e.target.value }))
                 }
                 className="w-32 text-center"

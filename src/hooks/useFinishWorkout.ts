@@ -167,5 +167,19 @@ export function useFinishWorkout() {
     [dispatch, navigate, user, trackedLifts, activeWorkout],
   );
 
-  return { finishWorkout };
+  const discardWorkout = useCallback(
+    (options: { navigateTo?: string; isAnonymousUser?: boolean } = {}) => {
+      clearStoredPlanContext();
+      clearWorkoutSnapshot();
+      dispatch(endWorkout());
+      if (options.navigateTo) {
+        navigate(options.navigateTo);
+      } else if (!options.isAnonymousUser) {
+        navigate('/');
+      }
+    },
+    [dispatch, navigate],
+  );
+
+  return { finishWorkout, discardWorkout };
 }

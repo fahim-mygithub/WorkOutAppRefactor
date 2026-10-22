@@ -31,6 +31,7 @@ import { SharedWorkoutLoader } from '../components/SharedWorkoutLoader';
 import { ShareWorkoutModal } from '../components/ShareWorkoutModal';
 import { useParams } from 'react-router-dom';
 import { CreateSharedWorkoutData, SharedWorkout } from '../services/sharedWorkoutService';
+import type { CustomExercise } from '../services/customExerciseService';
 import {
   AlertTriangle,
   Loader2,
@@ -713,19 +714,17 @@ export default function BuildPage() {
 
     try {
       // Get custom exercises from workout
-      const customExercises = convertToWorkoutExercises(workoutToUse)
+      const customExercises: CustomExercise[] = convertToWorkoutExercises(workoutToUse)
         .filter(exercise => exercise.exercise.id.startsWith('fallback-'))
         .map(exercise => ({
+          ...exercise.exercise,
           id: exercise.exercise.id,
-          name: exercise.exercise.name,
-          muscleGroup: exercise.exercise.muscleGroup,
-          equipment: exercise.exercise.equipment,
-          instructions: exercise.exercise.instructions,
-          difficulty: exercise.exercise.difficulty as 'Beginner' | 'Intermediate' | 'Advanced',
-          isCustom: true,
-          createdBy: user.uid,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString()
+          userId: user.uid,
+          isCustom: true as const,
+          originalName: exercise.exercise.name,
+          usageCount: 1,
+          createdAt: new Date(),
+          updatedAt: new Date(),
         }));
 
       console.log('About to call WorkoutStorageService.saveWorkout with:', {
@@ -740,7 +739,7 @@ export default function BuildPage() {
         description: `Workout created from build page with ${workoutToUse.exercises.length + workoutToUse.supersets.length} exercises`,
         workoutText: workoutText.trim(),
         parsedWorkout: workoutToUse,
-        customExercises: customExercises as any,
+        customExercises,
         tags: ['Build Page'],
         category: 'Strength',
         difficulty: 'Intermediate'

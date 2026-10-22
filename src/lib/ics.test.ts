@@ -17,6 +17,9 @@ describe('ICS Generator (RFC 5545)', () => {
     const dtstart = formatFloatingDateTime('2026-10-23', '08:00');
     expect(dtstart).toBe('20261023T080000');
     expect(dtstart.endsWith('Z')).toBe(false);
+    expect(formatFloatingDateTime('2026-10-23', '')).toBe('20261023T080000');
+    expect(formatFloatingDateTime('2026-10-23', '   ')).toBe('20261023T080000');
+    expect(formatFloatingDateTime('2026-10-23')).toBe('20261023T080000');
   });
 
   it('folds lines at 75 octets without breaking UTF-8 characters', () => {
