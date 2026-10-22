@@ -41,9 +41,11 @@ import { EndWorkoutModal } from '../components/EndWorkoutModal';
 import { WorkoutTopBar } from '../components/workout/player/WorkoutTopBar';
 import { ExerciseDeck } from '../components/workout/player/ExerciseDeck';
 import { ExercisePlayCard } from '../components/workout/player/ExercisePlayCard';
+import { WorkoutListView } from '../components/workout/list/WorkoutListView';
 import { RestTimerBar } from '../components/workout/player/RestTimerBar';
 import { WelcomeBackSuggestion } from '../components/workout/player/WelcomeBackSuggestion';
 import { useProgressionRecommendation } from '../hooks/useProgressionRecommendation';
+import { useWorkoutViewMode } from '../hooks/useWorkoutViewMode';
 import { inSessionSuggestion } from '../lib/progression/inSession';
 import { welcomeBackSuggestion } from '../lib/progression/welcomeBack';
 import { Button } from '../components/ui/button';
@@ -89,6 +91,102 @@ function buildLocalSummary(workout: ActiveWorkout, userId: string): WorkoutSumma
   };
 }
 
+export interface CompleteWorkoutSetArgs {
+  workout: ActiveWorkout;
+  exerciseIndex: number;
+  setIndex: number;
+  reps: number;
+  weight: number;
+  rir?: number;
+  dispatch: (action: any) => void;
+  onSuggestion?: (suggestion: {
+    exerciseIndex: number;
+    setIndex: number;
+    decision: InSessionDecision;
+    logged: { reps: number; weight: number; unit?: string };
+    planned: WorkoutSet;
+  } | null) => void;
+}
+
+/** Lifted complete-set logic: dispatches Redux completeSet with explicit indices,
+ *  evaluates live in-session progression suggestions, and handles superset /
+ *  rest-timer advancement. Shared by both cards mode and list mode. */
+export function executeCompleteSet({
+  workout,
+  exerciseIndex,
+  setIndex,
+  reps,
+  weight,
+  rir,
+  dispatch,
+  onSuggestion,
+}: CompleteWorkoutSetArgs): void {
+  const exercise = workout.exercises[exerciseIndex];
+  if (!exercise) return;
+  const totalSets = exercise.sets.length;
+  const loggedSet = exercise.sets[setIndex];
+
+  dispatch(completeSet({
+    exerciseIndex,
+    setIndex,
+    setData: { reps, weight },
+    rir
+  }));
+
+  // Per-set, in-session cue from the load ACTUALLY lifted — pure and account-
+  // free (no uid needed), so it works for anonymous/demo users too.
+  if (loggedSet && onSuggestion) {
+    const decision = inSessionSuggestion(loggedSet, { reps, weight, rir }, setIndex, totalSets);
+    onSuggestion(decision
+      ? {
+          exerciseIndex,
+          setIndex,
+          decision,
+          logged: { reps, weight, unit: loggedSet.unit },
+          planned: { ...loggedSet }
+        }
+      : null);
+  }
+
+  // Check if current exercise is part of a superset
+  const isCurrentExerciseInSuperset = exercise.isSuperset && exercise.supersetId;
+
+  if (isCurrentExerciseInSuperset) {
+    // Find all exercises in this superset
+    const allSupersetExercises = workout.exercises.filter(ex =>
+      ex.supersetId === exercise.supersetId
+    );
+
+    if (allSupersetExercises.length > 1) {
+      const currentIndexInSuperset = allSupersetExercises.findIndex(ex => ex.id === exercise.id);
+      const isLastExerciseInSuperset = currentIndexInSuperset === allSupersetExercises.length - 1;
+      const isLastSet = setIndex === (exercise.sets.length || 0) - 1;
+
+      if (isLastExerciseInSuperset && isLastSet) {
+        // Completed all sets of superset - start rest timer and move to next exercise group
+        dispatch(startRestTimer({ duration: exercise.restTime || 120 }));
+        dispatch(completeSuperset());
+      } else if (isLastExerciseInSuperset && !isLastSet) {
+        // Completed a round of the superset (last exercise of current set) - start rest timer
+        dispatch(startRestTimer({ duration: exercise.restTime || 120 }));
+      } else {
+        // Move to next exercise in superset (within the same set)
+        dispatch(nextSupersetExercise());
+      }
+    } else {
+      // Single exercise marked as superset, treat as regular exercise
+      if (exercise.restTime) {
+        dispatch(startRestTimer({ duration: exercise.restTime }));
+      }
+    }
+  } else {
+    // Regular exercise: start rest timer
+    if (exercise.restTime) {
+      dispatch(startRestTimer({ duration: exercise.restTime }));
+    }
+  }
+}
+
 export default function WorkoutPage() {
   const navigate = useNavigate();
   const dispatch = useAppDispatch();
@@ -105,6 +203,9 @@ export default function WorkoutPage() {
   // Check if we're viewing a shared workout
   const { shareId } = useParams<{ shareId?: string }>() || {};
   const isViewingSharedWorkout = !!shareId;
+
+  // View mode preference ('cards' | 'list', defaults to 'cards')
+  const [viewMode, setViewMode] = useWorkoutViewMode();
 
   // Check for stored shared context as fallback
   const storedContext = useMemo(() => {
@@ -131,6 +232,8 @@ export default function WorkoutPage() {
   // Carries what it is about: the set as logged and as prescribed (captured
   // before completeSet overwrites the prescribed reps), for Ask coach's seed.
   const [suggestion, setSuggestion] = useState<{
+    exerciseIndex: number;
+    setIndex: number;
     decision: InSessionDecision;
     logged: { reps: number; weight: number; unit?: string };
     planned: WorkoutSet;
@@ -149,18 +252,19 @@ export default function WorkoutPage() {
   // Track if workout context has been loaded to prevent duplicate calls
   const contextLoadedRef = useRef<string | null>(null);
 
-  // A new exercise starts with no carried-over transient cue. (The applied load
-  // and the answered-prompt set are keyed by exercise identity, not index, so
-  // they deliberately persist across superset rounds and back-nav.)
+  // A new exercise starts with no carried-over transient cue in cards mode.
   useEffect(() => {
-    setSuggestion(null);
-  }, [activeWorkout?.currentExerciseIndex]);
+    if (viewMode === 'cards') {
+      setSuggestion(null);
+    }
+  }, [activeWorkout?.currentExerciseIndex, viewMode]);
 
-  // Moving to another set dismisses the transient cue (the applied load persists
-  // for the rest of the exercise via the recommendedWeight autofill path).
+  // Moving to another set dismisses the transient cue in cards mode.
   useEffect(() => {
-    setSuggestion(null);
-  }, [activeWorkout?.currentSetIndex]);
+    if (viewMode === 'cards') {
+      setSuggestion(null);
+    }
+  }, [activeWorkout?.currentSetIndex, viewMode]);
 
   // Memoize exercise IDs to prevent unnecessary re-calculations
   // Use workout ID as dependency instead of the entire exercises array
@@ -285,84 +389,58 @@ export default function WorkoutPage() {
         .map((ex) => ex.customTitle || ex.exercise.name)
     : [];
 
-  const handleCompleteSet = (reps: number, weight: number, rir?: number) => {
-    const setIndex = activeWorkout.currentSetIndex;
-    const totalSets = currentExercise.sets.length;
-    // Snapshot the prescription before the set is mutated, for the live decision.
-    const loggedSet = currentSet;
-
-    dispatch(completeSet({
-      exerciseIndex: activeWorkout.currentExerciseIndex,
+  const handleCompleteSet = (
+    exerciseIndex: number,
+    setIndex: number,
+    reps: number,
+    weight: number,
+    rir?: number
+  ) => {
+    executeCompleteSet({
+      workout: activeWorkout,
+      exerciseIndex,
       setIndex,
-      setData: { reps, weight },
-      rir
-    }));
-
-    // Per-set, in-session cue from the load ACTUALLY lifted — pure and account-
-    // free (no uid needed), so it works for anonymous/demo users too. Replaces the
-    // old cumulative "consecutive failed sets" threshold (which had a counter bug):
-    // each set now gets its own decision. inSessionSuggestion returns null for
-    // continue/end, so those stay silent and keep the no-scroll player calm.
-    if (loggedSet) {
-      const decision = inSessionSuggestion(loggedSet, { reps, weight, rir }, setIndex, totalSets);
-      setSuggestion(decision
-        ? { decision, logged: { reps, weight, unit: loggedSet.unit }, planned: { ...loggedSet } }
-        : null);
-    }
-
-    // Check if current exercise is part of a superset
-    const isCurrentExerciseInSuperset = currentExercise?.isSuperset && currentExercise.supersetId;
-
-    if (isCurrentExerciseInSuperset) {
-      // Find all exercises in this superset
-      const allSupersetExercises = activeWorkout.exercises.filter(ex =>
-        ex.supersetId === currentExercise.supersetId
-      );
-
-      if (allSupersetExercises.length > 1) {
-        const currentIndexInSuperset = allSupersetExercises.findIndex(ex => ex.id === currentExercise?.id);
-        const isLastExerciseInSuperset = currentIndexInSuperset === allSupersetExercises.length - 1;
-        const isLastSet = activeWorkout.currentSetIndex === (currentExercise?.sets.length || 0) - 1;
-
-        if (isLastExerciseInSuperset && isLastSet) {
-          // Completed all sets of superset - start rest timer and move to next exercise group
-          dispatch(startRestTimer({ duration: currentExercise?.restTime || 120 }));
-          dispatch(completeSuperset());
-        } else if (isLastExerciseInSuperset && !isLastSet) {
-          // Completed a round of the superset (last exercise of current set) - start rest timer
-          dispatch(startRestTimer({ duration: currentExercise?.restTime || 120 }));
-        } else {
-          // Move to next exercise in superset (within the same set)
-          dispatch(nextSupersetExercise());
-        }
-      } else {
-        // Single exercise marked as superset, treat as regular exercise
-        if (currentExercise?.restTime) {
-          dispatch(startRestTimer({ duration: currentExercise.restTime }));
-        }
-      }
-    } else {
-      // Regular exercise: start rest timer
-      if (currentExercise?.restTime) {
-        dispatch(startRestTimer({ duration: currentExercise.restTime }));
-      }
-    }
+      reps,
+      weight,
+      rir,
+      dispatch,
+      onSuggestion: setSuggestion,
+    });
   };
 
-  const handleUncompleteSet = () => {
+  const handleUncompleteSet = (
+    exerciseIndex = activeWorkout.currentExerciseIndex,
+    setIndex = activeWorkout.currentSetIndex
+  ) => {
     dispatch(uncompleteSet({
-      exerciseIndex: activeWorkout.currentExerciseIndex,
-      setIndex: activeWorkout.currentSetIndex
+      exerciseIndex,
+      setIndex
     }));
     // The cue (and its miss) described a set that is no longer logged.
-    setSuggestion(null);
+    if (
+      suggestion &&
+      suggestion.exerciseIndex === exerciseIndex &&
+      suggestion.setIndex === setIndex
+    ) {
+      setSuggestion(null);
+    } else if (
+      exerciseIndex === activeWorkout.currentExerciseIndex &&
+      setIndex === activeWorkout.currentSetIndex
+    ) {
+      setSuggestion(null);
+    }
   };
 
   // Apply the suggested cut to the remaining sets: route it through the same
   // recommendedWeight autofill SetInput already honors, so each upcoming set
   // pre-fills with the reduced load. Dismiss the cue either way.
-  const handleApplySuggestion = (weight: number) => {
-    applyLoadToExercise(currentExercise.exercise.id, weight);
+  const handleApplySuggestion = (weight: number, exerciseId?: string) => {
+    const targetExerciseId =
+      exerciseId ||
+      (suggestion ? activeWorkout.exercises[suggestion.exerciseIndex]?.exercise.id : currentExercise.exercise.id);
+    if (targetExerciseId) {
+      applyLoadToExercise(targetExerciseId, weight);
+    }
     setSuggestion(null);
   };
 
@@ -374,13 +452,17 @@ export default function WorkoutPage() {
   // chip seeds the chat with what was logged vs planned; the always-there link
   // just opens it about this exercise and lets the user type.
   const aiUsable = !aiDisabledReason && isBackendAvailable() && Boolean(user);
-  const handleAskCoach = () => {
+  const handleAskCoach = (targetExercise?: WorkoutExercise) => {
     // The chip only renders with a suggestion, which carries its miss.
     if (!suggestion) return;
+    const exercise =
+      targetExercise ||
+      activeWorkout.exercises[suggestion.exerciseIndex] ||
+      currentExercise;
     dispatch(askAiOpened({
-      focusExerciseId: currentExercise.id,
+      focusExerciseId: exercise.id,
       seed: buildMissSeed(
-        currentExercise.customTitle || currentExercise.exercise.name,
+        exercise.customTitle || exercise.exercise.name,
         suggestion.logged,
         suggestion.planned,
       ),
@@ -396,6 +478,13 @@ export default function WorkoutPage() {
       exerciseIndex: activeWorkout.currentExerciseIndex,
       setIndex
     }));
+  };
+
+  const handleSelectExercise = (exerciseIndex: number) => {
+    if (viewMode === 'list') {
+      const el = document.getElementById(`workout-exercise-${exerciseIndex}`);
+      el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
   };
 
   const handleSaveExercise = (exerciseId: string, sets: WorkoutSet[], restTime: number) => {
@@ -545,7 +634,12 @@ export default function WorkoutPage() {
           if (currentSet && !currentSet.completed) {
             const reps = currentSet.reps || 0;
             const weight = currentSet.weight || 0;
-            handleCompleteSet(reps, weight);
+            handleCompleteSet(
+              activeWorkout.currentExerciseIndex,
+              activeWorkout.currentSetIndex,
+              reps,
+              weight
+            );
           }
           break;
         case 'n':
@@ -571,7 +665,10 @@ export default function WorkoutPage() {
         case 'u':
           event.preventDefault();
           if (currentSet && currentSet.completed) {
-            handleUncompleteSet();
+            handleUncompleteSet(
+              activeWorkout.currentExerciseIndex,
+              activeWorkout.currentSetIndex
+            );
           }
           break;
         default:
@@ -615,7 +712,7 @@ export default function WorkoutPage() {
 
   return (
     <>
-      {/* No-scroll player: slim top bar, swipeable exercise deck, rest-timer bar.
+      {/* Workout view: slim top bar, swipeable exercise deck OR scrollable list view, rest-timer bar.
           Phone-first — capped to a phone-width column and centered on wider screens. */}
       <div className="relative mx-auto flex h-full w-full max-w-md flex-col overflow-hidden bg-surface">
         <WorkoutTopBar
@@ -633,44 +730,81 @@ export default function WorkoutPage() {
                 : 'todo',
           )}
           onEndWorkout={handleEndWorkoutClick}
+          viewMode={viewMode}
+          onViewModeChange={setViewMode}
+          onSelectExercise={handleSelectExercise}
         />
 
-        <ExerciseDeck
-          index={activeWorkout.currentExerciseIndex}
-          canPrev={activeWorkout.currentExerciseIndex > 0}
-          canNext={
-            activeWorkout.currentExerciseIndex < activeWorkout.exercises.length - 1
-          }
-          onPrev={() => dispatch(previousExercise())}
-          onNext={() => dispatch(nextExercise())}
-          currentSupersetId={currentSupersetId}
-          cardsLeft={cardsLeft}
-        >
-          <ExercisePlayCard
-            exercise={currentExercise}
-            currentSetIndex={activeWorkout.currentSetIndex}
-            currentSet={currentSet}
-            supersetPartners={supersetPartners}
-            previousPerformance={
-              currentExercise.exercise.id
-                ? previousPerformances[currentExercise.exercise.id] || null
-                : null
-            }
-            recommendedWeight={progressionHook.recommendation?.recommendedWeight}
-            overrideWeight={appliedWeights[currentExercise.exercise.id]}
-            recommendedReps={progressionHook.recommendation?.recommendedReps}
-            onEditSets={() => handleEditExercise(currentExercise)}
-            onChangeExercise={() => setSwapExerciseId(currentExercise.id)}
+        {viewMode === 'list' ? (
+          <WorkoutListView
+            workout={activeWorkout}
+            previousPerformances={previousPerformances}
+            appliedWeights={appliedWeights}
+            suggestion={suggestion}
             onCompleteSet={handleCompleteSet}
             onUncompleteSet={handleUncompleteSet}
-            onJumpToSet={handleJumpToSet}
-            suggestion={suggestion?.decision ?? null}
             onApplySuggestion={handleApplySuggestion}
             onKeepSuggestion={handleKeepSuggestion}
-            onAskCoach={aiUsable ? handleAskCoach : undefined}
-            onAskCoachGeneral={aiUsable ? handleAskCoachGeneral : undefined}
+            onEditSets={handleEditExercise}
+            onChangeExercise={(ex) => setSwapExerciseId(ex.id)}
+            onAskCoach={aiUsable ? () => handleAskCoach() : undefined}
+            recommendations={
+              currentExercise?.exercise.id && progressionHook.recommendation
+                ? { [currentExercise.exercise.id]: progressionHook.recommendation }
+                : undefined
+            }
           />
-        </ExerciseDeck>
+        ) : (
+          <ExerciseDeck
+            index={activeWorkout.currentExerciseIndex}
+            canPrev={activeWorkout.currentExerciseIndex > 0}
+            canNext={
+              activeWorkout.currentExerciseIndex < activeWorkout.exercises.length - 1
+            }
+            onPrev={() => dispatch(previousExercise())}
+            onNext={() => dispatch(nextExercise())}
+            currentSupersetId={currentSupersetId}
+            cardsLeft={cardsLeft}
+          >
+            <ExercisePlayCard
+              exercise={currentExercise}
+              currentSetIndex={activeWorkout.currentSetIndex}
+              currentSet={currentSet}
+              supersetPartners={supersetPartners}
+              previousPerformance={
+                currentExercise.exercise.id
+                  ? previousPerformances[currentExercise.exercise.id] || null
+                  : null
+              }
+              recommendedWeight={progressionHook.recommendation?.recommendedWeight}
+              overrideWeight={appliedWeights[currentExercise.exercise.id]}
+              recommendedReps={progressionHook.recommendation?.recommendedReps}
+              onEditSets={() => handleEditExercise(currentExercise)}
+              onChangeExercise={() => setSwapExerciseId(currentExercise.id)}
+              onCompleteSet={(reps, weight, rir) =>
+                handleCompleteSet(
+                  activeWorkout.currentExerciseIndex,
+                  activeWorkout.currentSetIndex,
+                  reps,
+                  weight,
+                  rir
+                )
+              }
+              onUncompleteSet={() =>
+                handleUncompleteSet(
+                  activeWorkout.currentExerciseIndex,
+                  activeWorkout.currentSetIndex
+                )
+              }
+              onJumpToSet={handleJumpToSet}
+              suggestion={suggestion?.decision ?? null}
+              onApplySuggestion={handleApplySuggestion}
+              onKeepSuggestion={handleKeepSuggestion}
+              onAskCoach={aiUsable ? () => handleAskCoach() : undefined}
+              onAskCoachGeneral={aiUsable ? handleAskCoachGeneral : undefined}
+            />
+          </ExerciseDeck>
+        )}
 
         <RestTimerBar />
 
