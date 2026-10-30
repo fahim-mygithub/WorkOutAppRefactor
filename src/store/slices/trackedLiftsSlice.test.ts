@@ -9,6 +9,7 @@ import reducer, {
   categoryRemoved,
   progressionToggled,
   goalChosen,
+  liftGoalChosen,
   sessionsRecorded,
   bestResolved,
   type TrackedLiftsState,
@@ -146,5 +147,22 @@ describe('trackedLiftsSlice', () => {
 
     s = reducer(s, bestResolved({ liftId: 'seed-bench-press', accept: true }));
     expect(s.lifts[0].load).toEqual({ kind: 'weight', value: 275, unit: 'lb' });
+  });
+});
+
+describe('liftGoalChosen', () => {
+  it('stores the goal on the lift and as the global last goal', () => {
+    const s0 = ready();
+    const bench = s0.lifts[0].id;
+    const s = reducer(s0, liftGoalChosen({ id: bench, goal: 'strength' }));
+    expect(s.lifts[0].lastGoal).toBe('strength');
+    expect(s.lastGoal).toBe('strength');
+    expect(s.lifts[1].lastGoal).toBeUndefined();
+  });
+
+  it('ignores an unknown lift but still sets the global goal', () => {
+    const s = reducer(ready(), liftGoalChosen({ id: 'nope', goal: 'volume' }));
+    expect(s.lifts.every((l) => l.lastGoal === undefined)).toBe(true);
+    expect(s.lastGoal).toBe('volume');
   });
 });

@@ -21,7 +21,7 @@ import { RealtimePreview } from '../components/workout/RealtimePreview';
 import { ExerciseQuickAdd, newBuilderExercise } from '../components/workout/ExerciseQuickAdd';
 import { MachinePhotoAdd, type MachineDefaults } from '../components/ai/MachinePhotoAdd';
 import { workoutNameForLifts } from '../lib/trackedLifts';
-import { buildTrackedWorkout } from '../lib/trackedLiftProgression';
+import { buildTrackedWorkout, type LiftGoals } from '../lib/trackedLiftProgression';
 import { matchExercise } from '../lib/exerciseMatch';
 import { orderForWorkout } from '../lib/builderSupersets';
 import type { SessionGoal, TrackedLift } from '../types/trackedLifts';
@@ -190,10 +190,15 @@ export default function BuildPage() {
   // or copied (accessories). The state is cleared right away so a refresh or
   // back-navigation doesn't re-add them.
   useEffect(() => {
-    const state = location.state as { trackedLifts?: TrackedLift[]; goal?: SessionGoal } | null;
+    const state = location.state as {
+      trackedLifts?: TrackedLift[];
+      goal?: SessionGoal;
+      goals?: LiftGoals;
+    } | null;
     const lifts = state?.trackedLifts;
     if (!lifts?.length) return;
-    const goal = state?.goal ?? null;
+    // `goals` is the per-lift map from the chooser; `goal` is one goal for all.
+    const goal = state?.goal ?? state?.goals ?? null;
     setEditedWorkout(buildTrackedWorkout(lifts, goal));
     setWorkoutName(
       (name) => name || (goal === 'checkpoint' ? 'Checkpoint day' : workoutNameForLifts(lifts)),

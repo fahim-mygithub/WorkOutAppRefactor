@@ -15,9 +15,9 @@ import type { Exercise } from '../types/exercise';
 import { WizardShell } from '../components/build/WizardShell';
 import { ChoiceCard } from '../components/build/ChoiceCard';
 import { TrackedLifts } from '../components/build/TrackedLifts';
-import { goalChosen } from '../store/slices/trackedLiftsSlice';
-import { checkpointDue } from '../lib/trackedLiftProgression';
-import type { TrainingGoal } from '../types/trackedLifts';
+import { liftGoalChosen } from '../store/slices/trackedLiftsSlice';
+import { checkpointDue, type LiftGoals } from '../lib/trackedLiftProgression';
+import type { TrackedLift, TrainingGoal } from '../types/trackedLifts';
 import { BodyMusclePicker } from '../components/build/BodyMusclePicker';
 import { RecommendedWorkout, type ReviewRow } from '../components/build/RecommendedWorkout';
 import { Button } from '../components/ui/button';
@@ -35,6 +35,51 @@ type Screen =
   | 'template'
   | 'template-detail'
   | 'template-1rm';
+
+const GOAL_OPTIONS = [
+  { value: 'volume', label: 'Volume', hint: 'higher reps' },
+  { value: 'strength', label: 'Strength', hint: 'heavy, low reps' },
+] as const;
+
+/** One progression lift's Volume / Strength toggle, labelled by the lift. */
+function LiftGoalToggle({
+  name,
+  value,
+  onChange,
+}: {
+  name: string;
+  value: TrainingGoal;
+  onChange: (goal: TrainingGoal) => void;
+}) {
+  return (
+    <div className="flex items-center gap-3">
+      <span className="min-w-0 flex-1 truncate text-body-sm font-semibold text-ink">{name}</span>
+      <div
+        role="radiogroup"
+        aria-label={`${name} goal`}
+        className="grid w-48 shrink-0 grid-cols-2 gap-1 rounded-full bg-surface-subtle p-1"
+      >
+        {GOAL_OPTIONS.map((o) => (
+          <button
+            key={o.value}
+            type="button"
+            role="radio"
+            aria-checked={value === o.value}
+            onClick={() => onChange(o.value)}
+            className={cn(
+              'min-h-touch-min rounded-full px-3 text-body-sm font-semibold transition-colors duration-snap',
+              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent',
+              value === o.value ? 'bg-ink text-ink-inverse' : 'text-ink-muted hover:text-ink',
+            )}
+          >
+            {o.label}
+            <span className="sr-only">, {o.hint}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 let rowSeq = 0;
 const newRowId = () => `row-${Date.now().toString(36)}-${rowSeq++}`;
@@ -95,12 +140,18 @@ export default function BuildWizardPage() {
   // checkpoint day with only the due lifts; otherwise the goal switch applies.
   const dueLifts = selectedLifts.filter(checkpointDue);
   const leftOut = dueLifts.length > 0 ? selectedLifts.filter((l) => !checkpointDue(l)) : [];
-  const hasProgression = selectedLifts.some((l) => l.progression);
+  const progressionLifts = selectedLifts.filter((l) => l.progression);
+  // A lift's own last goal, else the global last goal (then Volume).
+  const goalFor = (lift: TrackedLift): TrainingGoal => lift.lastGoal ?? goal;
+  const liftGoals: LiftGoals = Object.fromEntries(progressionLifts.map((l) => [l.id, goalFor(l)]));
   const buildFromLifts = () =>
     dueLifts.length > 0
       ? navigate('/build/custom', { state: { trackedLifts: dueLifts, goal: 'checkpoint' } })
       : navigate('/build/custom', {
-          state: { trackedLifts: selectedLifts, goal: hasProgression ? goal : undefined },
+          state: {
+            trackedLifts: selectedLifts,
+            goals: progressionLifts.length > 0 ? liftGoals : undefined,
+          },
         });
   const toggleLift = (id: string) =>
     setSelectedLiftIds((ids) => (ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id]));
@@ -262,36 +313,15 @@ export default function BuildWizardPage() {
                   </p>
                 )
               ) : (
-                hasProgression && (
-                  <div
-                    role="radiogroup"
-                    aria-label="Session goal"
-                    className="grid grid-cols-2 gap-1 rounded-full bg-surface-subtle p-1"
-                  >
-                    {(
-                      [
-                        { value: 'volume', label: 'Volume', hint: 'higher reps' },
-                        { value: 'strength', label: 'Strength', hint: 'heavy, low reps' },
-                      ] as const
-                    ).map((o) => (
-                      <button
-                        key={o.value}
-                        type="button"
-                        role="radio"
-                        aria-checked={goal === o.value}
-                        onClick={() => dispatch(goalChosen(o.value))}
-                        className={cn(
-                          'min-h-touch-min rounded-full px-3 text-body-sm font-semibold transition-colors duration-snap',
-                          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent',
-                          goal === o.value ? 'bg-ink text-ink-inverse' : 'text-ink-muted hover:text-ink',
-                        )}
-                      >
-                        {o.label}
-                        <span className="sr-only">, {o.hint}</span>
-                      </button>
-                    ))}
-                  </div>
-                )
+                // One goal per progression lift: each row sets its own sets.
+                progressionLifts.map((lift) => (
+                  <LiftGoalToggle
+                    key={lift.id}
+                    name={lift.name}
+                    value={goalFor(lift)}
+                    onChange={(g) => dispatch(liftGoalChosen({ id: lift.id, goal: g }))}
+                  />
+                ))
               )}
               <Button variant="primary" size="xl" onClick={buildFromLifts}>
                 {dueLifts.length > 0 ? (
