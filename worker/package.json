@@ -11,6 +11,9 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.71.2",
+    "@cfworker/json-schema": "^4.1.4",
+    "@cloudflare/workers-oauth-provider": "^1.2.4",
+    "@modelcontextprotocol/sdk": "^1.32.2",
     "jose": "^5.10.0",
     "zod": "^3.25.76"
   },

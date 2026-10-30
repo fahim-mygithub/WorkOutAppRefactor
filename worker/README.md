@@ -5,6 +5,9 @@ Anthropic API key lives. It verifies the caller's Firebase ID token, checks an
 email allow-list and a daily limit (Workers KV), and serves the `chat`,
 `readLift` and `findExercise` actions.
 
+It also hosts the **Claude connector** (`/mcp`): a remote MCP server the Claude
+app and Claude Code use to read and edit your workouts — see [Connector](#connector).
+
 Separate package — not part of the root app build, lint or test run.
 
 ```bash
@@ -50,3 +53,65 @@ asked). Chat cases pass when every `expectTools` name is called, at least
 one `expectAnyTools` name is (when given), and no `forbidTools` name is. Chat cases name a shared context from the `contexts`
 map in the same file. Without the key the runner prints a note and exits;
 it always exits 0 and never runs in `npm test` or CI.
+
+## Connector
+
+A remote MCP server at `/mcp` (Streamable HTTP, stateless) behind OAuth 2.1, so
+claude.ai (Settings → Connectors) and Claude Code can read and change your
+profile, saved workouts, plans, history and custom exercises. Entry
+`src/main.ts` sends `/mcp`, `/authorize`, `/oauth/token`, `/register` and
+`/.well-known/*` to the connector and everything else to `src/index.ts`
+unchanged.
+
+- `src/data/` — Firestore REST client signed in as a service account; every
+  path is `users/{uid}/…` with the uid from the OAuth grant, and documents are
+  written in the exact shape the app's services read.
+- `src/agentTools/` — the tool registry (zod inputs, model-facing
+  descriptions): `get_profile`, `update_profile`, `list_workouts`,
+  `get_workout`, `create_workout` (one or many), `update_workout`,
+  `list_plans`, `plan_workout`, `list_history`, `add_exercise`.
+- `src/mcp/` — the MCP server, the OAuth provider and the `/authorize` page
+  (Google sign-in with the Firebase JS SDK; the ID token is checked with
+  `verifyIdToken` and the email must be in `AI_ALLOWED_EMAILS`).
+
+Packages: `@modelcontextprotocol/sdk` 1.32.2, `@cloudflare/workers-oauth-provider`
+1.2.4, `@cfworker/json-schema` 4.1.4; Firebase JS SDK 11.10.0 (from gstatic, on
+the sign-in page only).
+
+### Deploy (owner)
+
+1. **OAuth KV namespace:** `npx wrangler kv namespace create OAUTH_KV` and put
+   the id in `wrangler.toml` (`binding = "OAUTH_KV"`).
+2. **Service account:** Firebase console → Project settings → Service accounts
+   → *Generate new private key*. Store the whole JSON file as a secret, then
+   delete the file:
+
+   ```bash
+   npx wrangler secret put FIREBASE_SERVICE_ACCOUNT < path/to/key.json
+   ```
+
+   It bypasses Firestore rules; the Worker limits it to the signed-in uid.
+3. **Sign-in domain:** Firebase console → Authentication → Settings →
+   Authorized domains → add the Worker's host
+   (`workout-ai.<your-subdomain>.workers.dev`), or the Google popup on
+   `/authorize` fails with `auth/unauthorized-domain`.
+4. **Allow-list:** your email must be in `AI_ALLOWED_EMAILS` (same secret as the
+   AI coach). Removing an email cuts off its connector tokens on the next call.
+5. `npx wrangler deploy`.
+
+### Add it to Claude
+
+- **claude.ai / Claude app:** Settings → Connectors → *Add custom connector* →
+  URL `https://workout-ai.<your-subdomain>.workers.dev/mcp` → *Connect*. A
+  window opens on the Worker: *Sign in with Google*, then *Allow*.
+- **Claude Code:**
+
+  ```bash
+  claude mcp add --transport http workout https://workout-ai.<your-subdomain>.workers.dev/mcp
+  ```
+
+  then run `/mcp` inside Claude Code and pick `workout` to sign in.
+
+Changes appear in the app the next time it loads its data (saved workouts and
+custom exercises on their screens, plans when the planner syncs). Photos stay
+in Claude: the connector takes fields, never images.
