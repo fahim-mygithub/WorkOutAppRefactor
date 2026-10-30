@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {
   AiChatSheet,
@@ -316,5 +316,87 @@ describe('AiChatSheet — seed message and notices', () => {
     await u.click(screen.getByRole('button', { name: 'Send' }));
     expect(await screen.findByText(/remaining sets at 205 lb/)).toBeInTheDocument();
     expect(screen.getByText(/Suggestion discarded/)).toBeInTheDocument();
+  });
+});
+
+describe('AiChatSheet — photos', () => {
+  const photo = { mediaType: 'image/jpeg' as const, data: 'AAAA' };
+  const file = () => new File([new Uint8Array(4)], 'machine.jpg', { type: 'image/jpeg' });
+
+  it('has no camera button when AI is unavailable', async () => {
+    render(<AiChatSheet open onOpenChange={() => {}} />);
+    await screen.findByRole('dialog');
+    expect(screen.queryByRole('button', { name: 'Add a photo' })).not.toBeInTheDocument();
+    expect(screen.queryByTestId('ai-photo-input')).not.toBeInTheDocument();
+  });
+
+  it('offers a rear-camera photo input when available', async () => {
+    render(<AiChatSheet open onOpenChange={() => {}} client={makeClient({ text: 'hi' })} />);
+    await screen.findByRole('dialog');
+    expect(screen.getByRole('button', { name: 'Add a photo' })).toBeInTheDocument();
+    const input = screen.getByTestId('ai-photo-input');
+    expect(input).toHaveAttribute('type', 'file');
+    expect(input).toHaveAttribute('accept', 'image/*');
+    expect(input).toHaveAttribute('capture', 'environment');
+  });
+
+  it('sends one shrunk photo with the next message, then clears it', async () => {
+    const user = userEvent.setup();
+    const client = makeClient({ text: 'That is a seated leg curl.' });
+    const prepareImage = vi.fn().mockResolvedValue(photo);
+    render(<AiChatSheet open onOpenChange={() => {}} client={client} prepareImage={prepareImage} />);
+    await screen.findByRole('dialog');
+    fireEvent.change(screen.getByTestId('ai-photo-input'), { target: { files: [file()] } });
+    expect(await screen.findByTestId('ai-photo-preview')).toBeInTheDocument();
+    // A photo alone is enough to send.
+    await user.click(screen.getByRole('button', { name: 'Send' }));
+    await screen.findByText('That is a seated leg curl.');
+    const sent = (client.sendMessage as ReturnType<typeof vi.fn>).mock.calls[0][0].messages;
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).toMatchObject({ role: 'user', image: photo });
+    expect(sent[0].text.length).toBeGreaterThan(0);
+    expect(screen.queryByTestId('ai-photo-preview')).not.toBeInTheDocument();
+  });
+
+  it('says so when a photo is too large', async () => {
+    const { ImageTooLargeError } = await import('@/ai/image');
+    const prepareImage = vi.fn().mockRejectedValue(new ImageTooLargeError());
+    render(<AiChatSheet open onOpenChange={() => {}} client={makeClient({ text: 'hi' })} prepareImage={prepareImage} />);
+    await screen.findByRole('dialog');
+    fireEvent.change(screen.getByTestId('ai-photo-input'), { target: { files: [file()] } });
+    expect(await screen.findByTestId('ai-error')).toHaveTextContent(/too large/i);
+    expect(screen.queryByTestId('ai-photo-preview')).not.toBeInTheDocument();
+  });
+});
+
+describe('AiChatSheet — async Apply', () => {
+  const turn: AiAssistantTurn = {
+    text: '',
+    proposals: [{ id: 'p1', tool: 'createWorkout', summary: 'Save workout "Push" (1 exercise)' }],
+  };
+
+  it('marks the card applied once the apply resolves', async () => {
+    const user = userEvent.setup();
+    let finish: (v: void) => void = () => {};
+    const onApplyProposal = vi.fn(() => new Promise<void>((r) => { finish = r; }));
+    render(<AiChatSheet open onOpenChange={() => {}} client={makeClient(turn)} onApplyProposal={onApplyProposal} />);
+    await user.type(await screen.findByLabelText('Message'), 'make me a push day');
+    await user.click(screen.getByRole('button', { name: 'Send' }));
+    await user.click(await screen.findByRole('button', { name: 'Apply' }));
+    expect(screen.getByRole('button', { name: 'Apply' })).toBeDisabled();
+    finish();
+    await waitFor(() => expect(screen.getByTestId('apply-reject-card')).toHaveAttribute('data-decision', 'applied'));
+  });
+
+  it('keeps the card open with the message when the apply resolves to a problem', async () => {
+    const user = userEvent.setup();
+    const onApplyProposal = vi.fn(async () => "Couldn't save — try again.");
+    render(<AiChatSheet open onOpenChange={() => {}} client={makeClient(turn)} onApplyProposal={onApplyProposal} />);
+    await user.type(await screen.findByLabelText('Message'), 'make me a push day');
+    await user.click(screen.getByRole('button', { name: 'Send' }));
+    await user.click(await screen.findByRole('button', { name: 'Apply' }));
+    expect(await screen.findByTestId('ai-error')).toHaveTextContent("Couldn't save — try again.");
+    expect(screen.getByTestId('apply-reject-card')).toHaveAttribute('data-decision', 'pending');
+    expect(screen.getByRole('button', { name: 'Apply' })).toBeEnabled();
   });
 });

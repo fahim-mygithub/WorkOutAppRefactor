@@ -15,6 +15,19 @@ import type { AiContext } from '../../ai/context';
 import type { WorkoutExercise, Exercise } from '../../types/exercise';
 import type { TrackedLift } from '../../types/trackedLifts';
 import { AskAiHost } from './AskAiHost';
+import { setProfile } from '../../store/slices/userSlice';
+import plannedWorkouts from '../../store/slices/plannedWorkoutsSlice';
+import { appServices } from '../../ai/appServices';
+
+vi.mock('../../ai/appServices', () => ({
+  appServices: {
+    saveWorkout: vi.fn(),
+    updateWorkout: vi.fn(),
+    deleteWorkout: vi.fn(),
+    saveProfile: vi.fn(),
+    listSavedWorkouts: vi.fn(),
+  },
+}));
 
 const bench = { id: 'x-bench', name: 'Barbell Bench Press', equipment: 'Barbell', muscleGroups: ['Chest', 'Triceps'] } as Exercise;
 const dbBench = { id: 'x-db', name: 'Dumbbell Bench Press', equipment: 'Dumbbells', muscleGroups: ['Chest', 'Triceps'] } as Exercise;
@@ -328,5 +341,77 @@ describe('AskAiHost', () => {
     });
     await waitFor(() => expect(chat).toHaveBeenCalledTimes(2));
     expect(chat.mock.calls[1][0].messages).toEqual([{ role: 'user', content: 'seed B' }]);
+  });
+});
+
+describe('AskAiHost — build, plan and profile tools', () => {
+  function signedInStore() {
+    const store = configureStore({ reducer: { workout, trackedLifts, exercise, customExercise, user, ai, plannedWorkouts } });
+    store.dispatch(setExercises([bench]));
+    store.dispatch(setProfile({ uid: 'u1', email: 'a@b.c', displayName: 'Alex', createdAt: '', lastActiveAt: '' }));
+    return store;
+  }
+  const svc = vi.mocked(appServices);
+
+  beforeEach(() => {
+    svc.listSavedWorkouts.mockResolvedValue([
+      { id: 'w1', name: 'Push', workoutText: '3x8 Barbell Bench Press', parsedWorkout: { exercises: [{ name: 'Barbell Bench Press', sets: [{ reps: 8 }] }], supersets: [] } },
+    ]);
+    svc.saveWorkout.mockResolvedValue('new1');
+    svc.deleteWorkout.mockResolvedValue();
+  });
+
+  it('sends saved workouts, profile and today as context', async () => {
+    const chat = vi.spyOn(aiClient, 'chat').mockResolvedValue(reply('ok'));
+    renderHost(signedInStore(), '/build');
+    await send('rename my push day');
+    await screen.findByText('ok');
+    const context = chat.mock.calls[0][0].context as AiContext;
+    expect(svc.listSavedWorkouts).toHaveBeenCalledWith('u1');
+    expect(context.savedWorkouts).toEqual([{ id: 'w1', name: 'Push', exercises: ['1x8 Barbell Bench Press'] }]);
+    expect(context.profile).toMatchObject({ displayName: 'Alex', weightUnit: 'lbs' });
+    expect(context.today).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  });
+
+  it('saves a created workout only on Apply, and Undo deletes it', async () => {
+    vi.spyOn(aiClient, 'chat').mockResolvedValue({
+      reply: 'Here you go.', source: 'backend',
+      toolCalls: [{ id: 'cw', name: 'createWorkout', input: { workouts: [{ name: 'Push', exercises: [{ name: 'Bench Press', sets: 3, reps: 8 }] }] } }],
+    });
+    renderHost(signedInStore(), '/build');
+    const u = await send('make me a push day');
+    const apply = await screen.findByRole('button', { name: 'Apply' });
+    expect(svc.saveWorkout).not.toHaveBeenCalled();
+    await u.click(apply);
+    await waitFor(() => expect(svc.saveWorkout).toHaveBeenCalledWith('u1', expect.objectContaining({ name: 'Push' })));
+    await u.click(await screen.findByRole('button', { name: 'Undo' }));
+    await waitFor(() => expect(svc.deleteWorkout).toHaveBeenCalledWith('u1', 'new1'));
+  });
+
+  it('plans a workout through planAdded on Apply, and Undo removes it', async () => {
+    vi.spyOn(aiClient, 'chat').mockResolvedValue({
+      reply: '', source: 'backend',
+      toolCalls: [{ id: 'pw', name: 'planWorkout', input: { dateKey: '2099-01-05', name: 'Push', exercises: [{ name: 'Bench Press', sets: 3, reps: 8 }] } }],
+    });
+    const store = signedInStore();
+    renderHost(store, '/build');
+    const u = await send('plan push');
+    await u.click(await screen.findByRole('button', { name: 'Apply' }));
+    await waitFor(() => expect(store.getState().plannedWorkouts.plans).toHaveLength(1));
+    await u.click(await screen.findByRole('button', { name: 'Undo' }));
+    await waitFor(() => expect(store.getState().plannedWorkouts.plans).toHaveLength(0));
+  });
+
+  it('keeps the card open and says so when the save fails', async () => {
+    svc.saveWorkout.mockRejectedValue(new Error('offline'));
+    vi.spyOn(aiClient, 'chat').mockResolvedValue({
+      reply: '', source: 'backend',
+      toolCalls: [{ id: 'cw2', name: 'createWorkout', input: { workouts: [{ name: 'Push', exercises: [{ name: 'Bench Press', sets: 3, reps: 8 }] }] } }],
+    });
+    renderHost(signedInStore(), '/build');
+    const u = await send('make me a push day');
+    await u.click(await screen.findByRole('button', { name: 'Apply' }));
+    expect(await screen.findByTestId('ai-error')).toHaveTextContent("Couldn't save");
+    expect(screen.getByRole('button', { name: 'Apply' })).toBeEnabled();
   });
 });

@@ -15,7 +15,8 @@
 import { auth } from '../firebase/config';
 import type { TrackedLift } from '../types/trackedLifts';
 import type { FlatLift } from './liftFields';
-import type { AiChatRequest, AiChatResponse, AiErrorCode, AiToolCall } from './types';
+import { assertImageFits } from './image';
+import type { AiChatRequest, AiChatResponse, AiErrorCode, AiImage, AiToolCall } from './types';
 
 /** Injectable transport; every field defaults to the real app wiring. */
 export interface AiClientDeps {
@@ -48,7 +49,8 @@ export class AiBackendError extends Error {
 export type AiRequestPayload =
   | ({ action: 'chat' } & AiChatRequest)
   | { action: 'readLift'; text: string }
-  | { action: 'findExercise'; name: string };
+  | { action: 'findExercise'; name: string }
+  | { action: 'readMachine'; image: AiImage };
 
 /** Worker `chat` success body. */
 interface WorkerChatResult {
@@ -104,11 +106,21 @@ export const MAX_READ_LIFT_CHARS = 500;
 /** Longest findExercise name sent (the Worker's cap). */
 export const MAX_LOOKUP_NAME_CHARS = 120;
 
-/** The last MAX_CHAT_MESSAGES messages, starting with a user turn. */
+/**
+ * The last MAX_CHAT_MESSAGES messages, starting with a user turn. A photo
+ * travels only with the turn it was attached to (the last one): the Worker
+ * takes one per request, and the reply already says what it showed.
+ */
 function recentMessages(messages: AiChatRequest['messages']): AiChatRequest['messages'] {
   const recent = messages.slice(-MAX_CHAT_MESSAGES);
   const firstUser = recent.findIndex((m) => m.role === 'user');
-  return firstUser > 0 ? recent.slice(firstUser) : recent;
+  const kept = firstUser > 0 ? recent.slice(firstUser) : recent;
+  return kept.map((m, k) => {
+    if (!m.image || k === kept.length - 1) return m;
+    const rest = { ...m };
+    delete rest.image;
+    return rest;
+  });
 }
 
 /**
@@ -122,10 +134,9 @@ export async function chat(
   request: AiChatRequest,
   deps?: AiClientDeps,
 ): Promise<AiChatResponse> {
-  const data = await callAi<WorkerChatResult>(
-    { action: 'chat', ...request, messages: recentMessages(request.messages) },
-    deps,
-  );
+  const messages = recentMessages(request.messages);
+  for (const m of messages) if (m.image) assertImageFits(m.image);
+  const data = await callAi<WorkerChatResult>({ action: 'chat', ...request, messages }, deps);
   return {
     reply: data?.text ?? '',
     toolCalls: data?.toolCalls ?? [],
@@ -190,6 +201,29 @@ export async function findExerciseOnline(
   );
   if (!data?.result || typeof data.result !== 'object') {
     throw new AiBackendError('AI found no exercise.', 'failed');
+  }
+  return data.result;
+}
+
+/** Worker `readMachine` result: the exercise a gym machine photo is for. */
+export interface ReadMachineResult {
+  name: string;
+  muscleGroups: string[];
+  equipment: string;
+  setupCues: string[];
+  defaultSets: { sets: number; reps: number };
+}
+
+/**
+ * Read a photo of a gym machine into an exercise draft (vision model on the
+ * Worker). Backend-only; throws `AiBackendError` when the Worker cannot serve
+ * it, and `ImageTooLargeError` (before any request) for a photo over the cap.
+ */
+export async function readMachinePhoto(image: AiImage, deps?: AiClientDeps): Promise<ReadMachineResult> {
+  assertImageFits(image);
+  const data = await callAi<{ result?: ReadMachineResult }>({ action: 'readMachine', image }, deps);
+  if (!data?.result || typeof data.result !== 'object') {
+    throw new AiBackendError('AI could not read that photo.', 'failed');
   }
   return data.result;
 }

@@ -7,23 +7,48 @@
  *
  * Units: workout sets say 'lbs' | 'kg', tracked lifts and the engine say
  * 'lb' | 'kg'. Everything here (checks, summaries) uses 'lb' | 'kg'.
+ *
+ * The build / plan / profile tools (createWorkout, updateWorkout, planWorkout,
+ * updateProfile, addExercise) are confirm-tier with Undo: their saves outside
+ * the store travel as `effects` (see effects.ts), run only on Apply.
  */
 import type { UnknownAction } from '@reduxjs/toolkit';
 import type { ActiveWorkout, Exercise, WorkoutExercise, WorkoutSet } from '../types/exercise';
 import type { TrackedLift, TrackedLoad, TrackedTarget, WeightUnit } from '../types/trackedLifts';
+import type { ParsedExercise, ParsedSet } from '../parser/types';
+import type { UserPreferences } from '../store/slices/userSlice';
 import { replaceExerciseMovement, setsPatched, type SetPatch } from '../store/slices/workoutSlice';
+import { planAdded, planRemoved } from '../store/slices/plannedWorkoutsSlice';
+import { dateKeyToDate, toDateKey } from '../lib/dateKey';
+import { generateFallbackExerciseId } from '../utils/workoutConversion';
 import { prescribedFloor } from '../lib/progression/setPrescription';
 import { liftAdded, liftRemoved, liftUpdated } from '../store/slices/trackedLiftsSlice';
 import { checkProposedLoad } from '../lib/aiLoadCheck';
 import { formatLoad, formatTarget } from '../lib/trackedLifts';
 import { fromFlatLift, type FlatLift } from './liftFields';
 import { swapAlternatives, usesCommonEquipment } from './alternatives';
+import type { AiEffect, SavedWorkoutDraft } from './effects';
+import { workoutText } from './workoutText';
 import type { AiAssistantTurn, AiToolCall } from './types';
+
+/** A saved workout the lifter has, as updateWorkout sees it. */
+export interface SavedWorkoutRef extends SavedWorkoutDraft {
+  id: string;
+}
 
 export interface PlanContext {
   activeWorkout: ActiveWorkout | null;
   trackedLifts: TrackedLift[];
   library: Exercise[];
+  /** The lifter's weight unit, for workouts the AI writes without one. */
+  units?: 'lbs' | 'kg';
+  /** Today, YYYY-MM-DD local: planWorkout refuses earlier days. */
+  todayKey?: string;
+  /** Saved workouts (updateWorkout resolves its id here). */
+  savedWorkouts?: readonly SavedWorkoutRef[];
+  /** Current display name and preferences (updateProfile skips no-ops). */
+  displayName?: string;
+  preferences?: UserPreferences;
 }
 
 export type ToolPlan =
@@ -32,6 +57,10 @@ export type ToolPlan =
       kind: 'confirm'; id: string; summary: string; detail?: string; apply: UnknownAction[];
       /** The "benchmark stays" sentence inside `detail`, for the lift an ongoing swap renames. */
       benchmarkNote?: { liftId: string; text: string };
+      /** Actions that take `apply` back (the build / plan / profile tools). */
+      undo?: UnknownAction[];
+      /** Saves outside the store, run after `apply` (see effects.ts). */
+      effects?: AiEffect[];
     }
   | { kind: 'rejected'; id: string; reason: string };
 
@@ -115,8 +144,9 @@ function libraryMatch(ctx: PlanContext, name: string, replaced?: Exercise): Exer
 /**
  * Whether two plans of the same call would do the same thing, so a late Apply
  * may go ahead. Ignores what legitimately differs between planning and Apply:
- * the id `liftAdded` generates each time, and set patches (they target
- * whichever sets are still open, each guarded by `onlyIf`).
+ * the id `liftAdded` generates each time, the timestamps `planAdded` stamps,
+ * and set patches (they target whichever sets are still open, each guarded by
+ * `onlyIf`).
  */
 export function sameIntent(a: readonly UnknownAction[], b: readonly UnknownAction[]): boolean {
   const normal = (actions: readonly UnknownAction[]) =>
@@ -124,6 +154,12 @@ export function sameIntent(a: readonly UnknownAction[], b: readonly UnknownActio
       actions
         .filter((x) => x.type !== setsPatched.type)
         .map((x) => {
+          if (x.type === planAdded.type) {
+            const payload = { ...(x.payload as Record<string, unknown>) };
+            delete payload.createdAt;
+            delete payload.updatedAt;
+            return { ...x, payload };
+          }
           if (x.type !== liftAdded.type) return x;
           const payload = { ...(x.payload as Record<string, unknown>) };
           delete payload.id;
@@ -131,6 +167,11 @@ export function sameIntent(a: readonly UnknownAction[], b: readonly UnknownActio
         }),
     );
   return normal(a) === normal(b);
+}
+
+/** Whether two plans would make the same saves outside the store. */
+export function sameEffects(a: readonly AiEffect[] | undefined, b: readonly AiEffect[] | undefined): boolean {
+  return JSON.stringify(a ?? []) === JSON.stringify(b ?? []);
 }
 
 /**
@@ -155,6 +196,143 @@ function patchPair(
 
 const describeLift = (parsed: { load: TrackedLoad; target: TrackedTarget }): string =>
   [formatLoad(parsed.load), formatTarget(parsed.target)].filter(Boolean).join(', ');
+
+// ---------------------------------------------------------------------------
+// Build / plan / profile helpers
+// ---------------------------------------------------------------------------
+
+type WorkoutUnit = 'lbs' | 'kg';
+const plural = (n: number, word: string): string => `${n} ${word}${n === 1 ? '' : 's'}`;
+/** Trimmed non-empty strings of an array; [] when it is not one. */
+const strings = (v: unknown): string[] =>
+  Array.isArray(v) ? v.map(str).filter((x): x is string => x !== undefined) : [];
+
+/**
+ * The model's straight-set exercises as parser exercises, each name resolved
+ * to the library when it matches, loads snapped to a loadable step. A reason
+ * string when any exercise is malformed.
+ */
+function readExercises(raw: unknown, ctx: PlanContext): ParsedExercise[] | string {
+  if (!Array.isArray(raw) || raw.length === 0) return 'A workout needs at least one exercise.';
+  if (raw.length > 20) return 'A workout can have at most 20 exercises.';
+  const out: ParsedExercise[] = [];
+  for (const item of raw) {
+    const e = (item && typeof item === 'object' ? item : {}) as Record<string, unknown>;
+    const name = str(e.name);
+    if (!name) return 'An exercise has no name.';
+    const sets = index(e.sets);
+    if (!sets || sets > 10) return `${name}: sets must be 1–10.`;
+    const reps = index(e.reps);
+    if (!reps || reps > 100) return `${name}: reps must be 1–100.`;
+    let repsMax: number | undefined;
+    if (e.repsMax !== undefined) {
+      repsMax = index(e.repsMax);
+      if (!repsMax || repsMax < reps || repsMax > 100) return `${name}: that rep range is not valid.`;
+    }
+    const unit: WorkoutUnit = e.unit === 'kg' || e.unit === 'lbs' ? e.unit : ctx.units ?? 'lbs';
+    let weight: number | undefined;
+    if (e.weight !== undefined) {
+      // A new workout has no reference load: only > 0 and loadable.
+      const check = checkProposedLoad(num(e.weight) ?? 0, null, unit === 'kg' ? 'kg' : 'lb');
+      if (!check.ok) return `${name}: ${check.reason}`;
+      weight = check.value;
+    }
+    let rest: number | undefined;
+    if (e.restSeconds !== undefined) {
+      rest = index(e.restSeconds);
+      if (!rest || rest < 15 || rest > 600) return `${name}: rest must be 15–600 seconds.`;
+    }
+    const notes = str(e.notes);
+    const set = (): ParsedSet => ({
+      reps: repsMax && repsMax > reps ? { min: reps, max: repsMax } : reps,
+      ...(weight !== undefined ? { weight, unit } : {}),
+    });
+    out.push({
+      name: libraryMatch(ctx, name)?.name ?? name,
+      sets: Array.from({ length: sets }, set),
+      ...(rest ? { restTime: rest } : {}),
+      ...(notes ? { notes } : {}),
+    });
+  }
+  return out;
+}
+
+/** "Barbell Bench Press 3×8-12 @ 135 lb" for a card. */
+function describeExercise(e: ParsedExercise): string {
+  const first = e.sets[0];
+  const reps = typeof first.reps === 'number' ? `${first.reps}` : `${first.reps.min}-${first.reps.max}`;
+  const load = first.weight ? ` @ ${first.weight} ${first.unit === 'kg' ? 'kg' : 'lb'}` : '';
+  return `${e.name} ${e.sets.length}×${reps}${load}`;
+}
+
+const describeExercises = (list: readonly ParsedExercise[]): string => list.map(describeExercise).join(', ');
+
+/** A library-shaped exercise for a name the library lacks (stable across plans). */
+function fallbackExercise(name: string): Exercise {
+  return {
+    id: generateFallbackExerciseId(name),
+    name,
+    muscleGroup: 'Unknown',
+    muscleGroups: ['Unknown'],
+    equipment: 'Unknown',
+    videoLinks: [],
+    instructions: [],
+    difficulty: 'Intermediate',
+    force: null,
+    grips: null,
+    mechanic: null,
+    searchKeywords: [name.toLowerCase()],
+    createdAt: '',
+    updatedAt: '',
+  };
+}
+
+/** A library exercise with only serializable, stable fields (for the store). */
+function plainExercise(e: Exercise): Exercise {
+  return {
+    id: e.id,
+    name: e.name,
+    muscleGroup: e.muscleGroup ?? (e.muscleGroups ?? []).join(', '),
+    muscleGroups: e.muscleGroups ?? [],
+    equipment: e.equipment ?? '',
+    videoLinks: e.videoLinks ?? [],
+    instructions: e.instructions ?? [],
+    difficulty: e.difficulty ?? 'Intermediate',
+    force: e.force ?? null,
+    grips: e.grips ?? null,
+    mechanic: e.mechanic ?? null,
+    searchKeywords: e.searchKeywords ?? [],
+    createdAt: typeof e.createdAt === 'string' ? e.createdAt : '',
+    updatedAt: typeof e.updatedAt === 'string' ? e.updatedAt : '',
+  };
+}
+
+/** Player exercises for a plan; ids derive from the call so a re-plan matches. */
+function toWorkoutExercises(callId: string, list: readonly ParsedExercise[], ctx: PlanContext): WorkoutExercise[] {
+  return list.map((e, i) => {
+    const lib = ctx.library.find((x) => x.name === e.name);
+    return {
+      id: `exercise-${callId}-${i}`,
+      exercise: lib ? plainExercise(lib) : fallbackExercise(e.name),
+      sets: e.sets.map((s, k): WorkoutSet => ({
+        id: `set-${callId}-${i}-${k}`,
+        reps: typeof s.reps === 'number' ? s.reps : s.reps.min,
+        ...(typeof s.reps === 'object' ? { repMin: s.reps.min, repMax: s.reps.max } : {}),
+        weight: s.weight ?? 0,
+        unit: s.unit ?? ctx.units ?? 'lbs',
+        completed: false,
+      })),
+      restTime: e.restTime ?? 120,
+      ...(e.notes ? { notes: e.notes } : {}),
+    };
+  });
+}
+
+/** A real YYYY-MM-DD day (not 2026-02-30). */
+const isDateKey = (v: unknown): v is string =>
+  typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) && toDateKey(dateKeyToDate(v)) === v;
+
+const PROGRESSION_RATES = ['beginner', 'intermediate', 'advanced'] as const;
 
 export function planToolCall(call: AiToolCall, ctx: PlanContext): ToolPlan {
   const { id, input } = call;
@@ -313,6 +491,187 @@ export function planToolCall(call: AiToolCall, ctx: PlanContext): ToolPlan {
       const lift = ctx.trackedLifts.find((l) => l.id === i.liftId);
       if (!lift) return reject('That tracked lift does not exist.');
       return { kind: 'confirm', id, summary: `Stop tracking ${lift.name}`, detail: str(i.reason), apply: [liftRemoved(lift.id)] };
+    }
+
+    case 'createWorkout': {
+      const raw = Array.isArray(i.workouts) ? i.workouts : [];
+      if (raw.length === 0) return reject('No workout to save.');
+      if (raw.length > 7) return reject('At most 7 workouts at once.');
+      const workouts: SavedWorkoutDraft[] = [];
+      for (const item of raw) {
+        const w = (item && typeof item === 'object' ? item : {}) as Record<string, unknown>;
+        const name = str(w.name);
+        if (!name) return reject('A workout has no name.');
+        const exercises = readExercises(w.exercises, ctx);
+        if (typeof exercises === 'string') return reject(exercises);
+        const parsedWorkout = { exercises, supersets: [] };
+        workouts.push({ name, workoutText: workoutText(parsedWorkout), parsedWorkout });
+      }
+      const list = workouts.length === 1
+        ? describeExercises(workouts[0].parsedWorkout.exercises)
+        : workouts.map((w) => `${w.name}: ${describeExercises(w.parsedWorkout.exercises)}`).join('; ');
+      return {
+        kind: 'confirm', id,
+        summary: workouts.length === 1
+          ? `Save workout "${workouts[0].name}" (${plural(workouts[0].parsedWorkout.exercises.length, 'exercise')})`
+          : `Save ${workouts.length} workouts: ${workouts.map((w) => w.name).join(', ')}`,
+        detail: [str(i.reason), list].filter(Boolean).join(' — '),
+        apply: [],
+        effects: workouts.map((workout): AiEffect => ({ type: 'createSavedWorkout', workout })),
+      };
+    }
+
+    case 'updateWorkout': {
+      const saved = ctx.savedWorkouts?.find((w) => w.id === i.workoutId);
+      if (!saved) return reject('That saved workout does not exist.');
+      const name = i.name !== undefined ? str(i.name) : undefined;
+      if (i.name !== undefined && !name) return reject('That name is not valid.');
+      let exercises: ParsedExercise[] | undefined;
+      if (i.exercises !== undefined) {
+        const read = readExercises(i.exercises, ctx);
+        if (typeof read === 'string') return reject(read);
+        exercises = read;
+      }
+      if (!exercises && (!name || name === saved.name)) return reject('Nothing to change.');
+      // Exercises replace the straight sets; supersets stay as they were.
+      const parsedWorkout = exercises
+        ? { exercises, supersets: saved.parsedWorkout.supersets ?? [] }
+        : saved.parsedWorkout;
+      const next: SavedWorkoutDraft = {
+        name: name ?? saved.name,
+        workoutText: exercises ? workoutText(parsedWorkout) : saved.workoutText,
+        parsedWorkout,
+      };
+      const prior: SavedWorkoutDraft = { name: saved.name, workoutText: saved.workoutText, parsedWorkout: saved.parsedWorkout };
+      const what = [
+        name && name !== saved.name ? `rename to "${name}"` : '',
+        exercises ? plural(exercises.length, 'exercise') : '',
+      ].filter(Boolean).join(', ');
+      return {
+        kind: 'confirm', id,
+        summary: `Update "${saved.name}": ${what}`,
+        detail: [str(i.reason), exercises ? describeExercises(exercises) : ''].filter(Boolean).join(' — ') || undefined,
+        apply: [],
+        effects: [{ type: 'updateSavedWorkout', id: saved.id, workout: next, prior }],
+      };
+    }
+
+    case 'planWorkout': {
+      if (!isDateKey(i.dateKey)) return reject('That date is not valid.');
+      if (ctx.todayKey && i.dateKey < ctx.todayKey) return reject('That date has passed.');
+      const name = str(i.name);
+      if (!name) return reject('The workout has no name.');
+      const exercises = readExercises(i.exercises, ctx);
+      if (typeof exercises === 'string') return reject(exercises);
+      const planId = `ai-${id}`;
+      const day = dateKeyToDate(i.dateKey).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+      return {
+        kind: 'confirm', id,
+        summary: `Plan "${name}" for ${day}`,
+        detail: [str(i.reason), describeExercises(exercises)].filter(Boolean).join(' — '),
+        apply: [planAdded({ id: planId, name, dateKey: i.dateKey, exercises: toWorkoutExercises(id, exercises, ctx) })],
+        undo: [planRemoved(planId)],
+      };
+    }
+
+    case 'updateProfile': {
+      const prefs = ctx.preferences;
+      const changes: Partial<UserPreferences> = {};
+      const labels: string[] = [];
+      let displayName: string | undefined;
+      if (i.displayName !== undefined) {
+        const name = str(i.displayName);
+        if (!name || name.length > 60) return reject('That name is not valid.');
+        if (name !== ctx.displayName) {
+          displayName = name;
+          labels.push(`name → ${name}`);
+        }
+      }
+      if (i.weightUnit !== undefined) {
+        if (i.weightUnit !== 'lbs' && i.weightUnit !== 'kg') return reject('Weight unit must be lbs or kg.');
+        if (i.weightUnit !== prefs?.weightUnit) {
+          changes.weightUnit = i.weightUnit;
+          labels.push(`weight unit → ${i.weightUnit}`);
+        }
+      }
+      if (i.unitSystem !== undefined) {
+        if (i.unitSystem !== 'imperial' && i.unitSystem !== 'metric') return reject('Units must be imperial or metric.');
+        if (i.unitSystem !== prefs?.unitSystem) {
+          changes.unitSystem = i.unitSystem;
+          labels.push(`units → ${i.unitSystem}`);
+        }
+      }
+      if (i.defaultRestTime !== undefined) {
+        const rest = index(i.defaultRestTime);
+        if (!rest || rest < 15 || rest > 600) return reject('Default rest must be 15–600 seconds.');
+        if (rest !== prefs?.defaultRestTime) {
+          changes.defaultRestTime = rest;
+          labels.push(`default rest → ${rest} s`);
+        }
+      }
+      if (i.defaultProgressionRate !== undefined) {
+        const rate = PROGRESSION_RATES.find((r) => r === i.defaultProgressionRate);
+        if (!rate) return reject('Progression must be beginner, intermediate or advanced.');
+        if (rate !== prefs?.defaultProgressionRate) {
+          changes.defaultProgressionRate = rate;
+          labels.push(`progression → ${rate}`);
+        }
+      }
+      if (i.autoStartTimer !== undefined) {
+        if (typeof i.autoStartTimer !== 'boolean') return reject('Rest timer auto-start must be on or off.');
+        if (i.autoStartTimer !== prefs?.autoStartTimer) {
+          changes.autoStartTimer = i.autoStartTimer;
+          labels.push(`rest timer auto-start → ${i.autoStartTimer ? 'on' : 'off'}`);
+        }
+      }
+      if (labels.length === 0) return reject('Nothing to change.');
+      return {
+        kind: 'confirm', id,
+        summary: `Profile: ${labels.join(', ')}`,
+        detail: str(i.reason),
+        apply: [],
+        effects: [{
+          type: 'updateProfile',
+          changes: {
+            ...(displayName !== undefined ? { displayName } : {}),
+            ...(Object.keys(changes).length ? { preferences: changes } : {}),
+          },
+        }],
+      };
+    }
+
+    case 'addExercise': {
+      const name = str(i.name);
+      const muscles = strings(i.muscleGroups);
+      const equipment = str(i.equipment);
+      const cues = strings(i.setupCues);
+      if (!name || muscles.length === 0 || !equipment || cues.length === 0) {
+        return reject('That exercise is missing a name, muscles, equipment or setup cues.');
+      }
+      const defaults = (i.defaultSets && typeof i.defaultSets === 'object' ? i.defaultSets : {}) as Record<string, unknown>;
+      const sets = index(defaults.sets);
+      const reps = index(defaults.reps);
+      if (!sets || sets > 10 || !reps || reps > 50) return reject('Default sets must be 1–10 sets of 1–50 reps.');
+      const key = normalName(name);
+      if (ctx.library.some((e) => normalName(e.name) === key)) return reject(`${name} is already in your exercises.`);
+      return {
+        kind: 'confirm', id,
+        summary: `Add ${name} to your exercises`,
+        detail: `${muscles.join(', ')} · ${equipment} · ${sets}×${reps}. ${cues.join(' ')}`,
+        apply: [],
+        effects: [{
+          type: 'addCustomExercise',
+          exercise: {
+            originalName: name,
+            name,
+            muscleGroup: muscles.join(', '),
+            equipment,
+            difficulty: 'Intermediate',
+            instructions: cues,
+            notes: `Default: ${sets}×${reps}`,
+          },
+        }],
+      };
     }
 
     default:

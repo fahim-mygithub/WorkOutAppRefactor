@@ -2,6 +2,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import type Anthropic from '@anthropic-ai/sdk';
 import { defaultActions, handleRequest, type Deps, type Env } from './index';
+import { MAX_IMAGE_BASE64_CHARS } from './schemas';
 
 const env = {
   FIREBASE_PROJECT_ID: 'p', ALLOWED_ORIGINS: 'https://app.test', APP_ORIGIN: 'https://app.test/',
@@ -60,7 +61,7 @@ describe('handleRequest', () => {
     const d = deps();
     expect((await handleRequest(post({ action: 'parse', text: 'bench 3x5' }), env, d)).status).toBe(400);
     expect(d.takeSlot).not.toHaveBeenCalled();
-    expect(Object.keys(defaultActions).sort()).toEqual(['chat', 'findExercise', 'readLift']);
+    expect(Object.keys(defaultActions).sort()).toEqual(['chat', 'findExercise', 'readLift', 'readMachine']);
   });
   it('400 on an oversized chat context without taking a daily slot', async () => {
     const d = deps();
@@ -70,12 +71,12 @@ describe('handleRequest', () => {
     expect(await r.json()).toEqual({ error: { code: 'invalid-argument', message: 'Context too large.' } });
     expect(d.takeSlot).not.toHaveBeenCalled();
   });
-  it('400 on a body over 1,000,000 chars or bad JSON, without taking a slot', async () => {
+  it('400 on a body over 3,100,000 chars or bad JSON, without taking a slot', async () => {
     const d = deps();
     const huge = new Request('https://w.test/', {
       method: 'POST',
       headers: { origin: 'https://app.test', authorization: 'Bearer t' },
-      body: 'x'.repeat(1_000_001),
+      body: 'x'.repeat(3_100_001),
     });
     expect((await handleRequest(huge, env, d)).status).toBe(400);
     const bad = new Request('https://w.test/', {
@@ -94,6 +95,24 @@ describe('handleRequest', () => {
     expect(r.status).toBe(502);
     expect(spy).toHaveBeenCalledWith('ai worker failed', expect.objectContaining({ action: 'chat', status: 529 }));
     spy.mockRestore();
+  });
+  it('400 on a photo over the size cap, without taking a slot', async () => {
+    const d = deps({ actions: { readMachine: vi.fn() } });
+    const big = { action: 'readMachine', image: { mediaType: 'image/jpeg', data: 'A'.repeat(MAX_IMAGE_BASE64_CHARS + 4) } };
+    const r = await handleRequest(post(big), env, d);
+    expect(r.status).toBe(400);
+    expect(d.takeSlot).not.toHaveBeenCalled();
+    expect(d.actions.readMachine).not.toHaveBeenCalled();
+    const chatBig = { action: 'chat', messages: [{ role: 'user', content: 'what is this', image: big.image }] };
+    expect((await handleRequest(post(chatBig), env, d)).status).toBe(400);
+    expect(d.takeSlot).not.toHaveBeenCalled();
+  });
+  it('accepts a full-size photo (the body cap leaves room for it)', async () => {
+    const readMachine = vi.fn().mockResolvedValue({ result: { name: 'Leg Curl' } });
+    const ok = { action: 'readMachine', image: { mediaType: 'image/jpeg', data: 'A'.repeat(MAX_IMAGE_BASE64_CHARS) } };
+    const r = await handleRequest(post(ok), env, deps({ actions: { readMachine } }));
+    expect(r.status).toBe(200);
+    expect(await r.json()).toEqual({ action: 'readMachine', result: { name: 'Leg Curl' } });
   });
   it('503 when the key is missing', async () => {
     expect((await handleRequest(post(chat), { ...env, ANTHROPIC_API_KEY: '' }, deps())).status).toBe(503);
@@ -133,5 +152,19 @@ describe('defaultActions', () => {
     } finally {
       vi.unstubAllGlobals();
     }
+  });
+  it('registers readMachine and wraps the exercise in { result }', async () => {
+    const machine = {
+      name: 'Seated Leg Curl', muscleGroups: ['Hamstrings'], equipment: 'Machine',
+      setupCues: ['Knees at the pivot.'], defaultSets: { sets: 3, reps: 12 },
+    };
+    const create = vi.fn().mockResolvedValue({
+      content: [{ type: 'tool_use', id: 't1', name: 'submitMachine', input: machine }],
+      stop_reason: 'tool_use',
+    });
+    const client = { messages: { create } } as unknown as Anthropic;
+    await expect(
+      defaultActions.readMachine!({ action: 'readMachine', image: { mediaType: 'image/jpeg', data: 'AAAA' } }, client, env),
+    ).resolves.toEqual({ result: machine });
   });
 });

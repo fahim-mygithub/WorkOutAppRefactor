@@ -17,9 +17,18 @@ export type AiSource = 'backend' | 'fallback';
 
 export type AiChatRole = 'user' | 'assistant';
 
+/** One photo for the Worker: base64 (no data: prefix), shrunk on the client
+ *  to fit the Worker's cap (see `image.ts`). */
+export interface AiImage {
+  mediaType: 'image/jpeg' | 'image/png' | 'image/webp' | 'image/gif';
+  data: string;
+}
+
 export interface AiChatMessage {
   role: AiChatRole;
   content: string;
+  /** A photo on a user turn; only the latest one is sent. */
+  image?: AiImage;
 }
 
 /**
@@ -34,7 +43,12 @@ export type AiToolName =
   | 'swapExercise'
   | 'updateBenchmark'
   | 'addTrackedLift'
-  | 'removeTrackedLift';
+  | 'removeTrackedLift'
+  | 'createWorkout'
+  | 'updateWorkout'
+  | 'planWorkout'
+  | 'updateProfile'
+  | 'addExercise';
 
 /** Tool input as validated by the Worker; the planner narrows it per tool. */
 export type AiToolInput = Record<string, unknown>;
@@ -53,6 +67,12 @@ export interface AiChatContext {
   activeWorkout?: unknown;
   trackedLifts?: unknown;
   focusExerciseId?: string;
+  /** Saved workouts by id (updateWorkout). */
+  savedWorkouts?: unknown;
+  /** Display name and training preferences (updateProfile). */
+  profile?: unknown;
+  /** Today, YYYY-MM-DD local (planWorkout). */
+  today?: string;
 }
 
 /** Why an AI call failed, so the UI can say something specific. */

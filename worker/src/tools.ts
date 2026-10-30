@@ -11,11 +11,12 @@
  * a tool without a client handler would produce a card that does nothing.
  * The Worker NEVER applies a mutation — it returns the structured tool calls
  * and the client applies them, tiered as auto (logSet, adjustSet: apply +
- * Undo) or confirm (the rest: Apply/Reject), re-checking every load.
+ * Undo) or confirm (the rest: Apply/Reject; the build/plan/profile tools also
+ * get Undo after Apply), re-checking every load.
  *
- * The hand-rolled converter supports objects of scalars/enums/arrays with
- * optional/default only (no unions), so load and target travel as flat fields
- * ({@link flatLiftFields}).
+ * The hand-rolled converter supports objects (nested too) of scalars/enums/
+ * arrays with optional/default only (no unions), so load and target travel as
+ * flat fields ({@link flatLiftFields}).
  */
 import type Anthropic from '@anthropic-ai/sdk';
 import { z } from 'zod';
@@ -96,11 +97,103 @@ export const mutationToolSchemas = {
 } as const;
 
 // ---------------------------------------------------------------------------
+// Build / plan / profile tools (all confirm-tier on the client, with Undo)
+// ---------------------------------------------------------------------------
+
+/** One exercise of a workout the model writes: straight sets only. */
+const workoutExerciseSchema = z.object({
+  name: z.string().min(1).max(120).describe('Exercise name, preferably the library name.'),
+  sets: z.number().int().min(1).max(10).describe('Number of sets.'),
+  reps: z.number().int().min(1).max(100).describe('Reps per set (bottom of a range).'),
+  repsMax: z.number().int().min(1).max(100).optional().describe('Top of a rep range, e.g. 12 for 8-12.'),
+  weight: z.number().positive().finite().optional().describe('Load per set, in `unit`.'),
+  unit: z.enum(['lbs', 'kg']).optional().describe("Weight unit; the lifter's units when omitted."),
+  restSeconds: z.number().int().min(15).max(600).optional().describe('Rest between sets.'),
+  notes: z.string().max(200).optional().describe('Short cue shown with the exercise.'),
+});
+
+const workoutExercisesSchema = z.array(workoutExerciseSchema).min(1).max(20);
+
+/** An exercise for the lifter's library; also the readMachine result. */
+export const exerciseDraftFields = {
+  name: z.string().min(1).max(120).describe('Exercise name, e.g. "Seated Leg Curl" or "Hammer Strength Iso-Lateral Row".'),
+  muscleGroups: z.array(z.string().min(1).max(40)).min(1).max(6).describe('Primary muscles, e.g. ["Hamstrings"].'),
+  equipment: z.string().min(1).max(60).describe('e.g. Machine, Cables, Barbell, Dumbbells, Bodyweight.'),
+  setupCues: z.array(z.string().min(1).max(200)).min(1).max(6).describe('Short setup and form cues, in order.'),
+  defaultSets: z
+    .object({
+      sets: z.number().int().min(1).max(10).describe('Sets.'),
+      reps: z.number().int().min(1).max(50).describe('Reps per set.'),
+    })
+    .describe('A sensible starting prescription.'),
+};
+
+export const buildToolSchemas = {
+  createWorkout: z
+    .object({
+      workouts: z
+        .array(
+          z.object({
+            name: z.string().min(1).max(80).describe('Workout name, e.g. "Push A".'),
+            exercises: workoutExercisesSchema,
+          }),
+        )
+        .min(1)
+        .max(7)
+        .describe('One workout, or several for a split.'),
+      reason: z.string().max(300).optional().describe('One short line shown to the lifter.'),
+    })
+    .describe("Save one or more workouts to the lifter's saved workouts. Needs confirmation."),
+
+  updateWorkout: z
+    .object({
+      workoutId: z.string().describe('Saved workout id from `savedWorkouts` in the context.'),
+      name: z.string().min(1).max(80).optional().describe('New name.'),
+      exercises: workoutExercisesSchema
+        .optional()
+        .describe('The full new list of straight-set exercises (replaces the old list; supersets stay).'),
+      reason: z.string().max(300).optional().describe('One short line shown to the lifter.'),
+    })
+    .describe('Change a saved workout. Needs confirmation.'),
+
+  planWorkout: z
+    .object({
+      dateKey: z
+        .string()
+        .regex(/^\d{4}-\d{2}-\d{2}$/)
+        .describe('Day to plan it for, YYYY-MM-DD (the context has `today`).'),
+      name: z.string().min(1).max(80).describe('Workout name.'),
+      exercises: workoutExercisesSchema,
+      reason: z.string().max(300).optional().describe('One short line shown to the lifter.'),
+    })
+    .describe("Put a workout on the lifter's plan for a day. Needs confirmation."),
+
+  updateProfile: z
+    .object({
+      displayName: z.string().min(1).max(60).optional().describe('Name shown in the app.'),
+      weightUnit: z.enum(['lbs', 'kg']).optional().describe('Default weight unit.'),
+      unitSystem: z.enum(['imperial', 'metric']).optional().describe('Unit system.'),
+      defaultRestTime: z.number().int().min(15).max(600).optional().describe('Default rest between sets, seconds.'),
+      defaultProgressionRate: z
+        .enum(['beginner', 'intermediate', 'advanced'])
+        .optional()
+        .describe('Training experience used for progression.'),
+      autoStartTimer: z.boolean().optional().describe('Start the rest timer when a set is logged.'),
+      reason: z.string().max(300).optional().describe('One short line shown to the lifter.'),
+    })
+    .describe("Change the lifter's display name or training preferences. Needs confirmation."),
+
+  addExercise: z
+    .object({ ...exerciseDraftFields })
+    .describe("Add an exercise (e.g. a machine from a photo) to the lifter's exercise library. Needs confirmation."),
+} as const;
+
+// ---------------------------------------------------------------------------
 // Assembly: Zod -> Anthropic tool definitions
 // ---------------------------------------------------------------------------
 
 /** Per-tool human descriptions surface in the API tool list via `.describe()`. */
-const allToolSchemas = { ...mutationToolSchemas } as const;
+const allToolSchemas = { ...mutationToolSchemas, ...buildToolSchemas } as const;
 
 export type ToolName = keyof typeof allToolSchemas;
 
@@ -111,7 +204,8 @@ export const toolValidators: Record<ToolName, z.ZodTypeAny> = allToolSchemas;
  * Minimal Zod -> JSON Schema conversion sufficient for the shapes used in this
  * catalog (objects of scalars/enums/arrays, optional + nullable + default +
  * describe, numeric min/max checks as minimum/exclusiveMinimum/maximum,
- * string min/max as minLength/maxLength, array min/max as minItems/maxItems). We
+ * string min/max as minLength/maxLength and regex as pattern, array min/max as
+ * minItems/maxItems). We
  * hand-roll this to avoid pulling in `zod-to-json-schema` and to keep the
  * emitted schema flat and Anthropic-friendly (`additionalProperties: false`).
  */
@@ -148,6 +242,7 @@ function zodToJsonSchema(schema: z.ZodTypeAny): Record<string, unknown> {
       if (check.kind === 'min') out.minLength = check.value;
       else if (check.kind === 'max') out.maxLength = check.value;
       else if (check.kind === 'length') out.minLength = out.maxLength = check.value;
+      else if (check.kind === 'regex') out.pattern = check.regex.source;
     }
     return withDesc(out);
   }

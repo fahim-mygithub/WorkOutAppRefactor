@@ -1,5 +1,6 @@
 /**
- * The `chat` and `readLift` actions (findExercise lives in findExercise.ts).
+ * The `chat` and `readLift` actions (findExercise lives in findExercise.ts,
+ * readMachine in readMachine.ts).
  * The Anthropic client is passed in so the router owns the key and tests can
  * inject a fake.
  *
@@ -18,6 +19,7 @@ import {
   readLiftResultSchema,
   type ChatContext,
   type ChatMessage,
+  type ImageInput,
   type ReadLiftResult,
 } from './schemas';
 import { buildToolDefs, toToolDef, toolValidators, type ToolName } from './tools';
@@ -27,6 +29,11 @@ const MAX_CONTEXT_CHARS = 40_000;
 
 export function makeClient(apiKey: string): Anthropic {
   return new Anthropic({ apiKey });
+}
+
+/** A validated photo as an Anthropic image block. */
+export function imageBlock(image: ImageInput): Anthropic.ImageBlockParam {
+  return { type: 'image', source: { type: 'base64', media_type: image.mediaType, data: image.data } };
 }
 
 // ---------------------------------------------------------------------------
@@ -39,7 +46,7 @@ export const submitLiftTool: Anthropic.Tool = toToolDef('submitLift', readLiftRe
 /** Drop top-level null values (shallow): the model sometimes writes
  *  `weight: null` for a field it does not know, which the schemas treat as
  *  absent. Used for readLift and every chat tool call. */
-function withoutNulls(raw: unknown): Record<string, unknown> | null {
+export function withoutNulls(raw: unknown): Record<string, unknown> | null {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
   return Object.fromEntries(Object.entries(raw).filter(([, v]) => v !== null));
 }
@@ -117,9 +124,10 @@ export async function handleChat(
   messages: ChatMessage[],
   context: ChatContext | undefined,
 ): Promise<ChatResult> {
+  // A photo goes before its text, as the API recommends.
   const apiMessages: Anthropic.MessageParam[] = messages.map((m) => ({
     role: m.role,
-    content: m.content,
+    content: m.image ? [imageBlock(m.image), { type: 'text', text: m.content }] : m.content,
   }));
 
   // Read-only context goes first, in a user message.
