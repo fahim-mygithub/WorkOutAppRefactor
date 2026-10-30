@@ -41,7 +41,6 @@ export interface WorkoutListViewProps {
     weight: number,
     time?: number,
   ) => void;
-  onStartRest?: (duration: number) => void;
   onApplySuggestion?: (weight: number, exerciseId: string) => void;
   onKeepSuggestion?: () => void;
   onEditSets?: (exercise: WorkoutExercise) => void;
@@ -57,7 +56,6 @@ export const WorkoutListView: React.FC<WorkoutListViewProps> = ({
   onCompleteSet,
   onUncompleteSet,
   onUpdateSet,
-  onStartRest,
   onEditSets,
   onChangeExercise,
   onAskCoach,
@@ -211,10 +209,6 @@ export const WorkoutListView: React.FC<WorkoutListViewProps> = ({
                   );
                 }
               });
-
-              // Start exactly one rest timer using the first exercise's restTime
-              const restDuration = card.firstExercise.restTime || 120;
-              onStartRest?.(restDuration);
             }
           };
 

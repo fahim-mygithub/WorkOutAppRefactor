@@ -703,9 +703,6 @@ export default function WorkoutPage() {
             }}
             onUncompleteSet={handleUncompleteSet}
             onUpdateSet={handleUpdateSet}
-            onStartRest={(duration) => {
-              dispatch(startRestTimer({ duration }));
-            }}
             onFocusExercise={handleFocusExercise}
             onApplySuggestion={handleApplySuggestion}
             onKeepSuggestion={handleKeepSuggestion}

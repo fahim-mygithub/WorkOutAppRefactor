@@ -29,6 +29,11 @@ export const ExerciseEditModal: React.FC<ExerciseEditModalProps> = ({
   const [sets, setSets] = useState<WorkoutSet[]>([]);
   const [restTime, setRestTime] = useState(120);
   const [hasChanges, setHasChanges] = useState(false);
+  // Raw text of a number field while it is being typed, keyed `${setIndex}:reps`,
+  // `${setIndex}:weight` or `rest`. A blank or partial entry ("", "22.") lives
+  // here, so the field can be empty without the value snapping back to 0 and
+  // without a leading zero appearing ("025"). Cleared on blur.
+  const [drafts, setDrafts] = useState<Record<string, string>>({});
 
   // Initialize state when exercise changes
   useEffect(() => {
@@ -36,6 +41,7 @@ export const ExerciseEditModal: React.FC<ExerciseEditModalProps> = ({
       setSets([...exercise.sets]); // Create a copy
       setRestTime(exercise.restTime || 120);
       setHasChanges(false);
+      setDrafts({});
     }
   }, [exercise]);
 
@@ -75,7 +81,34 @@ export const ExerciseEditModal: React.FC<ExerciseEditModalProps> = ({
     if (exercise && confirm('Reset all changes to original values?')) {
       setSets([...exercise.sets]);
       setRestTime(exercise.restTime || 120);
+      setDrafts({});
     }
+  };
+
+  // Typed number text: only digits (plus one decimal point for weight) get through.
+  // A blank or lone "." is kept as draft text but not committed, so the field keeps
+  // its previous value until a number is typed. Blur drops the draft and shows the value.
+  const NUMBER_PATTERN = { reps: /^\d*$/, weight: /^\d*\.?\d*$/, rest: /^\d*$/ } as const;
+
+  const typeNumber = (
+    key: string,
+    kind: keyof typeof NUMBER_PATTERN,
+    raw: string,
+    commit: (value: number) => void,
+  ) => {
+    if (!NUMBER_PATTERN[kind].test(raw)) return;
+    setDrafts((prev) => ({ ...prev, [key]: raw }));
+    const value = kind === 'weight' ? parseFloat(raw) : parseInt(raw, 10);
+    if (Number.isFinite(value)) commit(value);
+  };
+
+  const blurNumber = (key: string) => {
+    setDrafts((prev) => {
+      if (!(key in prev)) return prev;
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
   };
 
   const updateSet = (index: number, field: keyof WorkoutSet, value: any) => {
@@ -153,13 +186,14 @@ export const ExerciseEditModal: React.FC<ExerciseEditModalProps> = ({
               </IconButton>
               <Input
                 id="rest-time-input"
-                type="number"
+                type="text"
                 inputMode="numeric"
-                value={restTime}
-                onChange={(e) => setRestTime(parseInt(e.target.value) || 0)}
+                value={drafts.rest ?? String(restTime)}
+                onChange={(e) =>
+                  typeNumber('rest', 'rest', e.target.value, setRestTime)
+                }
+                onBlur={() => blurNumber('rest')}
                 className="w-24 text-center"
-                min="0"
-                step="15"
                 aria-describedby="rest-time-clock"
               />
               <IconButton
@@ -221,23 +255,26 @@ export const ExerciseEditModal: React.FC<ExerciseEditModalProps> = ({
                   <Input
                     id={`reps-${set.id}`}
                     aria-label={`Set ${index + 1} reps`}
-                    type="number"
+                    type="text"
                     inputMode="numeric"
-                    value={set.reps}
-                    onChange={(e) => updateSet(index, 'reps', parseInt(e.target.value) || 0)}
+                    value={drafts[`${index}:reps`] ?? String(set.reps ?? '')}
+                    onChange={(e) =>
+                      typeNumber(`${index}:reps`, 'reps', e.target.value, (v) => updateSet(index, 'reps', v))
+                    }
+                    onBlur={() => blurNumber(`${index}:reps`)}
                     className="min-w-0 px-3"
-                    min="0"
                   />
                   <Input
                     id={`weight-${set.id}`}
                     aria-label={`Set ${index + 1} weight in pounds`}
-                    type="number"
+                    type="text"
                     inputMode="decimal"
-                    value={set.weight || 0}
-                    onChange={(e) => updateSet(index, 'weight', parseFloat(e.target.value) || 0)}
+                    value={drafts[`${index}:weight`] ?? String(set.weight || 0)}
+                    onChange={(e) =>
+                      typeNumber(`${index}:weight`, 'weight', e.target.value, (v) => updateSet(index, 'weight', v))
+                    }
+                    onBlur={() => blurNumber(`${index}:weight`)}
                     className="min-w-0 px-3"
-                    min="0"
-                    step="0.5"
                   />
                   <IconButton
                     aria-label={`Duplicate set ${index + 1}`}
