@@ -1,18 +1,35 @@
 name = "workout-ai"
-main = "src/index.ts"
+# src/main.ts routes /mcp, the OAuth endpoints and /.well-known/* to the Claude
+# connector, and everything else to the AI Worker (src/index.ts) unchanged.
+main = "src/main.ts"
 compatibility_date = "2026-09-01"
-compatibility_flags = ["nodejs_compat"]
+# global_fetch_strictly_public: lets the OAuth provider fetch Client ID
+# Metadata Documents (how newer MCP clients identify themselves).
+compatibility_flags = ["nodejs_compat", "global_fetch_strictly_public"]
 
 # Secrets (set with `wrangler secret put`, never committed):
-#   ANTHROPIC_API_KEY  - the Anthropic API key
-#   AI_ALLOWED_EMAILS  - comma-separated emails allowed to use AI
+#   ANTHROPIC_API_KEY         - the Anthropic API key
+#   AI_ALLOWED_EMAILS         - comma-separated emails allowed to use AI and the Claude connector
+#   FIREBASE_SERVICE_ACCOUNT  - the Firebase service-account JSON key (the whole file), used by the
+#                               connector to read/write Firestore. It bypasses security rules: the
+#                               Worker scopes every path to the signed-in user's uid itself.
 [vars]
 FIREBASE_PROJECT_ID = "workout-pwa-nf0sf"
 ALLOWED_ORIGINS = "https://fahim-mygithub.github.io,https://workout-pwa-nf0sf.web.app,https://workout-pwa-nf0sf.firebaseapp.com,http://localhost:5290"
 APP_ORIGIN = "https://fahim-mygithub.github.io/"
 # 0 turns AI off for everyone.
 AI_DAILY_LIMIT = "150"
+# Public Firebase web config (same values as src/firebase/config.ts) for the
+# connector's Google sign-in page at /authorize.
+FIREBASE_WEB_API_KEY = "AIzaSyCh2sOBBYE7MEwZHn56C-U-05YPJeu1Bts"
+FIREBASE_AUTH_DOMAIN = "workout-pwa-nf0sf.firebaseapp.com"
 
 [[kv_namespaces]]
 binding = "AI_USAGE"
 id = "REPLACE_AT_DEPLOY"
+
+# OAuth clients, grants and tokens for the Claude connector
+# (`npx wrangler kv namespace create OAUTH_KV`, paste the id here).
+[[kv_namespaces]]
+binding = "OAUTH_KV"
+id = "REPLACE_AT_DEPLOY_OAUTH"
