@@ -222,10 +222,9 @@ describe('WorkoutListView', () => {
     expect(updatedButtons[3]).toHaveAccessibleName(/set 4: 5 reps, 100 lbs?/i);
   });
 
-  it('Log workout button accessible name matches visible text exactly, logs all sets and starts exactly one rest', async () => {
+  it('Log workout button accessible name matches visible text exactly, logs all sets, one line each', async () => {
     const user = userEvent.setup();
     const onCompleteSet = vi.fn();
-    const onStartRest = vi.fn();
     const workout = createMockWorkout();
 
     render(
@@ -233,7 +232,6 @@ describe('WorkoutListView', () => {
         workout={workout}
         onCompleteSet={onCompleteSet}
         onUncompleteSet={vi.fn()}
-        onStartRest={onStartRest}
       />
     );
 
@@ -254,15 +252,12 @@ describe('WorkoutListView', () => {
     expect(onCompleteSet).toHaveBeenNthCalledWith(3, 0, 2, 5, 105, undefined);
     expect(onCompleteSet).toHaveBeenNthCalledWith(4, 0, 3, 5, 100, undefined);
 
-    // Starts exactly ONE rest timer using the exercise restTime (90)
-    expect(onStartRest).toHaveBeenCalledOnce();
-    expect(onStartRest).toHaveBeenCalledWith(90);
+    // List mode is a logging segment: no rest timer starts
   });
 
   it('card with no sets disables Log workout and starts no rest timer on click', async () => {
     const user = userEvent.setup();
     const onCompleteSet = vi.fn();
-    const onStartRest = vi.fn();
     const noSetsWorkout = createMockWorkout([
       {
         id: 'we-empty',
@@ -277,7 +272,6 @@ describe('WorkoutListView', () => {
         workout={noSetsWorkout}
         onCompleteSet={onCompleteSet}
         onUncompleteSet={vi.fn()}
-        onStartRest={onStartRest}
       />
     );
 
@@ -287,13 +281,11 @@ describe('WorkoutListView', () => {
     await user.click(logButton);
 
     expect(onCompleteSet).not.toHaveBeenCalled();
-    expect(onStartRest).not.toHaveBeenCalled();
   });
 
   it('undo: when all sets are logged, button displays Logged. Tap to undo and does not start rest', async () => {
     const user = userEvent.setup();
     const onUncompleteSet = vi.fn();
-    const onStartRest = vi.fn();
     const allDoneWorkout = createMockWorkout([
       {
         id: 'we-bench',
@@ -311,7 +303,6 @@ describe('WorkoutListView', () => {
         workout={allDoneWorkout}
         onCompleteSet={vi.fn()}
         onUncompleteSet={onUncompleteSet}
-        onStartRest={onStartRest}
       />
     );
 
@@ -323,13 +314,11 @@ describe('WorkoutListView', () => {
     expect(onUncompleteSet).toHaveBeenCalledTimes(2);
     expect(onUncompleteSet).toHaveBeenNthCalledWith(1, 0, 0);
     expect(onUncompleteSet).toHaveBeenNthCalledWith(2, 0, 1);
-    expect(onStartRest).not.toHaveBeenCalled();
   });
 
   it('resume-pre-logged lines: pre-logged sets render as completed and Log workout logs only remaining sets', async () => {
     const user = userEvent.setup();
     const onCompleteSet = vi.fn();
-    const onStartRest = vi.fn();
     const partiallyDoneWorkout = createMockWorkout([
       {
         id: 'we-bench',
@@ -347,7 +336,6 @@ describe('WorkoutListView', () => {
         workout={partiallyDoneWorkout}
         onCompleteSet={onCompleteSet}
         onUncompleteSet={vi.fn()}
-        onStartRest={onStartRest}
       />
     );
 
@@ -358,8 +346,6 @@ describe('WorkoutListView', () => {
     // Only Set 2 (index 1) should be logged!
     expect(onCompleteSet).toHaveBeenCalledTimes(1);
     expect(onCompleteSet).toHaveBeenCalledWith(0, 1, 8, 70, undefined);
-    expect(onStartRest).toHaveBeenCalledOnce();
-    expect(onStartRest).toHaveBeenCalledWith(90);
   });
 
   it('reduced motion class: inline editor includes classes supporting prefers-reduced-motion without inline style tags', async () => {
@@ -410,7 +396,6 @@ describe('WorkoutListView', () => {
   it('timed set: logs own reps value (0, not 8) and displays time in seconds', async () => {
     const user = userEvent.setup();
     const onCompleteSet = vi.fn();
-    const onStartRest = vi.fn();
     const timedWorkout = createMockWorkout([
       {
         id: 'we-plank',
@@ -427,7 +412,6 @@ describe('WorkoutListView', () => {
         workout={timedWorkout}
         onCompleteSet={onCompleteSet}
         onUncompleteSet={vi.fn()}
-        onStartRest={onStartRest}
       />
     );
 
