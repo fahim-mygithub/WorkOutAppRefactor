@@ -3,22 +3,22 @@
  * claude.ai connector runs (DCR + PKCE + our /authorize), and an MCP
  * round trip with the SDK client against a fake Firestore.
  */
-import './mcp/testing/cfWorkersShim';
+import './testing/cfWorkersShim';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { FakeFirestore } from './data/testing/fakeFirestore';
-import type { McpEnv } from './mcp/env';
-import { memoryKv } from './mcp/testing/memoryKv';
+import { FakeFirestore } from '../data/testing/fakeFirestore';
+import type { McpEnv } from './env';
+import { memoryKv } from './testing/memoryKv';
 
-type MainModule = typeof import('./main');
-type ProviderModule = typeof import('./mcp/provider');
+type MainModule = typeof import('../main');
+type ProviderModule = typeof import('./provider');
 let main: MainModule;
 let providerMod: ProviderModule;
 
 beforeAll(async () => {
-  main = await import('./main');
-  providerMod = await import('./mcp/provider');
+  main = await import('../main');
+  providerMod = await import('./provider');
 });
 
 const ORIGIN = 'https://workout-ai.test';
