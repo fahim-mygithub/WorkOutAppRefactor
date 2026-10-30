@@ -19,6 +19,7 @@ import { EnhancedTextInput } from '../components/workout/EnhancedTextInput';
 import { ParsedWorkoutConfigurator } from '../components/workout/ParsedWorkoutConfigurator';
 import { RealtimePreview } from '../components/workout/RealtimePreview';
 import { ExerciseQuickAdd, newBuilderExercise } from '../components/workout/ExerciseQuickAdd';
+import { MachinePhotoAdd, type MachineDefaults } from '../components/ai/MachinePhotoAdd';
 import { workoutNameForLifts } from '../lib/trackedLifts';
 import { buildTrackedWorkout } from '../lib/trackedLiftProgression';
 import { matchExercise } from '../lib/exerciseMatch';
@@ -840,6 +841,13 @@ export default function BuildPage() {
     const base = visualWorkout ?? { exercises: [], supersets: [] };
     setEditedWorkout({ ...base, exercises: [...base.exercises, newBuilderExercise(exercise)] });
   }, [visualWorkout]);
+
+  // Visual's "Add from a photo": the machine's exercise with the sets the card ended on.
+  const handleMachineAdd = useCallback((exercise: Exercise, defaults: MachineDefaults) => {
+    const base = visualWorkout ?? { exercises: [], supersets: [] };
+    const sets = Array.from({ length: defaults.sets }, () => ({ reps: defaults.reps, rest: 120 }));
+    setEditedWorkout({ ...base, exercises: [...base.exercises, { name: exercise.name, sets }] });
+  }, [visualWorkout]);
   const isParseDisabled = !workoutText.trim() || !isParsingEnabled || isCurrentlyParsing;
 
   // Render the text input section
@@ -1005,6 +1013,7 @@ export default function BuildPage() {
             />
           </div>
           <ExerciseQuickAdd id="visual-exercise-search" label="Add an exercise" onAdd={handleVisualAdd} />
+          <MachinePhotoAdd onAdd={handleMachineAdd} />
         </Card>
 
         {showConfiguration ? (

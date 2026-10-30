@@ -1,22 +1,28 @@
 /**
  * The read-only slice of app state sent with each chat turn. Kept small:
- * names, ids, numbers; no media, instructions or account data.
+ * names, ids, numbers; no media, instructions or account data (the profile is
+ * the display name and training preferences only).
  *
  * The ids are the ones the tool planner (`applyTool.ts`) resolves:
  * exercise `id` → `exerciseId`, set `index` → `setIndex` / `fromSetIndex`,
- * tracked lift `id` → `liftId`.
+ * tracked lift `id` → `liftId`, saved workout `id` → `workoutId`.
  */
 import type { ActiveWorkout, Exercise } from '../types/exercise';
+import type { ParsedWorkout } from '../parser/types';
+import type { UserPreferences } from '../store/slices/userSlice';
 import type { SessionGoal, TrackedLift, TrackedSetLog, WeightUnit } from '../types/trackedLifts';
 import { currentEstimate, prescribe, progressionStatus, roundLoad } from '../lib/trackedLiftProgression';
 import { formatLoad, formatTarget } from '../lib/trackedLifts';
 import { swapAlternatives } from './alternatives';
+import { exerciseLine, supersetLine } from './workoutText';
 import type { AiChatContext } from './types';
 
 /** Sessions of a lift's log sent along (the engine keeps up to 6). */
 const RECENT_SESSIONS = 3;
 /** Client-side JSON size target, below the Worker's 40,000-char cap. */
 export const CONTEXT_BUDGET = 30_000;
+/** Saved workouts sent (most recently updated first, as the service lists them). */
+const MAX_SAVED_WORKOUTS = 20;
 
 export interface AiContextSet {
   index: number;
@@ -59,9 +65,30 @@ export interface AiContextLift {
   next?: { volume: string; strength: string; checkpoint: string };
 }
 
+/** A saved workout by id; its lines are parser text ("3x8 Bench Press @135lbs"). */
+export interface AiContextSavedWorkout {
+  id: string;
+  name: string;
+  exercises?: string[];
+  supersets?: string[];
+}
+
+/** Display name and training preferences: what updateProfile may change. */
+export interface AiContextProfile {
+  displayName?: string;
+  weightUnit: UserPreferences['weightUnit'];
+  unitSystem: UserPreferences['unitSystem'];
+  defaultRestTime: number;
+  defaultProgressionRate: UserPreferences['defaultProgressionRate'];
+  autoStartTimer: boolean;
+}
+
 export interface AiContext extends AiChatContext {
   activeWorkout?: { name: string; exercises: AiContextExercise[] };
   trackedLifts: AiContextLift[];
+  savedWorkouts?: AiContextSavedWorkout[];
+  profile?: AiContextProfile;
+  today?: string;
 }
 
 /** Copy only the defined keys, so JSON stays free of nulls and extras. */
@@ -96,8 +123,12 @@ export function buildAiContext(input: {
   focusExerciseId?: string;
   /** The merged exercise library (built-in + custom), for swap alternatives. */
   library?: readonly Exercise[];
+  savedWorkouts?: readonly { id: string; name: string; parsedWorkout: ParsedWorkout }[];
+  profile?: { displayName?: string; preferences: UserPreferences };
+  /** Today, YYYY-MM-DD local. */
+  today?: string;
 }): AiContext {
-  const { activeWorkout, library = [] } = input;
+  const { activeWorkout, library = [], profile } = input;
   const alternativesFor = (e: ActiveWorkout['exercises'][number]) => {
     const names = library.length && e.exercise ? swapAlternatives(e.exercise, library) : [];
     return names.length ? { alternatives: names } : {};
@@ -106,6 +137,32 @@ export function buildAiContext(input: {
     screen: input.screen,
     units: input.units,
     ...(input.focusExerciseId ? { focusExerciseId: input.focusExerciseId } : {}),
+    ...(input.today ? { today: input.today } : {}),
+    ...(profile
+      ? {
+          profile: {
+            ...(profile.displayName ? { displayName: profile.displayName } : {}),
+            weightUnit: profile.preferences.weightUnit,
+            unitSystem: profile.preferences.unitSystem,
+            defaultRestTime: profile.preferences.defaultRestTime,
+            defaultProgressionRate: profile.preferences.defaultProgressionRate,
+            autoStartTimer: profile.preferences.autoStartTimer,
+          },
+        }
+      : {}),
+    ...(input.savedWorkouts?.length
+      ? {
+          savedWorkouts: input.savedWorkouts.slice(0, MAX_SAVED_WORKOUTS).map((w) => {
+            const supersets = (w.parsedWorkout.supersets ?? []).map(supersetLine);
+            return {
+              id: w.id,
+              name: w.name,
+              exercises: w.parsedWorkout.exercises.map(exerciseLine),
+              ...(supersets.length ? { supersets } : {}),
+            };
+          }),
+        }
+      : {}),
     ...(activeWorkout
       ? {
           activeWorkout: {
@@ -184,10 +241,11 @@ function withoutAlternatives(ctx: AiContext, drop: (e: AiContextExercise) => boo
 }
 
 /**
- * Trim in stages until the JSON fits `CONTEXT_BUDGET`: the other lifts lose
- * their recent sessions, then their prescriptions, then all but id, name and
- * benchmark; then non-focus exercises lose their swap alternatives, and
- * finally the focus exercise does too.
+ * Trim in stages until the JSON fits `CONTEXT_BUDGET`: saved workouts lose
+ * their exercise lines (id and name stay); the other lifts lose their recent
+ * sessions, then their prescriptions, then all but id, name and benchmark;
+ * then non-focus exercises lose their swap alternatives, and finally the
+ * focus exercise does too.
  */
 function fitBudget(ctx: AiContext, keep: ReadonlySet<string>): AiContext {
   const liftStages: ((l: AiContextLift) => AiContextLift)[] = [
@@ -196,6 +254,8 @@ function fitBudget(ctx: AiContext, keep: ReadonlySet<string>): AiContext {
     ({ id, name, benchmark }) => ({ id, name, benchmark }),
   ];
   let out = ctx;
+  if (fits(out)) return out;
+  if (out.savedWorkouts) out = { ...out, savedWorkouts: out.savedWorkouts.map(({ id, name }) => ({ id, name })) };
   for (const stage of liftStages) {
     if (fits(out)) return out;
     out = { ...out, trackedLifts: out.trackedLifts.map((l) => (keep.has(l.id) ? l : stage(l))) };

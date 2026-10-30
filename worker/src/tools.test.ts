@@ -4,9 +4,10 @@ import { buildToolDefs, toolValidators } from './tools';
 
 describe('tool catalog', () => {
   it('exposes exactly the applied tools', () => {
-    expect(buildToolDefs().map((t) => t.name).sort()).toEqual(
-      ['addTrackedLift', 'adjustSet', 'logSet', 'removeTrackedLift', 'swapExercise', 'updateBenchmark'],
-    );
+    expect(buildToolDefs().map((t) => t.name).sort()).toEqual([
+      'addExercise', 'addTrackedLift', 'adjustSet', 'createWorkout', 'logSet', 'planWorkout',
+      'removeTrackedLift', 'swapExercise', 'updateBenchmark', 'updateProfile', 'updateWorkout',
+    ]);
   });
   it('validates adjustSet', () => {
     expect(toolValidators.adjustSet.safeParse({ exerciseId: 'e1', fromSetIndex: 2, weight: 205, reason: 'missed' }).success).toBe(true);
@@ -34,5 +35,62 @@ describe('tool catalog', () => {
       buildToolDefs().find((t) => t.name === name)!.input_schema.properties as Record<string, { description?: string }>;
     expect(props('adjustSet').weight.description).toContain('in the workout unit');
     expect(props('swapExercise').weight.description).toContain('in the workout unit');
+  });
+});
+
+const bench = { name: 'Bench Press', sets: 3, reps: 8, weight: 135, unit: 'lbs' };
+
+describe('workout tools', () => {
+  it('createWorkout takes one or many workouts', () => {
+    const one = { workouts: [{ name: 'Push', exercises: [bench] }] };
+    const two = { workouts: [{ name: 'Push', exercises: [bench] }, { name: 'Pull', exercises: [{ name: 'Row', sets: 4, reps: 10 }] }] };
+    expect(toolValidators.createWorkout.safeParse(one).success).toBe(true);
+    expect(toolValidators.createWorkout.safeParse(two).success).toBe(true);
+    expect(toolValidators.createWorkout.safeParse({ workouts: [] }).success).toBe(false);
+    expect(toolValidators.createWorkout.safeParse({ workouts: [{ name: 'Empty', exercises: [] }] }).success).toBe(false);
+    expect(toolValidators.createWorkout.safeParse({ workouts: [{ name: 'X', exercises: [{ ...bench, sets: 0 }] }] }).success).toBe(false);
+  });
+  it('updateWorkout needs the saved workout id', () => {
+    expect(toolValidators.updateWorkout.safeParse({ workoutId: 'w1', name: 'Push A', reason: 'rename' }).success).toBe(true);
+    expect(toolValidators.updateWorkout.safeParse({ name: 'Push A' }).success).toBe(false);
+  });
+  it('planWorkout takes a YYYY-MM-DD dateKey and a workout', () => {
+    const plan = { dateKey: '2026-11-02', name: 'Legs', exercises: [{ name: 'Squat', sets: 5, reps: 5 }] };
+    expect(toolValidators.planWorkout.safeParse(plan).success).toBe(true);
+    expect(toolValidators.planWorkout.safeParse({ ...plan, dateKey: 'next monday' }).success).toBe(false);
+  });
+  it('emits nested array/object schemas for the workout tools', () => {
+    const create = buildToolDefs().find((t) => t.name === 'createWorkout')!;
+    const workouts = (create.input_schema.properties as Record<string, Record<string, unknown>>).workouts;
+    expect(workouts).toMatchObject({ type: 'array', minItems: 1 });
+    const item = workouts.items as { type: string; required: string[]; properties: Record<string, Record<string, unknown>> };
+    expect(item.type).toBe('object');
+    expect(item.required).toEqual(expect.arrayContaining(['name', 'exercises']));
+    expect((item.properties.exercises.items as { required: string[] }).required).toEqual(expect.arrayContaining(['name', 'sets', 'reps']));
+  });
+});
+
+describe('updateProfile', () => {
+  it('offers only display and training fields', () => {
+    const props = Object.keys(buildToolDefs().find((t) => t.name === 'updateProfile')!.input_schema.properties as object).sort();
+    expect(props).toEqual(['autoStartTimer', 'defaultProgressionRate', 'defaultRestTime', 'displayName', 'reason', 'unitSystem', 'weightUnit']);
+  });
+  it('drops account fields and bounds rest time', () => {
+    const r = toolValidators.updateProfile.safeParse({ weightUnit: 'kg', email: 'x@y.z', uid: 'other' });
+    expect(r.success).toBe(true);
+    expect(r.success && r.data).toEqual({ weightUnit: 'kg' });
+    expect(toolValidators.updateProfile.safeParse({ defaultRestTime: 5000 }).success).toBe(false);
+  });
+});
+
+describe('addExercise', () => {
+  it('takes name, muscle groups, equipment, setup cues and default sets', () => {
+    const ok = {
+      name: 'Hammer Strength Chest Press', muscleGroups: ['Chest', 'Triceps'], equipment: 'Machine',
+      setupCues: ['Seat so handles are mid-chest.'], defaultSets: { sets: 3, reps: 10 },
+    };
+    expect(toolValidators.addExercise.safeParse(ok).success).toBe(true);
+    expect(toolValidators.addExercise.safeParse({ ...ok, muscleGroups: [] }).success).toBe(false);
+    expect(toolValidators.addExercise.safeParse({ ...ok, defaultSets: { sets: 30, reps: 10 } }).success).toBe(false);
   });
 });

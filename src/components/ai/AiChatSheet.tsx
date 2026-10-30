@@ -8,6 +8,10 @@
 //     auto-tier calls (logSet, adjustSet) are applied by the host and show here
 //     as small applied/discarded notices (the host shows the Undo toast).
 //   - VISUALIZATION blocks render READ-ONLY (no Apply/Reject).
+//   - One photo can ride with the next message (camera button, shown only when
+//     AI is available): shrunk on the device by `prepareImage` before sending.
+//   - Apply may be async (a save): the card stays locked while it runs and
+//     only reads Applied once it succeeds.
 //   - When no client is available it shows a graceful state and still offers
 //     the on-device WorkoutParser (freeform text -> sets) via onFallbackParse.
 //
@@ -24,7 +28,7 @@ import {
   SheetTitle,
   SheetDescription,
 } from '@/components/ui/sheet';
-import { ArrowUp, Check, CircleSlash } from 'lucide-react';
+import { ArrowUp, Camera, Check, CircleSlash, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { IconButton } from '@/components/ui/icon-button';
 import { Textarea } from '@/components/ui/textarea';
@@ -35,10 +39,12 @@ import {
 } from '@/components/ai/ApplyRejectCard';
 import type {
   AiAssistantTurn,
+  AiImage,
   AiNotice,
   AiToolProposal,
   AiVisualization,
 } from '@/ai/types';
+import { compressImage, ImageTooLargeError } from '@/ai/image';
 import { WorkoutParser } from '@/parser/workoutParser';
 import type { ParsedWorkout } from '@/parser/types';
 import { cn } from '@/lib/utils';
@@ -73,6 +79,8 @@ export interface AiChatMessage {
   id: string;
   role: AiChatRole;
   text: string;
+  /** A photo the user attached to this turn. */
+  image?: AiImage;
   proposals?: AiToolProposal[];
   visualizations?: AiVisualization[];
   notices?: AiNotice[];
@@ -97,9 +105,12 @@ export interface AiChatSheetProps {
    * page performs the real app-state mutation here. Also forwarded to
    * `client.applyToolCall` if present. Return a message to refuse (e.g. the
    * change no longer fits the app state): the card stays open and the message
-   * shows as the error.
+   * shows as the error. May be async (a save); the card stays locked until
+   * it settles.
    */
-  onApplyProposal?: (proposal: AiToolProposal) => string | void;
+  onApplyProposal?: (
+    proposal: AiToolProposal,
+  ) => string | void | Promise<string | void>;
   /** Called when the user rejects a mutation proposal. */
   onRejectProposal?: (proposal: AiToolProposal) => void;
   /**
@@ -119,6 +130,8 @@ export interface AiChatSheetProps {
    * sheet is modal, so anything outside it is inert while it is open.
    */
   overlay?: React.ReactNode;
+  /** Shrinks a picked photo for the Worker. Defaults to `compressImage`. */
+  prepareImage?: (file: File) => Promise<AiImage>;
   className?: string;
 }
 
@@ -129,6 +142,8 @@ function nextId(prefix: string): string {
 }
 
 const FALLBACK_HINT = "AI isn't available right now.";
+/** Sent as the text of a turn that is only a photo. */
+const PHOTO_ONLY_TEXT = 'What is this machine? Add it to my exercises.';
 
 /**
  * The Worker rejects chat messages with empty content, and an assistant turn
@@ -166,6 +181,7 @@ export function AiChatSheet({
   renderVisualization,
   initialMessage,
   overlay,
+  prepareImage = compressImage,
   className,
 }: AiChatSheetProps) {
   const isAvailable = available ?? client != null;
@@ -178,6 +194,12 @@ export function AiChatSheet({
   const [decisions, setDecisions] = React.useState<
     Record<string, ApplyRejectDecision>
   >({});
+  // Proposals whose Apply is still running (locks their card).
+  const [applying, setApplying] = React.useState<Record<string, boolean>>({});
+  // The photo waiting to go with the next message, and whether one is being read.
+  const [attached, setAttached] = React.useState<AiImage | null>(null);
+  const [readingPhoto, setReadingPhoto] = React.useState(false);
+  const photoInputRef = React.useRef<HTMLInputElement>(null);
 
   const parserRef = React.useRef<WorkoutParser | null>(null);
   if (parserRef.current === null) {
@@ -185,16 +207,49 @@ export function AiChatSheet({
   }
 
   const handleApply = React.useCallback(
-    (proposal: AiToolProposal) => {
-      const problem = onApplyProposal?.(proposal);
+    async (proposal: AiToolProposal) => {
+      setApplying((a) => ({ ...a, [proposal.id]: true }));
+      let problem: string | void;
+      try {
+        problem = await onApplyProposal?.(proposal);
+      } catch {
+        problem = "Couldn't apply — try again.";
+      } finally {
+        setApplying((a) => ({ ...a, [proposal.id]: false }));
+      }
       if (typeof problem === 'string') {
         setError(problem);
         return;
       }
+      setError(null);
       setDecisions((d) => ({ ...d, [proposal.id]: 'applied' }));
       void client?.applyToolCall?.(proposal);
     },
     [client, onApplyProposal],
+  );
+
+  const handlePhoto = React.useCallback(
+    async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      // Clear so picking the same photo again still fires a change.
+      e.target.value = '';
+      if (!file) return;
+      setReadingPhoto(true);
+      setError(null);
+      try {
+        setAttached(await prepareImage(file));
+      } catch (err) {
+        setAttached(null);
+        setError(
+          err instanceof ImageTooLargeError
+            ? 'That photo is too large — try another.'
+            : "Couldn't read that photo — try another.",
+        );
+      } finally {
+        setReadingPhoto(false);
+      }
+    },
+    [prepareImage],
   );
 
   const handleReject = React.useCallback(
@@ -206,16 +261,18 @@ export function AiChatSheet({
   );
 
   const sendToBackend = React.useCallback(
-    async (text: string) => {
+    async (text: string, image?: AiImage) => {
       if (!client) return;
       const userMsg: AiChatMessage = {
         id: nextId('user'),
         role: 'user',
         text,
+        ...(image ? { image } : {}),
       };
       const history = [...messages, userMsg];
       setMessages(history);
       setDraft('');
+      setAttached(null);
       setPending(true);
       setError(null);
       try {
@@ -280,17 +337,22 @@ export function AiChatSheet({
     (e: React.FormEvent) => {
       e.preventDefault();
       const text = draft.trim();
-      if (!text || pending) return;
+      if (pending || readingPhoto) return;
       if (isAvailable && client) {
-        void sendToBackend(text);
-      } else {
+        if (!text && !attached) return;
+        void sendToBackend(text || PHOTO_ONLY_TEXT, attached ?? undefined);
+      } else if (text) {
         runFallbackParse(text);
       }
     },
-    [draft, pending, isAvailable, client, sendToBackend, runFallbackParse],
+    [draft, pending, readingPhoto, isAvailable, client, attached, sendToBackend, runFallbackParse],
   );
 
-  const canSubmit = !pending && draft.trim().length > 0;
+  const canAttach = isAvailable && client != null;
+  const canSubmit =
+    !pending &&
+    !readingPhoto &&
+    (draft.trim().length > 0 || (canAttach && attached != null));
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -333,6 +395,14 @@ export function AiChatSheet({
 
           {messages.map((msg) => (
             <div key={msg.id} data-role={msg.role} className="space-y-3">
+              {msg.image ? (
+                <img
+                  src={`data:${msg.image.mediaType};base64,${msg.image.data}`}
+                  alt="Your photo"
+                  className="ml-auto block max-h-48 w-auto max-w-[70%] rounded-2xl rounded-br-md object-cover"
+                />
+              ) : null}
+
               {msg.text ? (
                 <div
                   className={cn(
@@ -377,8 +447,9 @@ export function AiChatSheet({
                   key={proposal.id}
                   proposal={proposal}
                   decision={decisions[proposal.id] ?? null}
-                  onApply={handleApply}
+                  onApply={(p) => void handleApply(p)}
                   onReject={handleReject}
+                  disabled={applying[proposal.id] ?? false}
                 />
               ))}
 
@@ -427,6 +498,29 @@ export function AiChatSheet({
           </p>
         ) : null}
 
+        {/* The photo going with the next message. */}
+        {canAttach && attached ? (
+          <div
+            data-testid="ai-photo-preview"
+            className="mt-3 flex items-center gap-2"
+          >
+            <img
+              src={`data:${attached.mediaType};base64,${attached.data}`}
+              alt="Photo to send"
+              className="h-14 w-14 rounded-xl object-cover"
+            />
+            <IconButton
+              type="button"
+              variant="ghost"
+              size="sm"
+              aria-label="Remove photo"
+              onClick={() => setAttached(null)}
+            >
+              <X size={16} aria-hidden="true" />
+            </IconButton>
+          </div>
+        ) : null}
+
         {/* Composer — raised field; the amber control is the one action. */}
         <form
           onSubmit={handleSubmit}
@@ -448,6 +542,33 @@ export function AiChatSheet({
             disabled={pending}
             className="min-h-[3.25rem] flex-1 resize-none"
           />
+          {canAttach ? (
+            <>
+              {/* capture="environment" opens the rear camera on phones
+                  (including the iOS home-screen app); desktops get a picker. */}
+              <input
+                ref={photoInputRef}
+                data-testid="ai-photo-input"
+                type="file"
+                accept="image/*"
+                capture="environment"
+                className="sr-only"
+                tabIndex={-1}
+                aria-hidden="true"
+                onChange={(e) => void handlePhoto(e)}
+              />
+              <IconButton
+                type="button"
+                variant="secondary"
+                aria-label="Add a photo"
+                disabled={pending || readingPhoto}
+                className="mb-1"
+                onClick={() => photoInputRef.current?.click()}
+              >
+                <Camera size={20} aria-hidden="true" />
+              </IconButton>
+            </>
+          ) : null}
           {isAvailable ? (
             <IconButton
               type="submit"

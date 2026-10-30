@@ -1,9 +1,10 @@
 /**
  * Zod schemas for the Worker's request envelope (POST / body, discriminated on
- * `action`) and the structured results of the readLift and findExercise actions.
+ * `action`) and the structured results of the readLift, findExercise and
+ * readMachine actions.
  */
 import { z } from 'zod';
-import { flatLiftFields } from './tools';
+import { exerciseDraftFields, flatLiftFields } from './tools';
 
 const WeightUnit = z.enum(['lbs', 'kg']);
 
@@ -11,11 +12,31 @@ const WeightUnit = z.enum(['lbs', 'kg']);
 // Request envelope (validated before any model call)
 // ---------------------------------------------------------------------------
 
-/** A single chat turn forwarded from the client. Text-only for safety. */
-export const chatMessageSchema = z.object({
-  role: z.enum(['user', 'assistant']),
-  content: z.string().min(1).max(20000),
+/** Largest photo accepted, as base64 characters: about 1.5 MB decoded. The
+ *  client shrinks photos to fit before sending. */
+export const MAX_IMAGE_BASE64_CHARS = 2_000_000;
+
+/** One photo, base64 without the data: prefix. */
+export const imageSchema = z.object({
+  mediaType: z.enum(['image/jpeg', 'image/png', 'image/webp', 'image/gif']),
+  data: z
+    .string()
+    .min(4)
+    .max(MAX_IMAGE_BASE64_CHARS)
+    .regex(/^[A-Za-z0-9+/]+={0,2}$/),
 });
+
+export type ImageInput = z.infer<typeof imageSchema>;
+
+/** A single chat turn forwarded from the client: text, plus at most one photo
+ *  on a user turn. */
+export const chatMessageSchema = z
+  .object({
+    role: z.enum(['user', 'assistant']),
+    content: z.string().min(1).max(20000),
+    image: imageSchema.optional(),
+  })
+  .refine((m) => !m.image || m.role === 'user', { message: 'Only user turns carry a photo.' });
 
 export type ChatMessage = z.infer<typeof chatMessageSchema>;
 
@@ -32,6 +53,12 @@ export const chatContextSchema = z
     trackedLifts: z.unknown().optional(),
     /** The exercise the lifter asked about (Ask coach). */
     focusExerciseId: z.string().optional(),
+    /** The lifter's saved workouts (ids for updateWorkout). */
+    savedWorkouts: z.unknown().optional(),
+    /** Display name and training preferences (updateProfile). */
+    profile: z.unknown().optional(),
+    /** Today's date, YYYY-MM-DD in the lifter's time zone (planWorkout). */
+    today: z.string().max(10).optional(),
   })
   .partial();
 
@@ -39,7 +66,11 @@ export type ChatContext = z.infer<typeof chatContextSchema>;
 
 export const chatRequestSchema = z.object({
   action: z.literal('chat'),
-  messages: z.array(chatMessageSchema).min(1).max(50),
+  messages: z
+    .array(chatMessageSchema)
+    .min(1)
+    .max(50)
+    .refine((ms) => ms.filter((m) => m.image).length <= 1, { message: 'One photo per request.' }),
   context: chatContextSchema.optional(),
 });
 
@@ -105,10 +136,26 @@ export const exerciseLookupSchema = z
 
 export type ExerciseLookup = z.infer<typeof exerciseLookupSchema>;
 
+// ---------------------------------------------------------------------------
+// readMachine action — a photo of a gym machine -> an exercise draft (Sonnet)
+// ---------------------------------------------------------------------------
+
+export const readMachineRequestSchema = z.object({
+  action: z.literal('readMachine'),
+  image: imageSchema,
+});
+
+export const readMachineResultSchema = z
+  .object({ ...exerciseDraftFields })
+  .describe('Submit the exercise this machine is for. Call exactly once.');
+
+export type ReadMachineResult = z.infer<typeof readMachineResultSchema>;
+
 export const aiRequestSchema = z.discriminatedUnion('action', [
   chatRequestSchema,
   readLiftRequestSchema,
   findExerciseRequestSchema,
+  readMachineRequestSchema,
 ]);
 
 export type AiRequest = z.infer<typeof aiRequestSchema>;

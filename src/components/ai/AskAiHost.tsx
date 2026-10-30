@@ -6,6 +6,11 @@
 // "discarded" notice. The button hides when AI can't be used, mid-rest, while
 // an Undo toast shows, and on /workout (the player has its own Ask coach
 // entries there; the sheet itself still opens on any route).
+//
+// The build / plan / profile tools save outside the store on Apply
+// (`applyPlan`: saved workouts, custom exercises, the profile) and then offer
+// the same Undo toast. The chat context carries the saved workouts (read once
+// per opening, again after a change), the profile and today's date.
 import * as React from 'react';
 import { useStore } from 'react-redux';
 import { useLocation } from 'react-router-dom';
@@ -19,7 +24,16 @@ import type { RootState } from '../../store';
 import { aiDisabled, askAiClosed, askAiOpened } from '../../store/slices/aiSlice';
 import { AiBackendError, chat, isBackendAvailable, isSignedIn } from '../../ai/aiClient';
 import { buildAiContext } from '../../ai/context';
-import { planToolCall, sameIntent, toAssistantTurn } from '../../ai/applyTool';
+import {
+  planToolCall,
+  sameEffects,
+  sameIntent,
+  toAssistantTurn,
+  type SavedWorkoutRef,
+} from '../../ai/applyTool';
+import { applyPlan, type AiEffect } from '../../ai/effects';
+import { appServices } from '../../ai/appServices';
+import { toDateKey } from '../../lib/dateKey';
 import type { AiErrorCode, AiToolCall } from '../../ai/types';
 import { useExerciseLibrary } from '../workout/useExerciseLibrary';
 import { AiChatSheet, type AiChatClient } from './AiChatSheet';
@@ -37,8 +51,11 @@ const GENERIC = 'Something went wrong — try again.';
 interface QueuedUndo {
   id: string;
   message: string;
-  undo: UnknownAction[];
+  undo: () => void;
 }
+
+const touchesSavedWorkouts = (effects: readonly AiEffect[] | undefined): boolean =>
+  (effects ?? []).some((e) => e.type.endsWith('SavedWorkout'));
 
 export function AskAiHost() {
   const dispatch = useAppDispatch();
@@ -60,9 +77,17 @@ export function AskAiHost() {
 
   // Calls awaiting Apply, with the actions their card was planned with. Each
   // is re-planned on Apply against the state at that moment.
-  const pendingCalls = React.useRef(new Map<string, { call: AiToolCall; apply: UnknownAction[] }>());
+  const pendingCalls = React.useRef(
+    new Map<string, { call: AiToolCall; apply: UnknownAction[]; effects?: AiEffect[] }>(),
+  );
+  // The lifter's saved workouts: read on the first turn of an opening, and
+  // again after an Apply or Undo changed them. null = read on the next turn.
+  const savedWorkouts = React.useRef<SavedWorkoutRef[] | null>(null);
   React.useEffect(() => {
-    if (!open) pendingCalls.current.clear();
+    if (!open) {
+      pendingCalls.current.clear();
+      savedWorkouts.current = null;
+    }
   }, [open]);
   const [undos, setUndos] = React.useState<QueuedUndo[]>([]);
 
@@ -72,11 +97,27 @@ export function AskAiHost() {
       activeWorkout: now.workout.activeWorkout,
       trackedLifts: now.trackedLifts.lifts,
       library: libraryRef.current,
+      units: now.user.preferences.weightUnit,
+      todayKey: toDateKey(new Date()),
+      savedWorkouts: savedWorkouts.current ?? [],
+      displayName: now.user.profile?.displayName,
+      preferences: now.user.preferences,
     });
   }, [store]);
 
+  const effectDeps = React.useCallback(() => ({
+    userId: store.getState().user.profile?.uid ?? null,
+    dispatch,
+    getState: store.getState,
+    services: appServices,
+  }), [store, dispatch]);
+
   const client = React.useMemo<AiChatClient>(() => ({
     async sendMessage({ messages }) {
+      const uid = store.getState().user.profile?.uid;
+      if (uid && savedWorkouts.current === null) {
+        savedWorkouts.current = await appServices.listSavedWorkouts(uid).catch(() => []);
+      }
       const s = store.getState();
       const activeWorkout = s.workout.activeWorkout;
       const context = buildAiContext({
@@ -86,10 +127,22 @@ export function AskAiHost() {
         trackedLifts: s.trackedLifts.lifts,
         focusExerciseId: s.ai.focusExerciseId,
         library: libraryRef.current,
+        savedWorkouts: savedWorkouts.current ?? [],
+        profile: s.user.profile
+          ? { displayName: s.user.profile.displayName, preferences: s.user.preferences }
+          : undefined,
+        today: toDateKey(new Date()),
       });
       let res;
       try {
-        res = await chat({ messages: messages.map((m) => ({ role: m.role, content: m.text })), context });
+        res = await chat({
+          messages: messages.map((m) => ({
+            role: m.role,
+            content: m.text,
+            ...(m.image ? { image: m.image } : {}),
+          })),
+          context,
+        });
       } catch (err) {
         const code = err instanceof AiBackendError ? err.code : 'failed';
         if (code === 'not-allowed' || code === 'limit' || code === 'unconfigured') dispatch(aiDisabled(code));
@@ -100,9 +153,9 @@ export function AskAiHost() {
         const plan = planNow(call);
         if (plan.kind === 'auto') {
           plan.apply.forEach((a) => dispatch(a));
-          setUndos((q) => [...q, { id: plan.id, message: plan.summary, undo: plan.undo }]);
+          setUndos((q) => [...q, { id: plan.id, message: plan.summary, undo: () => plan.undo.forEach((a) => dispatch(a)) }]);
         } else if (plan.kind === 'confirm') {
-          pendingCalls.current.set(plan.id, { call, apply: plan.apply });
+          pendingCalls.current.set(plan.id, { call, apply: plan.apply, effects: plan.effects });
         }
         return { call, plan };
       });
@@ -117,7 +170,7 @@ export function AskAiHost() {
         <UndoToast
           key={current.id}
           message={current.message}
-          onUndo={() => current.undo.forEach((a) => dispatch(a))}
+          onUndo={current.undo}
           onDone={() => setUndos((q) => q.filter((u) => u.id !== current.id))}
         />
       ) : null}
@@ -157,7 +210,7 @@ export function AskAiHost() {
         }}
         client={client}
         initialMessage={seed}
-        onApplyProposal={(proposal) => {
+        onApplyProposal={async (proposal) => {
           const pending = pendingCalls.current.get(proposal.id);
           if (!pending) return "Couldn't apply: this suggestion has expired.";
           const plan = planNow(pending.call);
@@ -169,11 +222,35 @@ export function AskAiHost() {
           // Compared by intent, not wording, so a swap renaming the lift doesn't
           // block a benchmark card from the same turn. The re-plan's actions
           // are the ones dispatched: they fit the state right now.
-          if (!sameIntent(plan.apply, pending.apply)) {
+          if (!sameIntent(plan.apply, pending.apply) || !sameEffects(plan.effects, pending.effects)) {
             return "Couldn't apply: things changed since this was suggested.";
           }
-          plan.apply.forEach((a) => dispatch(a));
+          // Taken off the pending list first so a second tap can't apply twice.
           pendingCalls.current.delete(proposal.id);
+          let undo: (() => Promise<void>) | undefined;
+          try {
+            undo = await applyPlan(plan, effectDeps());
+          } catch (err) {
+            pendingCalls.current.set(proposal.id, pending);
+            const signIn = err instanceof Error && err.message === 'Sign in to save.';
+            return signIn ? 'Sign in to save.' : "Couldn't save — try again.";
+          }
+          const savedChanged = touchesSavedWorkouts(plan.effects);
+          if (savedChanged) savedWorkouts.current = null;
+          if (undo) {
+            const takeBack = undo;
+            setUndos((q) => [...q, {
+              id: plan.id,
+              message: plan.summary,
+              undo: () => {
+                takeBack()
+                  .then(() => {
+                    if (savedChanged) savedWorkouts.current = null;
+                  })
+                  .catch((e) => console.error('AI undo failed', e));
+              },
+            }]);
+          }
         }}
         onRejectProposal={(proposal) => pendingCalls.current.delete(proposal.id)}
         overlay={open ? toast : undefined}

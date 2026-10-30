@@ -10,9 +10,11 @@ import { AiError, errorResponse, json } from './errors';
 import { isAllowed, takeDailySlot, verifyIdToken } from './access';
 import { assertContextSize, handleChat, handleReadLift, makeClient } from './handlers';
 import { findExercise } from './findExercise';
+import { readMachine } from './readMachine';
 
-/** Largest request body accepted (characters). */
-const MAX_BODY_CHARS = 1_000_000;
+/** Largest request body accepted (characters): 50 chat turns plus one photo
+ *  (the schema caps the photo itself). */
+const MAX_BODY_CHARS = 3_100_000;
 
 /** Daily calls per user when AI_DAILY_LIMIT is unset or not a number. */
 const DEFAULT_DAILY_LIMIT = 150;
@@ -55,6 +57,8 @@ export const defaultActions: Deps['actions'] = {
     findExercise((d as Extract<AiRequest, { action: 'findExercise' }>).name, { client: c, referer: env.APP_ORIGIN }).then(
       (result) => ({ result }),
     ),
+  readMachine: (d, c) =>
+    readMachine(c, (d as Extract<AiRequest, { action: 'readMachine' }>).image).then((result) => ({ result })),
 };
 
 const defaultDeps: Deps = {

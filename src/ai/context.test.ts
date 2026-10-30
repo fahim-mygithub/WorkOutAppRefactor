@@ -209,3 +209,54 @@ describe('buildAiContext', () => {
     expect(l.next).toBeDefined();
   });
 });
+
+describe('buildAiContext — saved workouts, profile and today', () => {
+  const saved = {
+    id: 'w1', name: 'Push', workoutText: '',
+    parsedWorkout: {
+      exercises: [
+        { name: 'Bench Press', sets: [{ reps: 8, weight: 135, unit: 'lbs' as const }, { reps: 8, weight: 135, unit: 'lbs' as const }] },
+        { name: 'Curl', sets: [{ reps: { min: 8, max: 12 } }] },
+      ],
+      supersets: [[{ name: 'Dip', sets: [{ reps: 10 }] }, { name: 'Push Up', sets: [{ reps: 15 }] }]],
+    },
+  };
+  const preferences = {
+    theme: 'system', unitSystem: 'imperial', weightUnit: 'lbs', defaultRestTime: 120, autoStartTimer: true,
+    defaultProgressionRate: 'intermediate', keyboardShortcuts: { enabled: true, showInWorkout: true },
+    notifications: { workoutReminders: true, restTimerAlerts: true, achievements: true },
+  } as const;
+
+  it('lists saved workouts by id with compact exercise lines', () => {
+    const ctx = buildAiContext({
+      screen: 'build', units: 'lbs', activeWorkout: null, trackedLifts: [], savedWorkouts: [saved],
+    });
+    expect(ctx.savedWorkouts).toEqual([
+      { id: 'w1', name: 'Push', exercises: ['2x8 Bench Press @135lbs', '1x8-12 Curl'], supersets: ['1x10 Dip ss 1x15 Push Up'] },
+    ]);
+  });
+
+  it('sends only display and training profile fields, plus today', () => {
+    const ctx = buildAiContext({
+      screen: 'other', units: 'lbs', activeWorkout: null, trackedLifts: [],
+      profile: { displayName: 'Alex', preferences: { ...preferences } }, today: '2026-10-30',
+    });
+    expect(ctx.profile).toEqual({
+      displayName: 'Alex', weightUnit: 'lbs', unitSystem: 'imperial', defaultRestTime: 120,
+      defaultProgressionRate: 'intermediate', autoStartTimer: true,
+    });
+    expect(ctx.today).toBe('2026-10-30');
+  });
+
+  it('drops saved workout exercises first when over budget', () => {
+    const many = Array.from({ length: 20 }, (_, k) => ({
+      ...saved, id: `w${k}`,
+      parsedWorkout: { ...saved.parsedWorkout, exercises: Array.from({ length: 20 }, (_, j) => ({ name: `Exercise number ${j} with a long name ${'x'.repeat(60)}`, sets: [{ reps: 8 }] })) },
+    }));
+    const ctx = buildAiContext({ screen: 'build', units: 'lbs', activeWorkout: null, trackedLifts: [bench], savedWorkouts: many });
+    expect(JSON.stringify(ctx).length).toBeLessThanOrEqual(CONTEXT_BUDGET);
+    expect(ctx.savedWorkouts).toHaveLength(20);
+    expect(ctx.savedWorkouts![0]).toEqual({ id: 'w0', name: 'Push' });
+    expect(ctx.trackedLifts[0].next).toBeDefined();
+  });
+});

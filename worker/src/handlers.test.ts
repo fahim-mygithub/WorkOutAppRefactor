@@ -43,4 +43,18 @@ describe('handleChat', () => {
       { id: 't1', name: 'adjustSet', input: { exerciseId: 'e1', fromSetIndex: 2, reps: 3, reason: 'missed' } },
     ]);
   });
+  it('sends a photo as an image block before the text of its message', async () => {
+    const { client, create } = fakeClient([{ type: 'text', text: 'A leg curl.' }]);
+    await handleChat(client, [
+      { role: 'user', content: 'what is this?', image: { mediaType: 'image/jpeg', data: 'AAAA' } },
+    ], undefined);
+    const req = create.mock.calls[0][0];
+    expect(req.messages).toEqual([{
+      role: 'user',
+      content: [
+        { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: 'AAAA' } },
+        { type: 'text', text: 'what is this?' },
+      ],
+    }]);
+  });
 });

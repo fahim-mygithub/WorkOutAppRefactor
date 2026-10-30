@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { AiBackendError, chat, findExerciseOnline, isBackendAvailable, readLiftEntry } from '@/ai/aiClient';
+import { AiBackendError, chat, findExerciseOnline, isBackendAvailable, readLiftEntry, readMachinePhoto } from '@/ai/aiClient';
+import { ImageTooLargeError, MAX_IMAGE_BASE64_CHARS } from '@/ai/image';
 
 // We never hit Firebase or the network here. The client takes injected deps
 // (Worker URL, ID-token getter, fetch) so each test drives its own transport.
@@ -200,6 +201,66 @@ describe('aiClient', () => {
     it('is false when offline', () => {
       setOnline(false);
       expect(isBackendAvailable(deps(ok({})))).toBe(false);
+    });
+  });
+
+  describe('photos', () => {
+    const photo = { mediaType: 'image/jpeg' as const, data: 'AAAA' };
+    const big = { mediaType: 'image/jpeg' as const, data: 'A'.repeat(MAX_IMAGE_BASE64_CHARS + 4) };
+    const machine = {
+      name: 'Seated Leg Curl', muscleGroups: ['Hamstrings'], equipment: 'Machine',
+      setupCues: ['Knees at the pivot.'], defaultSets: { sets: 3, reps: 12 },
+    };
+
+    it('readMachinePhoto sends the readMachine action and returns the exercise', async () => {
+      const f = ok({ action: 'readMachine', result: machine });
+      await expect(readMachinePhoto(photo, deps(f))).resolves.toEqual(machine);
+      expect(JSON.parse(f.mock.calls[0][1].body)).toEqual({ action: 'readMachine', image: photo });
+    });
+
+    it('readMachinePhoto refuses an oversized photo without calling the Worker', async () => {
+      const f = ok({});
+      await expect(readMachinePhoto(big, deps(f))).rejects.toBeInstanceOf(ImageTooLargeError);
+      expect(f).not.toHaveBeenCalled();
+    });
+
+    it('readMachinePhoto throws failed when the Worker returns no exercise', async () => {
+      await expect(readMachinePhoto(photo, deps(ok({ action: 'readMachine' })))).rejects.toMatchObject({ code: 'failed' });
+    });
+
+    it('chat sends a photo only with the latest user message', async () => {
+      const f = ok({ action: 'chat', text: '', toolCalls: [], stopReason: 'end_turn' });
+      await chat({
+        messages: [
+          { role: 'user', content: 'first', image: photo },
+          { role: 'assistant', content: 'A leg curl.' },
+          { role: 'user', content: 'add it', image: { ...photo, data: 'BBBB' } },
+        ],
+      }, deps(f));
+      const sent = JSON.parse(f.mock.calls[0][1].body).messages;
+      expect(sent[0]).toEqual({ role: 'user', content: 'first' });
+      expect(sent[2]).toEqual({ role: 'user', content: 'add it', image: { ...photo, data: 'BBBB' } });
+    });
+
+    it('chat drops a photo from an older turn even when the last turn has none', async () => {
+      const f = ok({ action: 'chat', text: '', toolCalls: [], stopReason: 'end_turn' });
+      await chat({
+        messages: [
+          { role: 'user', content: 'first', image: photo },
+          { role: 'assistant', content: 'A leg curl.' },
+          { role: 'user', content: 'thanks' },
+        ],
+      }, deps(f));
+      const sent = JSON.parse(f.mock.calls[0][1].body).messages;
+      expect(sent.some((m: { image?: unknown }) => m.image)).toBe(false);
+    });
+
+    it('chat refuses an oversized photo without calling the Worker', async () => {
+      const f = ok({});
+      await expect(chat({ messages: [{ role: 'user', content: 'x', image: big }] }, deps(f))).rejects.toBeInstanceOf(
+        ImageTooLargeError,
+      );
+      expect(f).not.toHaveBeenCalled();
     });
   });
 });
