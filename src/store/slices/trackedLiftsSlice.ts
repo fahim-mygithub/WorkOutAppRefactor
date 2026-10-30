@@ -87,7 +87,13 @@ const trackedLiftsSlice = createSlice({
     liftGoalChosen(state, action: PayloadAction<{ id: string; goal: TrainingGoal }>) {
       const { id, goal } = action.payload;
       const lift = state.lifts.find((l) => l.id === id);
-      if (lift) lift.lastGoal = goal;
+      if (lift) {
+        // Pin the other lifts to the default they show now, so moving the global
+        // last goal below does not flip a lift the user never touched.
+        const shown = state.lastGoal ?? 'volume';
+        for (const l of state.lifts) if (l.id !== id && !l.lastGoal) l.lastGoal = shown;
+        lift.lastGoal = goal;
+      }
       state.lastGoal = goal;
     },
     /**

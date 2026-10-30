@@ -157,7 +157,8 @@ describe('liftGoalChosen', () => {
     const s = reducer(s0, liftGoalChosen({ id: bench, goal: 'strength' }));
     expect(s.lifts[0].lastGoal).toBe('strength');
     expect(s.lastGoal).toBe('strength');
-    expect(s.lifts[1].lastGoal).toBeUndefined();
+    // The untouched lift keeps the default it showed before the change.
+    expect(s.lifts[1].lastGoal).toBe('volume');
   });
 
   it('ignores an unknown lift but still sets the global goal', () => {
