@@ -83,6 +83,13 @@ const trackedLiftsSlice = createSlice({
     goalChosen(state, action: PayloadAction<TrainingGoal>) {
       state.lastGoal = action.payload;
     },
+    /** A per-lift Volume/Strength choice; also the global last goal (other callers read it). */
+    liftGoalChosen(state, action: PayloadAction<{ id: string; goal: TrainingGoal }>) {
+      const { id, goal } = action.payload;
+      const lift = state.lifts.find((l) => l.id === id);
+      if (lift) lift.lastGoal = goal;
+      state.lastGoal = goal;
+    },
     /**
      * A finished workout: log each tracked lift's session, move its cycle, and
      * queue any new best for Update / Keep (one pending best per lift).
@@ -144,6 +151,7 @@ export const {
   liftRemoved,
   progressionToggled,
   goalChosen,
+  liftGoalChosen,
   sessionsRecorded,
   bestResolved,
   categoryAdded,

@@ -62,6 +62,8 @@ export interface TrackedLift {
   cycle?: { volume: number; strength: number };
   /** Most recent finished sessions, oldest first (capped). */
   sessions?: TrackedSession[];
+  /** The Volume/Strength choice last made for this lift on the Build page. */
+  lastGoal?: TrainingGoal;
   /** Smallest load change the equipment allows (default 5 lb / 2.5 kg). */
   step?: number;
   /** Equipment kind, for display and AI context. */

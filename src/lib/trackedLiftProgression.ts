@@ -17,6 +17,7 @@ import type { WorkoutExercise } from '../types/exercise';
 import type {
   PendingBest,
   SessionGoal,
+  TrainingGoal,
   TrackedLift,
   TrackedLoad,
   TrackedSetLog,
@@ -262,19 +263,25 @@ export function prescribe(lift: TrackedLift, goal: SessionGoal): TrackedParsedEx
   };
 }
 
+/** Volume/Strength per progression lift, keyed by lift id. */
+export type LiftGoals = Partial<Record<string, TrainingGoal>>;
+
 /**
- * The builder workout for the chosen lifts. Progression lifts follow `goal`
- * (the Build page only passes 'checkpoint' with the due lifts); accessories
- * are always the tracked entry.
+ * The builder workout for the chosen lifts. Progression lifts follow `goal`:
+ * one goal for all of them, or a per-lift map (a lift missing from the map is
+ * copied as an accessory). The Build page only passes 'checkpoint' with the due
+ * lifts; accessories are always the tracked entry.
  */
 export function buildTrackedWorkout(
   lifts: TrackedLift[],
-  goal: SessionGoal | null,
+  goal: SessionGoal | LiftGoals | null,
 ): { exercises: TrackedParsedExercise[]; supersets: [] } {
   return {
-    exercises: lifts.map((lift) =>
-      lift.progression && goal ? prescribe(lift, goal) : accessoryExercise(lift),
-    ),
+    exercises: lifts.map((lift) => {
+      const liftGoal: SessionGoal | undefined =
+        goal == null ? undefined : typeof goal === 'string' ? goal : goal[lift.id];
+      return lift.progression && liftGoal ? prescribe(lift, liftGoal) : accessoryExercise(lift);
+    }),
     supersets: [],
   };
 }

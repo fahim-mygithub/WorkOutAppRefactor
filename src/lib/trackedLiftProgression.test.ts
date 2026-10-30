@@ -301,3 +301,25 @@ describe('fractional and invalid steps', () => {
     expect(prescribe(tiny, 'checkpoint').sets.at(-1)?.weight).toBe(0.8);
   });
 });
+
+describe('buildTrackedWorkout per-lift goals', () => {
+  it('follows a per-lift goal map, so each progression lift gets its own sets', () => {
+    const built = buildTrackedWorkout([bench, squat], { bench: 'strength', squat: 'volume' });
+    expect(built.exercises[0].tracked).toEqual({ liftId: 'bench', goal: 'strength' });
+    expect(built.exercises[0].sets.map((s) => s.reps)).toEqual([3, 3, 3, 3]);
+    expect(built.exercises[1].tracked).toEqual({ liftId: 'squat', goal: 'volume' });
+    expect(built.exercises[1].sets).toHaveLength(4);
+    expect(built.exercises[1].sets[0].reps).toEqual({ min: 8, max: 12 });
+  });
+
+  it('copies a progression lift missing from the map as an accessory', () => {
+    const built = buildTrackedWorkout([bench, squat], { bench: 'strength' });
+    expect(built.exercises[1].tracked).toBeUndefined();
+  });
+
+  it('keeps the single-goal form and the null form unchanged', () => {
+    const single = buildTrackedWorkout([bench], 'strength');
+    expect(single.exercises[0]).toEqual(prescribe(bench, 'strength'));
+    expect(buildTrackedWorkout([bench], null).exercises[0].tracked).toBeUndefined();
+  });
+});
