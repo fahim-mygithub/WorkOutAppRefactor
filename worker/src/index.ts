@@ -14,6 +14,7 @@ import { readMachine } from './readMachine';
 import { createFirestoreRest, type FirestoreRest } from './data/firestore';
 import { parseServiceAccount, serviceAccountTokenSource } from './data/googleAuth';
 import { UserData } from './data/userData';
+import { runHistoryAction } from './historyActions';
 
 /** Largest request body accepted (characters): 50 chat turns plus one photo
  *  (the schema caps the photo itself). */
@@ -54,28 +55,40 @@ export interface Deps {
   actions: Partial<Record<ActionName, Handler>>;
 }
 
+/** Firestore access for the verified user, or undefined when the service account is not set up. */
+function openUserData(
+  env: Env,
+  user?: { uid: string },
+): { firestore: FirestoreRest; userData: UserData } | undefined {
+  if (!env.FIREBASE_SERVICE_ACCOUNT || !env.FIREBASE_PROJECT_ID || !user?.uid) return undefined;
+  try {
+    const firestore = createFirestoreRest(
+      env.FIREBASE_PROJECT_ID,
+      serviceAccountTokenSource(parseServiceAccount(env.FIREBASE_SERVICE_ACCOUNT)),
+    );
+    return { firestore, userData: new UserData(firestore, user.uid) };
+  } catch (err) {
+    console.warn('Firebase service account initialization failed', err);
+    return undefined;
+  }
+}
+
 /** The real action handlers, keyed by `action`. */
 export const defaultActions: Deps['actions'] = {
   chat: (d, c, env, user) => {
     const req = d as Extract<AiRequest, { action: 'chat' }>;
-    let firestore: FirestoreRest | undefined;
-    let userData: UserData | undefined;
-    if (env.FIREBASE_SERVICE_ACCOUNT && env.FIREBASE_PROJECT_ID && user?.uid) {
-      try {
-        firestore = createFirestoreRest(
-          env.FIREBASE_PROJECT_ID,
-          serviceAccountTokenSource(parseServiceAccount(env.FIREBASE_SERVICE_ACCOUNT)),
-        );
-        userData = new UserData(firestore, user.uid);
-      } catch (err) {
-        console.warn('Firebase service account initialization failed', err);
-      }
-    }
+    const open = openUserData(env, user);
     return handleChat(c, req.messages, req.context, {
       uid: user?.uid,
-      firestore,
-      userData,
+      firestore: open?.firestore,
+      userData: open?.userData,
     });
+  },
+  history: async (d, _c, env, user) => {
+    const req = d as Extract<AiRequest, { action: 'history' }>;
+    const open = openUserData(env, user);
+    if (!open) throw new AiError('failed-precondition', 'Workout history is not available.');
+    return runHistoryAction(req.op, req.input, open.userData, open.firestore);
   },
   readLift: (d, c) =>
     handleReadLift(c, (d as Extract<AiRequest, { action: 'readLift' }>).text).then((result) => ({ result })),

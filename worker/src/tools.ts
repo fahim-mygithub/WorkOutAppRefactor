@@ -217,7 +217,6 @@ export const buildToolSchemas = {
         .max(20)
         .describe('Completed exercises with sets.'),
       durationMinutes: z.number().int().min(1).max(360).optional().describe('Workout duration in minutes.'),
-      notes: z.string().max(500).optional().describe('Workout notes.'),
     })
     .describe('Log a past completed workout session into workout history. Needs confirmation.'),
 
@@ -231,7 +230,6 @@ export const buildToolSchemas = {
         .optional()
         .describe('Updated workout date, YYYY-MM-DD.'),
       durationMinutes: z.number().int().min(1).max(360).optional().describe('Updated duration in minutes.'),
-      notes: z.string().max(500).optional().describe('Updated workout notes.'),
       exercises: z
         .array(
           z.object({

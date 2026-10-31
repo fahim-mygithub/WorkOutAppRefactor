@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { AiBackendError, chat, findExerciseOnline, isBackendAvailable, readLiftEntry, readMachinePhoto } from '@/ai/aiClient';
+import { AiBackendError, chat, findExerciseOnline, isBackendAvailable, readLiftEntry, readMachinePhoto, runHistory } from '@/ai/aiClient';
 import { ImageTooLargeError, MAX_IMAGE_BASE64_CHARS } from '@/ai/image';
 
 // We never hit Firebase or the network here. The client takes injected deps
@@ -261,6 +261,27 @@ describe('aiClient', () => {
         ImageTooLargeError,
       );
       expect(f).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('runHistory()', () => {
+    it('posts the history action with the ID token and resolves with the result fields', async () => {
+      const f = ok({ action: 'history', ok: true, workoutId: 'w1', exerciseIds: ['e1'] });
+      await expect(runHistory('log', { date: '2026-10-15' }, deps(f))).resolves.toMatchObject({
+        workoutId: 'w1',
+        exerciseIds: ['e1'],
+      });
+      const [url, init] = f.mock.calls[0];
+      expect(url).toBe('https://w.test/');
+      expect(init.headers.authorization).toBe('Bearer t');
+      expect(JSON.parse(init.body)).toEqual({ action: 'history', op: 'log', input: { date: '2026-10-15' } });
+    });
+
+    it("throws the Worker's reason when it refuses, and AiBackendError when it cannot serve", async () => {
+      const refused = ok({ action: 'history', ok: false, error: 'Cannot log a workout in the future.' });
+      await expect(runHistory('log', {}, deps(refused))).rejects.toThrow('Cannot log a workout in the future.');
+      await expect(runHistory('log', {}, deps(fail(429)))).rejects.toMatchObject({ code: 'limit' });
+      await expect(runHistory('undoLog', {}, deps(ok({}), null))).rejects.toMatchObject({ code: 'signed-out' });
     });
   });
 });

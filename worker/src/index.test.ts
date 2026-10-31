@@ -61,7 +61,7 @@ describe('handleRequest', () => {
     const d = deps();
     expect((await handleRequest(post({ action: 'parse', text: 'bench 3x5' }), env, d)).status).toBe(400);
     expect(d.takeSlot).not.toHaveBeenCalled();
-    expect(Object.keys(defaultActions).sort()).toEqual(['chat', 'findExercise', 'readLift', 'readMachine']);
+    expect(Object.keys(defaultActions).sort()).toEqual(['chat', 'findExercise', 'history', 'readLift', 'readMachine']);
   });
   it('400 on an oversized chat context without taking a daily slot', async () => {
     const d = deps();

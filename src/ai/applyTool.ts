@@ -722,13 +722,11 @@ export function planToolCall(call: AiToolCall, ctx: PlanContext): ToolPlan {
       }
 
       const durationMinutes = index(i.durationMinutes);
-      const notes = str(i.notes);
       const draft: PastWorkoutDraft = {
         date,
         name,
         exercises,
         ...(durationMinutes ? { durationMinutes } : {}),
-        ...(notes ? { notes } : {}),
       };
 
       const dayStr = dateKeyToDate(date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
@@ -740,7 +738,7 @@ export function planToolCall(call: AiToolCall, ctx: PlanContext): ToolPlan {
       return {
         kind: 'confirm', id,
         summary: `Log past workout "${name}" on ${dayStr} (${plural(exercises.length, 'exercise')})`,
-        detail: [notes, exSummaries.join('; ')].filter(Boolean).join(' — '),
+        detail: exSummaries.join('; '),
         apply: [],
         effects: [{ type: 'logPastWorkout', workout: draft }],
       };
@@ -753,7 +751,6 @@ export function planToolCall(call: AiToolCall, ctx: PlanContext): ToolPlan {
       const date = i.date !== undefined ? str(i.date) : undefined;
       if (i.date !== undefined && (!date || !isDateKey(date))) return reject('That date is not valid.');
       const durationMinutes = i.durationMinutes !== undefined ? index(i.durationMinutes) : undefined;
-      const notes = i.notes !== undefined ? str(i.notes) : undefined;
 
       let exercises: PastWorkoutExercise[] | undefined;
       if (i.exercises !== undefined) {
@@ -790,7 +787,7 @@ export function planToolCall(call: AiToolCall, ctx: PlanContext): ToolPlan {
         }
       }
 
-      if (!name && !date && durationMinutes === undefined && notes === undefined && !exercises) {
+      if (!name && !date && durationMinutes === undefined && !exercises) {
         return reject('Nothing to change.');
       }
 
@@ -798,11 +795,9 @@ export function planToolCall(call: AiToolCall, ctx: PlanContext): ToolPlan {
         ...(name ? { name } : {}),
         ...(date ? { date } : {}),
         ...(durationMinutes !== undefined ? { durationMinutes } : {}),
-        ...(notes !== undefined ? { notes } : {}),
         ...(exercises ? { exercises } : {}),
       };
 
-      const prior: PastWorkoutUpdate = {};
       const changes: string[] = [];
       if (name) changes.push(`rename to "${name}"`);
       if (date) changes.push(`date to ${date}`);
@@ -815,7 +810,7 @@ export function planToolCall(call: AiToolCall, ctx: PlanContext): ToolPlan {
           ? exercises.map((e) => `${e.name} (${e.sets.map((s) => `${s.reps}${s.weight ? `@${s.weight}` : ''}`).join(', ')})`).join('; ')
           : undefined,
         apply: [],
-        effects: [{ type: 'editPastWorkout', workoutId, update, prior }],
+        effects: [{ type: 'editPastWorkout', workoutId, update }],
       };
     }
 

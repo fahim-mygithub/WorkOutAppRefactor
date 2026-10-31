@@ -1,12 +1,10 @@
-import type { Exercise } from '../types/exercise';
-import type { ExerciseHistory, WorkoutSummary } from '../types/exerciseHistory';
 /**
  * Applying a confirmed AI plan, and taking it back.
  *
  * A confirm plan carries store actions (`apply`, with `undo` when it can be
  * taken back) and, for the build / plan / profile tools, `effects`: saves
  * outside the store (saved workouts, custom exercises, the profile document,
- * and workout history).
+ * and past workouts, which the Worker's `history` action writes).
  * Effects are plain data so a late Apply can compare them with what the card
  * showed; running one returns its inverse, which is what Undo runs.
  */
@@ -48,7 +46,6 @@ export interface PastWorkoutDraft {
   name: string;
   date: string;
   durationMinutes?: number;
-  notes?: string;
   exercises: PastWorkoutExercise[];
 }
 
@@ -56,9 +53,11 @@ export interface PastWorkoutUpdate {
   name?: string;
   date?: string;
   durationMinutes?: number;
-  notes?: string;
   exercises?: PastWorkoutExercise[];
 }
+
+/** A past workout as the Worker read it before an edit; handed back to restore it. */
+export type PastWorkoutPrior = Record<string, unknown>;
 
 export type AiEffect =
   | { type: 'createSavedWorkout'; workout: SavedWorkoutDraft }
@@ -68,8 +67,21 @@ export type AiEffect =
   | { type: 'removeCustomExercise'; id: string }
   | { type: 'updateProfile'; changes: ProfileChanges }
   | { type: 'logPastWorkout'; workout: PastWorkoutDraft }
-  | { type: 'deletePastWorkout'; workoutId: string; exerciseIds?: string[] }
-  | { type: 'editPastWorkout'; workoutId: string; update: PastWorkoutUpdate; prior: PastWorkoutUpdate };
+  | { type: 'undoLogPastWorkout'; workoutId: string; exerciseIds: string[] }
+  | { type: 'editPastWorkout'; workoutId: string; update: PastWorkoutUpdate }
+  | { type: 'undoEditPastWorkout'; workoutId: string; prior: PastWorkoutPrior };
+
+/** The Worker's `history` action: past workouts go through its reviewed data layer. */
+export interface HistoryService {
+  /** Logs a dictated past workout; resolves with its summary id and exercise history ids. */
+  log: (workout: PastWorkoutDraft) => Promise<{ workoutId: string; exerciseIds: string[] }>;
+  /** Deletes exactly what `log` created. */
+  undoLog: (workoutId: string, exerciseIds: string[]) => Promise<void>;
+  /** Edits a past workout; resolves with how it looked before. */
+  edit: (workoutId: string, update: PastWorkoutUpdate) => Promise<{ prior: PastWorkoutPrior }>;
+  /** Puts a past workout back to `prior`. */
+  undoEdit: (workoutId: string, prior: PastWorkoutPrior) => Promise<void>;
+}
 
 /** The app's save paths, injected so tests run without Firestore. */
 export interface EffectServices {
@@ -79,11 +91,8 @@ export interface EffectServices {
   deleteWorkout: (userId: string, id: string) => Promise<void>;
   /** Writes the display name and/or the WHOLE preferences object. */
   saveProfile: (userId: string, changes: { displayName?: string; preferences?: UserPreferences }) => Promise<void>;
-  /** Saves a dictated past workout; resolves with its summary id and exercise history ids. */
-  savePastWorkout?: (userId: string, workout: PastWorkoutDraft, library?: Exercise[]) => Promise<{ workoutId: string; exerciseIds: string[] }>;
-  deletePastWorkout?: (userId: string, workoutId: string, exerciseIds?: string[]) => Promise<void>;
-  updatePastWorkout?: (userId: string, workoutId: string, update: PastWorkoutUpdate) => Promise<void>;
-  getPastWorkout?: (userId: string, workoutId: string) => Promise<{ summary: WorkoutSummary; exercises: ExerciseHistory[] } | null>;
+  /** Past workouts (log / edit and their undo); absent where the Worker is not reachable. */
+  history?: HistoryService;
 }
 
 export interface EffectDeps {
@@ -140,45 +149,23 @@ async function runEffect(effect: AiEffect, deps: EffectDeps, userId: string): Pr
       return { type: 'updateProfile', changes: prior };
     }
     case 'logPastWorkout': {
-      if (!services.savePastWorkout) throw new Error('savePastWorkout not supported');
-      const library = (deps.getState() as unknown as { exercise?: { exercises?: Exercise[] } })?.exercise?.exercises;
-      const { workoutId, exerciseIds } = await services.savePastWorkout(userId, effect.workout, library);
-      return { type: 'deletePastWorkout', workoutId, exerciseIds };
+      if (!services.history) throw new Error('Past workouts are not available.');
+      const { workoutId, exerciseIds } = await services.history.log(effect.workout);
+      return { type: 'undoLogPastWorkout', workoutId, exerciseIds };
     }
-    case 'deletePastWorkout': {
-      if (!services.deletePastWorkout) throw new Error('deletePastWorkout not supported');
-      await services.deletePastWorkout(userId, effect.workoutId, effect.exerciseIds);
+    case 'undoLogPastWorkout':
+      if (!services.history) throw new Error('Past workouts are not available.');
+      await services.history.undoLog(effect.workoutId, effect.exerciseIds);
       return null;
-    }
     case 'editPastWorkout': {
-      if (!services.updatePastWorkout) throw new Error('updatePastWorkout not supported');
-      let prior = effect.prior;
-      if (services.getPastWorkout && (!prior || Object.keys(prior).length === 0)) {
-        const current = await services.getPastWorkout(userId, effect.workoutId);
-        if (current) {
-          const { summary, exercises } = current;
-          prior = {
-            name: summary.name,
-            date: summary.startTime ? new Date(summary.startTime).toISOString().slice(0, 10) : undefined,
-            durationMinutes: summary.duration,
-            notes: (summary as { notes?: string }).notes,
-            exercises: exercises.map((e) => ({
-              id: e.id,
-              name: e.exerciseName,
-              notes: e.notes,
-              sets: e.sets.map((s) => ({
-                reps: s.actualReps,
-                weight: s.weight,
-                unit: s.unit as 'lbs' | 'kg' | undefined,
-                rpe: s.rpe,
-              })),
-            })),
-          };
-        }
-      }
-      await services.updatePastWorkout(userId, effect.workoutId, effect.update);
-      return { type: 'editPastWorkout', workoutId: effect.workoutId, update: prior, prior: effect.update };
+      if (!services.history) throw new Error('Past workouts are not available.');
+      const { prior } = await services.history.edit(effect.workoutId, effect.update);
+      return { type: 'undoEditPastWorkout', workoutId: effect.workoutId, prior };
     }
+    case 'undoEditPastWorkout':
+      if (!services.history) throw new Error('Past workouts are not available.');
+      await services.history.undoEdit(effect.workoutId, effect.prior);
+      return null;
   }
 }
 
