@@ -47,6 +47,7 @@ export type MediaErrorCode =
   | 'payload-too-large'
   | 'unsupported-media-type'
   | 'resource-exhausted'
+  | 'storage_full'
   | 'internal';
 
 export interface MediaErrorResponse {

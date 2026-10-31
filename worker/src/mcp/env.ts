@@ -14,6 +14,10 @@ export interface McpEnv extends Env {
   OAUTH_PROVIDER?: OAuthHelpers;
   /** R2 bucket for exercise media (photos, GIFs, videos). */
   EXERCISE_MEDIA?: R2Bucket;
+  /** Media quota (see src/media/quota.ts); defaults 8 GiB total / 1 GiB per user / 100000 writes a month. */
+  MEDIA_MAX_BYTES?: string;
+  MEDIA_USER_MAX_BYTES?: string;
+  MEDIA_MAX_WRITES_PER_MONTH?: string;
 }
 
 /** Stored (encrypted) in the grant; arrives as `ctx.props` on every MCP request. */

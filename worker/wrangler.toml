@@ -23,6 +23,13 @@ AI_DAILY_LIMIT = "150"
 # connector's Google sign-in page at /authorize.
 FIREBASE_WEB_API_KEY = "AIzaSyCh2sOBBYE7MEwZHn56C-U-05YPJeu1Bts"
 FIREBASE_AUTH_DOMAIN = "workout-pwa-nf0sf.firebaseapp.com"
+# Media storage limits (src/media/quota.ts). R2 has no hard cap, so the Worker
+# enforces these. Keep MEDIA_MAX_BYTES at <= 9 GiB (9663676416): above that the
+# Worker refuses every media write. 8 GiB leaves >= 2 GiB under the 10 GB free
+# tier for races and for objects the counters do not know about yet.
+MEDIA_MAX_BYTES = "8589934592"        # 8 GiB, whole bucket
+MEDIA_USER_MAX_BYTES = "1073741824"   # 1 GiB, per user
+MEDIA_MAX_WRITES_PER_MONTH = "100000" # free tier is 1M Class A ops; stay at 10%
 
 [[kv_namespaces]]
 binding = "AI_USAGE"
@@ -33,6 +40,10 @@ id = "c18a66f0897d469eab1b86cf8ae4bd18"
 [[kv_namespaces]]
 binding = "OAUTH_KV"
 id = "205b4a8fcaf54c728458f43b91d059a1"
+
+# Daily self-heal: recompute the media byte counters from the bucket listing.
+[triggers]
+crons = ["17 3 * * *"]
 
 # Cloudflare R2 bucket for exercise media (photos, GIFs, videos)
 [[r2_buckets]]

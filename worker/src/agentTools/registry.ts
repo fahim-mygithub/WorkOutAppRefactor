@@ -7,6 +7,7 @@
  */
 import { z } from 'zod';
 import { DataError, DuplicateExerciseError, type UserData } from '../data/userData';
+import { MediaConfigError, StorageFullError, type MediaQuota } from '../media/quota';
 import {
   addExerciseInput,
   attachMediaFromUrlInput,
@@ -29,6 +30,8 @@ import {
 
 export interface AgentToolContext {
   data: UserData;
+  /** Media quota for this user; the media tools check it before doing any work. */
+  mediaQuota?: MediaQuota;
 }
 
 export interface AgentTool<S extends z.AnyZodObject = z.AnyZodObject> {
@@ -195,7 +198,10 @@ export const agentTools: readonly AgentTool[] = [
       'Fetch an image, gif, or video from a public HTTPS URL and attach it to a custom exercise. Validates size caps (photos <= 8MB, gif <= 15MB, video <= 60MB) and magic bytes, stores in R2 media storage, and attaches to the exercise.',
     input: attachMediaFromUrlInput,
     readOnly: false,
-    run: (input, { data }) => data.attachMediaFromUrl(input.exercise_id, input.url),
+    run: async (input, { data, mediaQuota }) => {
+      await mediaQuota?.assertRoom();
+      return data.attachMediaFromUrl(input.exercise_id, input.url);
+    },
   }),
   define({
     name: 'create_media_upload_link',
@@ -204,7 +210,10 @@ export const agentTools: readonly AgentTool[] = [
       'Generate a temporary, single-use upload link (valid for 15 minutes) for the user to upload a photo or video directly from their camera or device to attach to a custom exercise. In the snapshot flow: read the photo -> search_exercises -> add_exercise if missing -> log_workout or plan -> offer create_media_upload_link to save the photo/clip.',
     input: createMediaUploadLinkInput,
     readOnly: false,
-    run: (input, { data }) => data.createMediaUploadLink(input.exercise_id),
+    run: async (input, { data, mediaQuota }) => {
+      await mediaQuota?.assertRoom();
+      return data.createMediaUploadLink(input.exercise_id);
+    },
   }),
 ];
 
@@ -235,6 +244,8 @@ export async function runAgentTool(name: string, rawInput: unknown, ctx: AgentTo
       return { ok: false, error: err.message, match: err.match };
     }
     if (err instanceof DataError) return { ok: false, error: err.message };
+    // storage_full / bad media config: a plain message the model can relay.
+    if (err instanceof StorageFullError || err instanceof MediaConfigError) return { ok: false, error: err.message };
     throw err;
   }
 }

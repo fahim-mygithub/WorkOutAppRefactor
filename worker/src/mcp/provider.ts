@@ -8,6 +8,7 @@ import { OAuthProvider } from '@cloudflare/workers-oauth-provider';
 import { isAllowed } from '../access';
 import type { FirestoreRest } from '../data/firestore';
 import { UserData } from '../data/userData';
+import { mediaQuotaFor } from '../media/quota';
 import { handleAuthorize, type VerifyIdToken } from './authorize';
 import type { GrantProps, McpEnv } from './env';
 import { handleMcpRequest } from './server';
@@ -55,7 +56,10 @@ export function createProvider(origin: string, deps: ConnectorDeps): OAuthProvid
           console.error('connector not configured', err instanceof Error ? err.message : String(err));
           return jsonError(503, 'The connector is not configured.');
         }
-        return handleMcpRequest(request, new UserData(firestore, props.uid, { r2: env.EXERCISE_MEDIA, kv: env.AI_USAGE, origin }));
+        // Every media write goes through the quota: the bucket UserData gets is the metered one.
+        const quota = mediaQuotaFor(env, props.uid);
+        const r2 = env.EXERCISE_MEDIA ? quota.guard(env.EXERCISE_MEDIA) : undefined;
+        return handleMcpRequest(request, new UserData(firestore, props.uid, { r2, kv: env.AI_USAGE, origin }), quota);
       },
     },
     defaultHandler: {

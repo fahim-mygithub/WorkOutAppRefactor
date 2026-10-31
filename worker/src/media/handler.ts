@@ -7,6 +7,15 @@ import { assertMediaOwner, generateMediaId, validateMediaKey } from './storage';
 import { consumeUploadToken, getUploadToken } from './uploadToken';
 import { DataError, UserData } from '../data/userData';
 import { MAX_UPLOAD_REQUEST_BYTES, MediaLimitError, parseCappedFormData } from './limits';
+import {
+  MediaConfigError,
+  StorageFullError,
+  assertRoom,
+  deleteWithQuota,
+  getUsage,
+  parseQuotaConfig,
+  putWithQuota,
+} from './quota';
 
 export function isMediaPath(pathname: string): boolean {
   return (
@@ -26,6 +35,32 @@ function jsonError(status: number, code: MediaErrorCode, message: string, corsOr
     headers['vary'] = 'origin';
   }
   return new Response(JSON.stringify(body), { status, headers });
+}
+
+/** Maps a quota failure to its response (507 storage_full, 500 for bad config); null for anything else. */
+function quotaResponse(err: unknown, corsOrigin?: string): Response | null {
+  if (err instanceof StorageFullError) return jsonError(507, 'storage_full', err.detail, corsOrigin);
+  if (err instanceof MediaConfigError) return jsonError(500, 'internal', err.message, corsOrigin);
+  return null;
+}
+
+/** Quota pre-flight, before any body is read or token spent. Returns an error response, or null when there is room. */
+async function checkQuotaRoom(env: McpEnv, uid: string, corsOrigin?: string): Promise<Response | null> {
+  try {
+    if (!env.AI_USAGE) throw new MediaConfigError('Media quota storage (KV) is not configured; media writes are refused.');
+    await assertRoom(env.AI_USAGE, parseQuotaConfig(env), uid);
+    return null;
+  } catch (err) {
+    const res = quotaResponse(err, corsOrigin);
+    if (res) return res;
+    throw err;
+  }
+}
+
+/** Reserve -> put -> confirm against the quota; throws StorageFullError / MediaConfigError before writing anything. */
+function meteredPut(env: McpEnv, uid: string, key: string, bytes: Uint8Array, options: R2PutOptions) {
+  if (!env.AI_USAGE) throw new MediaConfigError('Media quota storage (KV) is not configured; media writes are refused.');
+  return putWithQuota(env.EXERCISE_MEDIA!, env.AI_USAGE, parseQuotaConfig(env), uid, key, bytes, options);
 }
 
 function parseUsage(raw: string | null): Usage | undefined {
@@ -80,6 +115,42 @@ export async function handleMediaRequest(
       headers.set('vary', 'origin');
     }
     return new Response(null, { status: 204, headers });
+  }
+
+  // -------------------------------------------------------------------------
+  // 0. GET /media/usage (Firebase ID token): how full the media store is
+  // -------------------------------------------------------------------------
+  if (pathname === '/media/usage') {
+    if (request.method !== 'GET') {
+      return jsonError(405, 'invalid-argument', 'Method not allowed.', corsOrigin);
+    }
+    const authHeader = request.headers.get('authorization');
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return jsonError(401, 'unauthenticated', 'Missing or invalid Authorization header.', corsOrigin);
+    }
+    let user: { uid: string; email?: string };
+    try {
+      user = await deps.verify(authHeader.slice('Bearer '.length).trim(), env.FIREBASE_PROJECT_ID);
+    } catch {
+      return jsonError(401, 'unauthenticated', 'Sign in to see media usage.', corsOrigin);
+    }
+    if (!isAllowed(user.email, env.AI_ALLOWED_EMAILS)) {
+      return jsonError(403, 'permission-denied', 'This account is not enabled.', corsOrigin);
+    }
+    try {
+      if (!env.AI_USAGE) throw new MediaConfigError('Media quota storage (KV) is not configured.');
+      const usage = await getUsage(env.AI_USAGE, parseQuotaConfig(env), user.uid);
+      const headers: Record<string, string> = { 'content-type': 'application/json', 'cache-control': 'no-store' };
+      if (corsOrigin) {
+        headers['access-control-allow-origin'] = corsOrigin;
+        headers['vary'] = 'origin';
+      }
+      return new Response(JSON.stringify(usage), { status: 200, headers });
+    } catch (err) {
+      const res = quotaResponse(err, corsOrigin);
+      if (res) return res;
+      throw err;
+    }
   }
 
   // -------------------------------------------------------------------------
@@ -181,6 +252,10 @@ export async function handleMediaRequest(
       return jsonError(403, 'permission-denied', 'This account is not enabled.', corsOrigin);
     }
 
+    // Full already? Refuse before reading the body or spending a daily slot.
+    const noRoom = await checkQuotaRoom(env, user.uid, corsOrigin);
+    if (noRoom) return noRoom;
+
     // Check daily upload cap via KV
     const dailyLimit = Number(env.AI_DAILY_LIMIT) || 50;
     if (env.AI_USAGE) {
@@ -255,12 +330,19 @@ export async function handleMediaRequest(
     // Verify ownership invariant
     assertMediaOwner(key.split('/')[0], user.uid);
 
-    await env.EXERCISE_MEDIA.put(key, bytes, {
-      httpMetadata: {
-        contentType: sniffed.mime,
-        cacheControl: 'public, max-age=31536000, immutable',
-      },
-    });
+    let stored: R2Object | null;
+    try {
+      stored = await meteredPut(env, user.uid, key, bytes, {
+        httpMetadata: {
+          contentType: sniffed.mime,
+          cacheControl: 'public, max-age=31536000, immutable',
+        },
+      });
+    } catch (err) {
+      const res = quotaResponse(err, corsOrigin);
+      if (res) return res;
+      throw err;
+    }
 
     const absoluteUrl = `https://${url.host}/media/${user.uid}/${id}.${sniffed.ext}`;
     const resultHeaders: Record<string, string> = {
@@ -275,7 +357,7 @@ export async function handleMediaRequest(
       JSON.stringify({
         url: absoluteUrl,
         kind: sniffed.kind,
-        bytes: bytes.length,
+        bytes: stored?.size ?? bytes.length,
       }),
       { status: 200, headers: resultHeaders },
     );
@@ -357,6 +439,14 @@ export async function handleMediaRequest(
 
     // POST /upload/<token> -> consume token, upload to R2, attach to custom exercise in Firestore
     if (request.method === 'POST') {
+      // Full already? Refuse before spending the single-use link or reading the body.
+      const tokenPayload = await getUploadToken(env.AI_USAGE, token);
+      if (!tokenPayload) {
+        return jsonError(404, 'not-found', 'Upload token expired or already used.');
+      }
+      const noRoom = await checkQuotaRoom(env, tokenPayload.uid);
+      if (noRoom) return noRoom;
+
       const payload = await consumeUploadToken(env.AI_USAGE, token);
       if (!payload) {
         return jsonError(404, 'not-found', 'Upload token expired or already used.');
@@ -424,12 +514,19 @@ export async function handleMediaRequest(
       // Enforce ownership: write must match token's bound uid
       assertMediaOwner(key.split('/')[0], payload.uid);
 
-      await env.EXERCISE_MEDIA.put(key, bytes, {
-        httpMetadata: {
-          contentType: sniffed.mime,
-          cacheControl: 'public, max-age=31536000, immutable',
-        },
-      });
+      let stored: R2Object | null;
+      try {
+        stored = await meteredPut(env, payload.uid, key, bytes, {
+          httpMetadata: {
+            contentType: sniffed.mime,
+            cacheControl: 'public, max-age=31536000, immutable',
+          },
+        });
+      } catch (err) {
+        const res = quotaResponse(err);
+        if (res) return res;
+        throw err;
+      }
 
       const mediaUrl = `https://${url.host}/media/${payload.uid}/${id}.${sniffed.ext}`;
 
@@ -438,6 +535,10 @@ export async function handleMediaRequest(
         await userData.attachMediaToExercise(payload.exerciseId, mediaUrl);
       } catch (err) {
         console.error('Failed to attach media to custom exercise', err);
+        // Don't leave an unreachable object eating quota.
+        await deleteWithQuota(env.EXERCISE_MEDIA, env.AI_USAGE, key).catch((e) =>
+          console.error('Failed to remove unattached media', e),
+        );
         return jsonError(500, 'internal', 'Failed to attach uploaded media to custom exercise.');
       }
 
@@ -446,7 +547,7 @@ export async function handleMediaRequest(
 
       if (acceptsJson) {
         return new Response(
-          JSON.stringify({ ok: true, url: mediaUrl, kind: sniffed.kind, bytes: bytes.length }),
+          JSON.stringify({ ok: true, url: mediaUrl, kind: sniffed.kind, bytes: stored?.size ?? bytes.length }),
           { status: 200, headers: { 'content-type': 'application/json' } },
         );
       }

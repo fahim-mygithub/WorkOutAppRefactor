@@ -11,6 +11,7 @@ import { parseServiceAccount, serviceAccountTokenSource } from './data/googleAut
 import type { McpEnv } from './mcp/env';
 import { isConnectorPath, providerFor, type ConnectorDeps } from './mcp/provider';
 import { isMediaPath, handleMediaRequest } from './media/handler';
+import { reconcileMediaUsage } from './media/quota';
 
 export interface MainDeps extends ConnectorDeps {
   legacyFetch: (request: Request, env: McpEnv, ctx: ExecutionContext) => Response | Promise<Response>;
@@ -36,6 +37,11 @@ export function createWorker(deps: MainDeps = defaultMainDeps) {
       if (isConnectorPath(url.pathname)) return provider(url.origin, deps).fetch(request, env, ctx);
       if (isMediaPath(url.pathname)) return (deps.mediaFetch ?? handleMediaRequest)(request, env, ctx, deps);
       return deps.legacyFetch(request, env, ctx);
+    },
+    /** Daily cron (wrangler.toml [triggers]): recompute the media counters from the bucket. */
+    scheduled(_controller: ScheduledController, env: McpEnv, ctx: ExecutionContext): void {
+      if (!env.EXERCISE_MEDIA || !env.AI_USAGE) return;
+      ctx.waitUntil(reconcileMediaUsage(env.EXERCISE_MEDIA, env.AI_USAGE));
     },
   };
 }
