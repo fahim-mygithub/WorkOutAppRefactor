@@ -7,6 +7,7 @@
 import { docId, FirestoreError, type FirestoreRest, type FsDocument } from './firestore';
 import { fromFields, toFields } from './firestoreValue';
 import type { QueryFilter } from './firestore';
+import { resolveExercise, type CustomExerciseLike } from './exerciseIndex';
 import {
   buildCustomExerciseDoc,
   buildExerciseHistoryDoc,
@@ -18,8 +19,8 @@ import {
   buildWorkoutUpdate,
   checkPersonalRecords,
   computeExerciseStats,
-  fallbackExerciseId,
   generateConfigurationString,
+  isFutureDate,
   mergePlan,
   readExerciseHistory,
   readPlans,
@@ -30,7 +31,6 @@ import {
   toWorkoutExercises,
   updateExerciseStatsDoc,
   type CustomExerciseInput,
-  type ExerciseHistoryInput,
   type ExerciseInput,
   type LogWorkoutInput,
   type ParsedWorkout,
@@ -38,6 +38,7 @@ import {
   type ProfilePatch,
   type RawExerciseHistory,
   type StoredPerformedSet,
+  type UpdateHistoryEntryInput,
   type WorkoutInput,
   type WorkoutPatch,
 } from './shapes';
@@ -69,6 +70,20 @@ function offsetFrom(token: string | undefined): number {
 }
 
 const data = (doc: FsDocument) => fromFields(doc.fields ?? {});
+
+function parseCustomExercises(docs: FsDocument[]): CustomExerciseLike[] {
+  return docs.map((d) => {
+    const docData = data(d);
+    return {
+      id: docId(d),
+      name: String(docData.name ?? ''),
+      muscleGroups: Array.isArray(docData.muscleGroups) ? (docData.muscleGroups as string[]) : undefined,
+      muscleGroup: typeof docData.muscleGroup === 'string' ? docData.muscleGroup : undefined,
+      equipment: typeof docData.equipment === 'string' ? docData.equipment : undefined,
+      searchKeywords: Array.isArray(docData.searchKeywords) ? (docData.searchKeywords as string[]) : undefined,
+    };
+  });
+}
 
 export interface PlanRequest {
   dateKey: string;
@@ -274,24 +289,27 @@ export class UserData {
     const summary = readWorkoutSummary(docId(doc), data(doc));
     const linkedWorkoutId = (data(doc).workoutId as string) || id;
 
+    // Do NOT orderBy in the query to avoid composite index requirements in Firestore; sort in memory instead.
     const exDocs = await this.fs.query(this.path(), 'exercise_history', {
       filters: [{ field: 'workoutId', op: 'EQUAL', value: { stringValue: linkedWorkoutId } }],
-      orderBy: 'workoutDate',
-      direction: 'ASCENDING',
     });
 
     let allExDocs = exDocs;
     if (linkedWorkoutId !== id) {
       const extraDocs = await this.fs.query(this.path(), 'exercise_history', {
         filters: [{ field: 'workoutId', op: 'EQUAL', value: { stringValue: id } }],
-        orderBy: 'workoutDate',
-        direction: 'ASCENDING',
       });
       const seen = new Set(allExDocs.map((d) => docId(d)));
       for (const d of extraDocs) {
         if (!seen.has(docId(d))) allExDocs.push(d);
       }
     }
+
+    allExDocs.sort((a, b) => {
+      const dateA = String(data(a).workoutDate ?? '');
+      const dateB = String(data(b).workoutDate ?? '');
+      return dateA.localeCompare(dateB);
+    });
 
     const exercises = allExDocs.map((d) => {
       const dData = data(d);
@@ -302,6 +320,8 @@ export class UserData {
         configuration: String(dData.configuration ?? ''),
         totalVolume: typeof dData.totalVolume === 'number' ? dData.totalVolume : 0,
         sets: Array.isArray(dData.sets) ? (dData.sets as StoredPerformedSet[]) : [],
+        muscleGroups: Array.isArray(dData.muscleGroups) ? (dData.muscleGroups as string[]) : ['Unknown'],
+        equipment: String(dData.equipment ?? 'Unknown'),
         ...(dData.notes ? { notes: String(dData.notes) } : {}),
         ...(dData.personalRecords ? { personalRecords: dData.personalRecords as Record<string, unknown> } : {}),
       };
@@ -314,8 +334,7 @@ export class UserData {
   }
 
   async logWorkout(input: LogWorkoutInput) {
-    const todayStr = this.now().toISOString().slice(0, 10);
-    if (input.date > todayStr) {
+    if (isFutureDate(input.date, this.now(), input.tz, input.utcOffset)) {
       throw new DataError('invalid-argument', 'Cannot log a workout in the future.');
     }
     if (!input.exercises || input.exercises.length === 0) {
@@ -331,21 +350,25 @@ export class UserData {
       }
     }
 
+    // Resolve exercise names against custom exercises and the app library
+    const customDocs = await this.fs.query(this.path(), 'customExercises', {});
+    const customExercises = parseCustomExercises(customDocs);
+    const resolvedExercises = input.exercises.map((e) => resolveExercise(e.name, customExercises));
+
     const now = this.now();
     const workoutDate = new Date(`${input.date}T12:00:00.000Z`);
     const workoutName = input.name?.trim() || 'Workout';
 
-    // 1. Create the workout_history summary document first to obtain its auto id
-    const initialSummary = buildWorkoutHistoryDoc(this.uid, '', input, now);
-    const summaryDoc = await this.fs.create(this.path('workout_history'), toFields(initialSummary));
-    const workoutId = docId(summaryDoc);
-
-    // Update workoutId field on summary doc so it mirrors activeWorkout.id
-    await this.fs.patch(this.path('workout_history', workoutId), toFields({ workoutId }), { mask: ['workoutId'] });
+    // 1. Create the workout_history summary document with its generated ID upfront in ONE write
+    const workoutId = this.newId();
+    const initialSummary = buildWorkoutHistoryDoc(this.uid, workoutId, input, now, resolvedExercises);
+    await this.fs.create(this.path('workout_history'), toFields(initialSummary), workoutId);
 
     // 2. Create an exercise_history document for each exercise and update exercise_stats
-    for (const e of input.exercises) {
-      const exerciseId = fallbackExerciseId(e.name);
+    for (let i = 0; i < input.exercises.length; i++) {
+      const e = input.exercises[i];
+      const resolved = resolvedExercises[i];
+      const exerciseId = resolved.id;
       const statsDoc = await this.fs.get(this.path('exercise_stats', exerciseId));
       const currentStats = statsDoc ? data(statsDoc) : null;
 
@@ -367,12 +390,12 @@ export class UserData {
       const totalVolume = completedSets.reduce((sum, s) => sum + s.weight * s.actualReps, 0);
       const prs = checkPersonalRecords(currentStats, completedSets, totalVolume);
 
-      const exDocFields = buildExerciseHistoryDoc(this.uid, workoutId, workoutName, workoutDate, e, prs, now);
+      const exDocFields = buildExerciseHistoryDoc(this.uid, workoutId, workoutName, workoutDate, e, prs, now, resolved);
       await this.fs.create(this.path('exercise_history'), toFields(exDocFields));
 
       const nextStats = updateExerciseStatsDoc(
         exerciseId,
-        e.name.trim(),
+        resolved.matchedName,
         currentStats,
         completedSets,
         totalVolume,
@@ -382,25 +405,27 @@ export class UserData {
       await this.fs.patch(this.path('exercise_stats', exerciseId), toFields(nextStats));
     }
 
-    return this.getHistoryEntry(workoutId);
+    const entry = await this.getHistoryEntry(workoutId);
+    const unmatched = resolvedExercises.filter((r) => r.isFallback).map((r) => r.name);
+    return {
+      ...entry,
+      ...(unmatched.length > 0
+        ? {
+            unmatchedExercises: unmatched,
+            fallbackNotice: `Unmatched exercise(s) [${unmatched.join(', ')}] were saved with fallback IDs and Unknown muscle groups. Use add_exercise to add them to your custom library.`,
+          }
+        : {}),
+    };
   }
 
-  async updateHistoryEntry(input: {
-    workoutId: string;
-    date?: string;
-    name?: string;
-    durationMinutes?: number;
-    notes?: string;
-    exercises?: ExerciseHistoryInput[];
-  }) {
+  async updateHistoryEntry(input: UpdateHistoryEntryInput) {
     const workoutId = safeId(input.workoutId, 'workout history');
     const workoutDoc = await this.fs.get(this.path('workout_history', workoutId));
     if (!workoutDoc) throw new DataError('not-found', `No workout history entry with id ${workoutId}.`);
     const currentWorkout = data(workoutDoc);
 
     if (input.date) {
-      const todayStr = this.now().toISOString().slice(0, 10);
-      if (input.date > todayStr) {
+      if (isFutureDate(input.date, this.now(), input.tz, input.utcOffset)) {
         throw new DataError('invalid-argument', 'Cannot log a workout in the future.');
       }
     }
@@ -420,8 +445,7 @@ export class UserData {
     }
     const existingById = new Map(existingDocs.map((d) => [docId(d), d]));
 
-    // Validate any exercise ids in input belong to this workout, and validate completed sets
-    const affectedExerciseIds = new Set<string>();
+    // Validate any exercise ids in input belong to this workout
     if (input.exercises) {
       for (const ex of input.exercises) {
         if (ex.id) {
@@ -430,12 +454,43 @@ export class UserData {
             throw new DataError('invalid-argument', `Exercise history id ${ex.id} does not belong to this workout.`);
           }
         }
-        if (!ex.sets || ex.sets.length === 0) {
-          throw new DataError('invalid-argument', `Exercise "${ex.name}" must have at least one set.`);
+      }
+    }
+
+    // Validate removeExerciseIds belong to this workout
+    if (input.removeExerciseIds && input.removeExerciseIds.length > 0) {
+      for (const remId of input.removeExerciseIds) {
+        safeId(remId, 'exercise history');
+        if (!existingById.has(remId)) {
+          throw new DataError('invalid-argument', `Exercise history id ${remId} does not belong to this workout.`);
         }
-        const completed = ex.sets.filter((s) => s.completed !== false);
-        if (completed.length === 0) {
-          throw new DataError('invalid-argument', `Exercise "${ex.name}" must have at least one completed set.`);
+      }
+    }
+
+    const customDocs = await this.fs.query(this.path(), 'customExercises', {});
+    const customExercises = parseCustomExercises(customDocs);
+
+    const affectedExerciseIds = new Set<string>();
+
+    // 1. Explicit removals via removeExerciseIds
+    if (input.removeExerciseIds && input.removeExerciseIds.length > 0) {
+      for (const remId of input.removeExerciseIds) {
+        await this.fs.delete(this.path('exercise_history', remId));
+        const exId = data(existingById.get(remId)!).exerciseId as string;
+        if (exId) affectedExerciseIds.add(exId);
+        existingById.delete(remId);
+      }
+    }
+
+    // 2. If replaceAllExercises is true, remove any unlisted exercises
+    if (input.replaceAllExercises === true && input.exercises) {
+      const keptIds = new Set(input.exercises.map((e) => e.id).filter(Boolean));
+      for (const [id, doc] of existingById.entries()) {
+        if (!keptIds.has(id)) {
+          await this.fs.delete(this.path('exercise_history', id));
+          const exId = data(doc).exerciseId as string;
+          if (exId) affectedExerciseIds.add(exId);
+          existingById.delete(id);
         }
       }
     }
@@ -446,49 +501,73 @@ export class UserData {
       : new Date((currentWorkout.startTime as string | Date) || now);
     const workoutName = input.name?.trim() ?? ((currentWorkout.name as string) || 'Workout');
 
-    if (input.exercises) {
-      const newExIds = new Set(input.exercises.map((e) => e.id).filter(Boolean));
-
-      // 1. Delete exercises not in input
-      for (const d of existingDocs) {
-        const id = docId(d);
-        if (!newExIds.has(id)) {
-          await this.fs.delete(this.path('exercise_history', id));
-          const exId = data(d).exerciseId as string;
-          if (exId) affectedExerciseIds.add(exId);
-        }
-      }
-
-      // 2. Update existing or add new exercises
+    // 3. Update or add exercises
+    if (input.exercises && input.exercises.length > 0) {
       for (const ex of input.exercises) {
-        const exerciseId = fallbackExerciseId(ex.name);
+        const resolved = resolveExercise(ex.name, customExercises);
+        const exerciseId = resolved.id;
         affectedExerciseIds.add(exerciseId);
 
-        const completedSets: StoredPerformedSet[] = ex.sets
-          .filter((s) => s.completed !== false)
-          .map((s, idx) => ({
-            setNumber: idx + 1,
-            targetReps: s.reps,
-            actualReps: s.reps,
-            weight: s.weight ?? 0,
-            unit: s.unit ?? 'lbs',
-            completed: true,
-            ...(s.rpe !== undefined ? { rpe: s.rpe } : {}),
-            ...(s.time !== undefined ? { time: s.time } : {}),
-            ...(s.rir !== undefined ? { rir: s.rir } : {}),
-            ...(s.notes?.trim() ? { notes: s.notes.trim() } : {}),
-          }));
-
-        const configuration = generateConfigurationString(completedSets);
-        const totalVolume = completedSets.reduce((sum, s) => sum + s.weight * s.actualReps, 0);
-
-        const statsDoc = await this.fs.get(this.path('exercise_stats', exerciseId));
-        const currentStats = statsDoc ? data(statsDoc) : null;
-        const prs = checkPersonalRecords(currentStats, completedSets, totalVolume);
+        let completedSets: StoredPerformedSet[];
 
         if (ex.id && existingById.has(ex.id)) {
-          const prevExId = data(existingById.get(ex.id)!).exerciseId as string;
-          if (prevExId) affectedExerciseIds.add(prevExId);
+          const currentDoc = existingById.get(ex.id)!;
+          const currentSets = (Array.isArray(data(currentDoc).sets) ? data(currentDoc).sets : []) as StoredPerformedSet[];
+
+          if (ex.sets) {
+            completedSets = ex.sets
+              .filter((s) => s.completed !== false)
+              .map((s, idx) => ({
+                setNumber: idx + 1,
+                targetReps: s.reps,
+                actualReps: s.reps,
+                weight: s.weight ?? 0,
+                unit: s.unit ?? 'lbs',
+                completed: true,
+                ...(s.rpe !== undefined ? { rpe: s.rpe } : {}),
+                ...(s.time !== undefined ? { time: s.time } : {}),
+                ...(s.rir !== undefined ? { rir: s.rir } : {}),
+                ...(s.notes?.trim() ? { notes: s.notes.trim() } : {}),
+              }));
+          } else {
+            let workingSets = currentSets.slice();
+            if (ex.removeSetNumbers && ex.removeSetNumbers.length > 0) {
+              const removeSet = new Set(ex.removeSetNumbers);
+              workingSets = workingSets.filter((s, idx) => !removeSet.has(s.setNumber ?? idx + 1));
+            }
+            if (ex.addSets && ex.addSets.length > 0) {
+              const newSets: StoredPerformedSet[] = ex.addSets
+                .filter((s) => s.completed !== false)
+                .map((s) => ({
+                  setNumber: 0,
+                  targetReps: s.reps,
+                  actualReps: s.reps,
+                  weight: s.weight ?? 0,
+                  unit: s.unit ?? 'lbs',
+                  completed: true,
+                  ...(s.rpe !== undefined ? { rpe: s.rpe } : {}),
+                  ...(s.time !== undefined ? { time: s.time } : {}),
+                  ...(s.rir !== undefined ? { rir: s.rir } : {}),
+                  ...(s.notes?.trim() ? { notes: s.notes.trim() } : {}),
+                }));
+              workingSets.push(...newSets);
+            }
+            completedSets = workingSets.map((s, idx) => ({ ...s, setNumber: idx + 1 }));
+          }
+
+          if (completedSets.length === 0) {
+            throw new DataError('invalid-argument', `Exercise "${ex.name}" must have at least one completed set.`);
+          }
+
+          const configuration = generateConfigurationString(completedSets);
+          const totalVolume = completedSets.reduce((sum, s) => sum + s.weight * s.actualReps, 0);
+
+          const statsDoc = await this.fs.get(this.path('exercise_stats', exerciseId));
+          const currentStats = statsDoc ? data(statsDoc) : null;
+          const prs = checkPersonalRecords(currentStats, completedSets, totalVolume);
+
+          const prevExId = data(currentDoc).exerciseId as string;
+          if (prevExId && prevExId !== exerciseId) affectedExerciseIds.add(prevExId);
 
           const fields: Record<string, unknown> = {
             exerciseId,
@@ -500,13 +579,72 @@ export class UserData {
             workoutName,
             personalRecords: prs,
             updatedAt: now,
+            muscleGroups: resolved.muscleGroups,
+            equipment: resolved.equipment,
             ...(ex.notes?.trim() !== undefined ? { notes: ex.notes.trim() } : {}),
+            ...(ex.customTitle?.trim() !== undefined ? { customTitle: ex.customTitle.trim() } : {}),
           };
-          const mask = ['exerciseId', 'exerciseName', 'sets', 'configuration', 'totalVolume', 'workoutDate', 'workoutName', 'personalRecords', 'updatedAt'];
+          const mask = [
+            'exerciseId',
+            'exerciseName',
+            'sets',
+            'configuration',
+            'totalVolume',
+            'workoutDate',
+            'workoutName',
+            'personalRecords',
+            'updatedAt',
+            'muscleGroups',
+            'equipment',
+          ];
           if (ex.notes !== undefined) mask.push('notes');
+          if (ex.customTitle !== undefined) mask.push('customTitle');
           await this.fs.patch(this.path('exercise_history', ex.id), toFields(fields), { mask });
         } else {
-          const newDoc = buildExerciseHistoryDoc(this.uid, linkedWorkoutId, workoutName, workoutDate, ex, prs, now);
+          // Add new exercise
+          if (!ex.sets || ex.sets.length === 0) {
+            throw new DataError('invalid-argument', `New exercise "${ex.name}" must have at least one set.`);
+          }
+          completedSets = ex.sets
+            .filter((s) => s.completed !== false)
+            .map((s, idx) => ({
+              setNumber: idx + 1,
+              targetReps: s.reps,
+              actualReps: s.reps,
+              weight: s.weight ?? 0,
+              unit: s.unit ?? 'lbs',
+              completed: true,
+              ...(s.rpe !== undefined ? { rpe: s.rpe } : {}),
+              ...(s.time !== undefined ? { time: s.time } : {}),
+              ...(s.rir !== undefined ? { rir: s.rir } : {}),
+              ...(s.notes?.trim() ? { notes: s.notes.trim() } : {}),
+            }));
+
+          if (completedSets.length === 0) {
+            throw new DataError('invalid-argument', `Exercise "${ex.name}" must have at least one completed set.`);
+          }
+
+          const totalVolume = completedSets.reduce((sum, s) => sum + s.weight * s.actualReps, 0);
+
+          const statsDoc = await this.fs.get(this.path('exercise_stats', exerciseId));
+          const currentStats = statsDoc ? data(statsDoc) : null;
+          const prs = checkPersonalRecords(currentStats, completedSets, totalVolume);
+
+          const newDoc = buildExerciseHistoryDoc(
+            this.uid,
+            linkedWorkoutId,
+            workoutName,
+            workoutDate,
+            {
+              name: ex.name,
+              sets: ex.sets,
+              notes: ex.notes,
+              customTitle: ex.customTitle,
+            },
+            prs,
+            now,
+            resolved,
+          );
           await this.fs.create(this.path('exercise_history'), toFields(newDoc));
         }
       }
@@ -564,9 +702,10 @@ export class UserData {
       };
     });
 
-    const duration = input.durationMinutes !== undefined
-      ? input.durationMinutes
-      : (typeof currentWorkout.duration === 'number' ? currentWorkout.duration : 0);
+    const duration =
+      input.durationMinutes !== undefined
+        ? input.durationMinutes
+        : (typeof currentWorkout.duration === 'number' ? currentWorkout.duration : 0);
     const startDate = workoutDate;
     const endDate = duration > 0 ? new Date(startDate.getTime() + duration * 60000) : startDate;
 
@@ -583,7 +722,18 @@ export class UserData {
       updatedAt: now,
       ...(input.notes !== undefined ? { notes: input.notes.trim() } : {}),
     };
-    const summaryMask = ['name', 'startTime', 'endTime', 'duration', 'totalExercises', 'totalSets', 'totalReps', 'totalVolume', 'exercisesSummary', 'updatedAt'];
+    const summaryMask = [
+      'name',
+      'startTime',
+      'endTime',
+      'duration',
+      'totalExercises',
+      'totalSets',
+      'totalReps',
+      'totalVolume',
+      'exercisesSummary',
+      'updatedAt',
+    ];
     if (input.notes !== undefined) summaryMask.push('notes');
     await this.fs.patch(this.path('workout_history', workoutId), toFields(summaryPatch), { mask: summaryMask });
 
@@ -618,4 +768,3 @@ export class UserData {
     return { id: docId(doc), name: fields.name, muscleGroup: fields.muscleGroup, equipment: fields.equipment };
   }
 }
-

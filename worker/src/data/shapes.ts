@@ -260,11 +260,15 @@ const str = (v: unknown): v is string => typeof v === 'string';
 
 export function readSavedWorkout(id: string, d: Record<string, unknown>): WorkoutView {
   const parsed = deserializeParsedWorkout(d.parsedWorkout);
+  const workoutText =
+    parsed.exercises.length > 0 || parsed.supersets.length > 0
+      ? formatWorkoutText(parsed)
+      : String(d.workoutText ?? '');
   return {
     id,
     name: String(d.name ?? ''),
     ...(str(d.description) && d.description ? { description: d.description } : {}),
-    workoutText: String(d.workoutText ?? ''),
+    workoutText,
     exercises: parsed.exercises,
     supersets: parsed.supersets,
     tags: Array.isArray(d.tags) ? (d.tags as string[]) : [],
@@ -537,6 +541,8 @@ export function readExerciseHistory(id: string, d: Record<string, unknown>) {
     workoutName: d.workoutName,
     configuration: d.configuration,
     sets: d.sets ?? [],
+    muscleGroups: d.muscleGroups ?? ['Unknown'],
+    equipment: d.equipment ?? 'Unknown',
     totalVolume: d.totalVolume,
     ...(d.personalRecords ? { personalRecords: d.personalRecords } : {}),
     ...(d.workoutId ? { workoutId: d.workoutId } : {}),
@@ -570,7 +576,32 @@ export interface LogWorkoutInput {
   name?: string;
   durationMinutes?: number;
   notes?: string;
+  tz?: string;
+  utcOffset?: number;
   exercises: ExerciseHistoryInput[];
+}
+
+export interface UpdateHistoryExerciseInput {
+  id?: string;
+  name: string;
+  sets?: PerformedSetInput[];
+  addSets?: PerformedSetInput[];
+  removeSetNumbers?: number[];
+  notes?: string;
+  customTitle?: string;
+}
+
+export interface UpdateHistoryEntryInput {
+  workoutId: string;
+  date?: string;
+  tz?: string;
+  utcOffset?: number;
+  name?: string;
+  durationMinutes?: number;
+  notes?: string;
+  exercises?: UpdateHistoryExerciseInput[];
+  removeExerciseIds?: string[];
+  replaceAllExercises?: boolean;
 }
 
 export interface StoredPerformedSet {
@@ -590,6 +621,21 @@ export interface PersonalRecordsMap {
   maxWeight?: boolean;
   maxReps?: boolean;
   maxVolume?: boolean;
+}
+
+export function isFutureDate(dateStr: string, now: Date, tz?: string, utcOffset?: number): boolean {
+  let todayStr = now.toISOString().slice(0, 10);
+  if (tz) {
+    try {
+      todayStr = new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(now);
+    } catch {
+      // invalid timezone, fall back
+    }
+  } else if (utcOffset !== undefined) {
+    const localMs = now.getTime() + utcOffset * 60 * 1000;
+    todayStr = new Date(localMs).toISOString().slice(0, 10);
+  }
+  return dateStr > todayStr;
 }
 
 /** ExerciseHistoryService.generateConfigurationString */
@@ -646,6 +692,7 @@ export function buildWorkoutHistoryDoc(
   workoutId: string,
   input: LogWorkoutInput,
   now: Date,
+  resolvedExercises?: Array<{ id: string }>,
 ): Record<string, unknown> {
   const startDate = new Date(`${input.date}T12:00:00.000Z`);
   const duration = input.durationMinutes ?? 0;
@@ -655,7 +702,7 @@ export function buildWorkoutHistoryDoc(
   let totalReps = 0;
   let totalVolume = 0;
 
-  const exercisesSummary = input.exercises.map((e) => {
+  const exercisesSummary = input.exercises.map((e, idx) => {
     const completedSets = e.sets.filter((s) => s.completed !== false);
     const sets = completedSets.length;
     const reps = completedSets.reduce((sum, s) => sum + s.reps, 0);
@@ -665,8 +712,10 @@ export function buildWorkoutHistoryDoc(
     totalReps += reps;
     totalVolume += volume;
 
+    const resolvedId = resolvedExercises?.[idx]?.id;
+
     return {
-      exerciseId: fallbackExerciseId(e.name),
+      exerciseId: resolvedId || fallbackExerciseId(e.name),
       exerciseName: e.name.trim(),
       sets,
       reps,
@@ -686,7 +735,6 @@ export function buildWorkoutHistoryDoc(
     totalReps,
     totalVolume,
     exercisesSummary,
-    ...(input.notes?.trim() ? { notes: input.notes.trim() } : {}),
   };
 }
 
@@ -699,35 +747,43 @@ export function buildExerciseHistoryDoc(
   exercise: ExerciseHistoryInput,
   prs: PersonalRecordsMap,
   now: Date,
+  resolved?: { id: string; muscleGroups?: string[]; equipment?: string },
 ): Record<string, unknown> {
   const completedSets: StoredPerformedSet[] = exercise.sets
     .filter((s) => s.completed !== false)
-    .map((s, idx) => ({
-      setNumber: idx + 1,
-      targetReps: s.reps,
-      actualReps: s.reps,
-      weight: s.weight ?? 0,
-      unit: s.unit ?? 'lbs',
-      completed: true,
-      ...(s.rpe !== undefined ? { rpe: s.rpe } : {}),
-      ...(s.time !== undefined ? { time: s.time } : {}),
-      ...(s.rir !== undefined ? { rir: s.rir } : {}),
-      ...(s.notes?.trim() ? { notes: s.notes.trim() } : {}),
-    }));
+    .map((s, idx) => {
+      const reps = s.reps ?? (s as unknown as { actualReps?: number }).actualReps ?? 0;
+      return {
+        setNumber: idx + 1,
+        targetReps: reps,
+        actualReps: reps,
+        weight: s.weight ?? 0,
+        unit: s.unit ?? 'lbs',
+        completed: true,
+        ...(s.rpe !== undefined ? { rpe: s.rpe } : {}),
+        ...(s.time !== undefined ? { time: s.time } : {}),
+        ...(s.rir !== undefined ? { rir: s.rir } : {}),
+        ...(s.notes?.trim() ? { notes: s.notes.trim() } : {}),
+      };
+    });
 
   const configuration = generateConfigurationString(completedSets);
   const totalVolume = completedSets.reduce((sum, s) => sum + s.weight * s.actualReps, 0);
+  const exerciseId = resolved?.id || fallbackExerciseId(exercise.name);
+  const muscleGroups =
+    resolved?.muscleGroups && resolved.muscleGroups.length > 0 ? resolved.muscleGroups : ['Unknown'];
+  const equipment = resolved?.equipment || 'Unknown';
 
   return {
     userId: uid,
-    exerciseId: fallbackExerciseId(exercise.name),
+    exerciseId,
     exerciseName: exercise.name.trim(),
     workoutDate,
     createdAt: now,
     sets: completedSets,
     configuration,
-    muscleGroups: ['Unknown'],
-    equipment: 'Unknown',
+    muscleGroups,
+    equipment,
     totalVolume,
     personalRecords: prs,
     workoutId,
@@ -929,4 +985,3 @@ export function updateExerciseStatsDoc(
     },
   };
 }
-

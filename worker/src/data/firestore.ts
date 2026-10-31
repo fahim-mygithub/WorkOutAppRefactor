@@ -54,7 +54,7 @@ export interface QueryOptions {
 
 export interface FirestoreRest {
   get(path: string[]): Promise<FsDocument | null>;
-  create(collection: string[], fields: FsFields): Promise<FsDocument>;
+  create(collection: string[], fields: FsFields, documentId?: string): Promise<FsDocument>;
   patch(path: string[], fields: FsFields, opts?: PatchOptions): Promise<FsDocument>;
   delete(path: string[]): Promise<void>;
   query(parent: string[], collectionId: string, opts: QueryOptions): Promise<FsDocument[]>;
@@ -95,8 +95,9 @@ export function createFirestoreRest(
       if (res.status === 404) return null;
       return (await res.json()) as FsDocument;
     },
-    async create(collection, fields) {
-      const res = await call(url(collection), { method: 'POST', body: JSON.stringify({ fields }) });
+    async create(collection, fields, documentId) {
+      const qs = documentId ? `?documentId=${encodeURIComponent(documentId)}` : '';
+      const res = await call(`${url(collection)}${qs}`, { method: 'POST', body: JSON.stringify({ fields }) });
       if (res.status === 404) throw new FirestoreError(404, 'NOT_FOUND', 'Collection parent not found');
       return (await res.json()) as FsDocument;
     },

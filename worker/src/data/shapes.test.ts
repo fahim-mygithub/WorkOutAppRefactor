@@ -5,6 +5,7 @@
  * src/utils/workoutConversion.ts).
  */
 import { describe, expect, it } from 'vitest';
+import { resolveExercise } from './exerciseIndex';
 import {
   buildCustomExerciseDoc,
   buildExerciseHistoryDoc,
@@ -270,6 +271,23 @@ describe('workout history documents (ExerciseHistoryService)', () => {
     expect(Object.keys(summary).sort()).toEqual(['exerciseId', 'exerciseName', 'reps', 'sets', 'volume'].sort());
   });
 
+  it('does not include notes in workout_history doc even if notes are passed in input', () => {
+    const docWithNotes = buildWorkoutHistoryDoc(
+      'uid1',
+      'wh1',
+      {
+        date: '2026-10-25',
+        name: 'Push Day',
+        durationMinutes: 45,
+        notes: 'Felt strong today',
+        exercises: [{ name: 'Bench Press', sets: [{ reps: 8, weight: 185 }] }],
+      },
+      NOW,
+    );
+    expect(docWithNotes).not.toHaveProperty('notes');
+    expect(Object.keys(docWithNotes).sort()).toEqual([...WORKOUT_HISTORY_KEYS].sort());
+  });
+
   it('has exactly the fields saveExercisePerformance writes', () => {
     const doc = buildExerciseHistoryDoc(
       'uid1',
@@ -311,6 +329,31 @@ describe('workout history documents (ExerciseHistoryService)', () => {
       unit: 'lbs',
       completed: true,
     });
+  });
+
+  it('uses resolved exerciseId, muscleGroups, and equipment when provided', () => {
+    const resolved = resolveExercise('Bench Press');
+    const doc = buildExerciseHistoryDoc(
+      'uid1',
+      'wh1',
+      'Push Day',
+      new Date('2026-10-25T12:00:00.000Z'),
+      {
+        name: 'Bench Press',
+        sets: [{ reps: 8, weight: 185 }],
+      },
+      { maxWeight: true },
+      NOW,
+      resolved,
+    );
+    expect(Object.keys(doc).sort()).toEqual([...EXERCISE_HISTORY_KEYS].sort());
+    expect(doc).toMatchObject({
+      exerciseId: resolved.id,
+      muscleGroups: resolved.muscleGroups,
+      equipment: resolved.equipment,
+    });
+    expect(doc.muscleGroups).not.toContain('Unknown');
+    expect(doc.equipment).not.toBe('Unknown');
   });
 
   it('computes and updates exercise_stats matching updateExerciseStats', () => {
@@ -452,7 +495,7 @@ describe('superset counting (Pull Day Seal Row Oct 1 fixture)', () => {
           ],
         ]),
       },
-      workoutText: '...',
+      workoutText: '3x8 Machine Plate Loaded Seal Row\n3x10 Lat Pulldown\n3x15 Face Pull\nBarbell Curl + Overhead Tricep Extension',
     };
 
     const parsed = deserializeParsedWorkout(fixture.parsedWorkout);
@@ -469,5 +512,7 @@ describe('superset counting (Pull Day Seal Row Oct 1 fixture)', () => {
     const view = readSavedWorkout('sw-1', fixture);
     expect(view.exercises).toHaveLength(3);
     expect(view.supersets).toHaveLength(3);
+    expect(view.workoutText).not.toContain(' + ');
+    expect(view.workoutText).toContain(' ss ');
   });
 });

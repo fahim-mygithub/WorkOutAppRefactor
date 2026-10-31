@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { FakeFirestore } from '../data/testing/fakeFirestore';
 import { UserData } from '../data/userData';
 import { fallbackExerciseId } from '../data/shapes';
+import { resolveExercise } from '../data/exerciseIndex';
 import { agentTools, runAgentTool } from './registry';
 
 const UID = 'ownerUid123';
@@ -345,9 +346,17 @@ describe('log_workout', () => {
       totalVolume: 5640,
     });
 
-    const benchStats = fs.read(['users', UID, 'exercise_stats', fallbackExerciseId('Bench Press')])!;
+    expect('notes' in storedSummary).toBe(false);
+
+    const benchMatch = resolveExercise('Bench Press')!;
+    const benchHistDoc = fs.read(['users', UID, 'exercise_history', (exercises[0] as { id: string }).id])!;
+    expect(benchHistDoc.exerciseId).toBe(benchMatch.id);
+    expect(benchHistDoc.muscleGroups).toEqual(benchMatch.muscleGroups);
+    expect(benchHistDoc.equipment).toBe(benchMatch.equipment);
+
+    const benchStats = fs.read(['users', UID, 'exercise_stats', benchMatch.id])!;
     expect(benchStats).toMatchObject({
-      exerciseName: 'Bench Press',
+      exerciseName: benchMatch.matchedName,
       totalSessions: 1,
       totalSets: 3,
       totalReps: 24,
@@ -374,7 +383,7 @@ describe('log_workout', () => {
         },
       ],
     });
-    const benchStats2 = fs.read(['users', UID, 'exercise_stats', fallbackExerciseId('Bench Press')])!;
+    const benchStats2 = fs.read(['users', UID, 'exercise_stats', benchMatch.id])!;
     expect(benchStats2).toMatchObject({
       totalSessions: 2,
       totalSets: 4,
@@ -457,11 +466,13 @@ describe('update_history_entry', () => {
     const workoutId = created.id as string;
     const initialExercises = created.exercises as { id: string; name: string }[];
     const benchId = initialExercises[0].id;
+    const tricepDocId = initialExercises[1].id;
 
     // Update bench weight to 195, add a set to bench, remove Tricep Pushdown, add Overhead Extension
     const updated = await ok('update_history_entry', {
       workoutId,
       name: 'Fixed Push',
+      removeExerciseIds: [tricepDocId],
       exercises: [
         {
           id: benchId,
@@ -498,7 +509,8 @@ describe('update_history_entry', () => {
     });
 
     // Bench stats recomputed
-    const benchStats = fs.read(['users', UID, 'exercise_stats', fallbackExerciseId('Bench Press')])!;
+    const benchMatch = resolveExercise('Bench Press')!;
+    const benchStats = fs.read(['users', UID, 'exercise_stats', benchMatch.id])!;
     expect(benchStats).toMatchObject({
       totalSessions: 1,
       totalSets: 3,
@@ -511,7 +523,9 @@ describe('update_history_entry', () => {
     });
 
     // Tricep Pushdown was removed, so its exercise_stats should be cleaned up
-    const tricepStats = fs.read(['users', UID, 'exercise_stats', fallbackExerciseId('Tricep Pushdown')]);
+    const tricepMatch = resolveExercise('Tricep Pushdown');
+    const tricepId = tricepMatch ? tricepMatch.id : fallbackExerciseId('Tricep Pushdown');
+    const tricepStats = fs.read(['users', UID, 'exercise_stats', tricepId]);
     expect(tricepStats).toBeUndefined();
   });
 
@@ -602,6 +616,160 @@ describe('update_history_entry', () => {
       maxReps: true,
       maxVolume: true,
     });
+  });
+
+  it('safe partial update preserves unlisted exercises in the workout unless removeExerciseIds is specified', async () => {
+    const created = await ok('log_workout', {
+      date: '2026-10-25',
+      name: 'Full Body',
+      exercises: [
+        { name: 'Bench Press', sets: [{ reps: 8, weight: 185 }] },
+        { name: 'Squat', sets: [{ reps: 5, weight: 225 }] },
+      ],
+    });
+    const workoutId = created.id as string;
+    const benchDocId = (created.exercises as { id: string }[])[0].id;
+
+    // Update only Bench Press, without mentioning Squat or removeExerciseIds
+    const updated = await ok('update_history_entry', {
+      workoutId,
+      exercises: [
+        { id: benchDocId, name: 'Bench Press', sets: [{ reps: 10, weight: 185 }] },
+      ],
+    });
+
+    // Both exercises must still be present
+    expect(updated.totalExercises).toBe(2);
+    const exNames = (updated.exercises as { exerciseName: string }[]).map((e) => e.exerciseName);
+    expect(exNames).toContain('Bench Press');
+    expect(exNames).toContain('Squat');
+  });
+
+  it('supports replaceAllExercises: true to explicitly replace all exercises', async () => {
+    const created = await ok('log_workout', {
+      date: '2026-10-25',
+      name: 'Full Body',
+      exercises: [
+        { name: 'Bench Press', sets: [{ reps: 8, weight: 185 }] },
+        { name: 'Squat', sets: [{ reps: 5, weight: 225 }] },
+      ],
+    });
+    const workoutId = created.id as string;
+
+    // Pass replaceAllExercises: true with only Bench Press
+    const updated = await ok('update_history_entry', {
+      workoutId,
+      replaceAllExercises: true,
+      exercises: [
+        { name: 'Bench Press', sets: [{ reps: 10, weight: 185 }] },
+      ],
+    });
+
+    expect(updated.totalExercises).toBe(1);
+    const exNames = (updated.exercises as { exerciseName: string }[]).map((e) => e.exerciseName);
+    expect(exNames).toEqual(['Bench Press']);
+  });
+
+  it('supports explicit set operations addSets and removeSetNumbers', async () => {
+    const created = await ok('log_workout', {
+      date: '2026-10-25',
+      name: 'Bench Session',
+      exercises: [
+        {
+          name: 'Bench Press',
+          sets: [
+            { reps: 10, weight: 135 },
+            { reps: 8, weight: 185 },
+            { reps: 5, weight: 205 },
+          ],
+        },
+      ],
+    });
+    const workoutId = created.id as string;
+    const benchDocId = (created.exercises as { id: string }[])[0].id;
+
+    // Remove set 1 (the warm-up) and add a set of 225x3
+    const updated = await ok('update_history_entry', {
+      workoutId,
+      exercises: [
+        {
+          id: benchDocId,
+          name: 'Bench Press',
+          removeSetNumbers: [1],
+          addSets: [{ reps: 3, weight: 225 }],
+        },
+      ],
+    });
+
+    const bench = (updated.exercises as { exerciseName: string; sets: { setNumber: number; reps: number; weight: number }[] }[])[0];
+    expect(bench.sets).toHaveLength(3);
+    expect(bench.sets[0]).toMatchObject({ setNumber: 1, actualReps: 8, weight: 185 });
+    expect(bench.sets[1]).toMatchObject({ setNumber: 2, actualReps: 5, weight: 205 });
+    expect(bench.sets[2]).toMatchObject({ setNumber: 3, actualReps: 3, weight: 225 });
+  });
+
+  it('validates local dates using tz or utcOffset', async () => {
+    // NOW is '2026-10-30T12:00:00.000Z'
+    // In Asia/Tokyo (UTC+9), NOW is 2026-10-30 21:00.
+    // Logging for today ('2026-10-30') with tz succeeds.
+    const valid = await ok('log_workout', {
+      date: '2026-10-30',
+      tz: 'Asia/Tokyo',
+      name: 'Tokyo Workout',
+      exercises: [{ name: 'Bench Press', sets: [{ reps: 5, weight: 135 }] }],
+    });
+    expect(valid.name).toBe('Tokyo Workout');
+
+    // Logging tomorrow ('2026-10-31') with tz fails.
+    const future = await run('log_workout', {
+      date: '2026-10-31',
+      tz: 'Asia/Tokyo',
+      name: 'Future Tokyo',
+      exercises: [{ name: 'Bench Press', sets: [{ reps: 5, weight: 135 }] }],
+    });
+    expect(future.ok).toBe(false);
+    if (!future.ok) expect(future.error).toMatch(/future/i);
+  });
+
+  it('reports unmatched exercises in tool result and uses fallback id', async () => {
+    const r = await ok('log_workout', {
+      date: '2026-10-25',
+      name: 'Mystery Workout',
+      exercises: [
+        { name: 'Bench Press', sets: [{ reps: 8, weight: 185 }] },
+        { name: 'Zorblaxian Space Wobble', sets: [{ reps: 10, weight: 50 }] },
+      ],
+    });
+    expect(r.unmatchedExercises).toEqual(['Zorblaxian Space Wobble']);
+
+    const zorblaxId = fallbackExerciseId('Zorblaxian Space Wobble');
+    const exercises = r.exercises as { id: string; exerciseName: string }[];
+    const zorblaxDocId = exercises.find((e) => e.exerciseName === 'Zorblaxian Space Wobble')!.id;
+    const zorblaxDoc = fs.read(['users', UID, 'exercise_history', zorblaxDocId])!;
+    expect(zorblaxDoc.exerciseId).toBe(zorblaxId);
+    expect(zorblaxDoc.muscleGroups).toEqual(['Unknown']);
+    expect(zorblaxDoc.equipment).toBe('Unknown');
+  });
+
+  it('resolves custom exercises created via add_exercise', async () => {
+    await ok('add_exercise', {
+      name: 'Belt Squat Machine',
+      muscleGroups: ['Quads', 'Glutes'],
+      equipment: 'Machine',
+    });
+
+    const logged = await ok('log_workout', {
+      date: '2026-10-25',
+      name: 'Leg Day',
+      exercises: [{ name: 'Belt Squat Machine', sets: [{ reps: 10, weight: 200 }] }],
+    });
+    expect(logged.unmatchedExercises).toBeUndefined();
+
+    const exHistDocId = (logged.exercises as { id: string }[])[0].id;
+    const exHistDoc = fs.read(['users', UID, 'exercise_history', exHistDocId])!;
+    expect(exHistDoc.muscleGroups).toEqual(['Quads', 'Glutes']);
+    expect(exHistDoc.equipment).toBe('Machine');
+    expect(exHistDoc.exerciseId).not.toMatch(/^fallback-/);
   });
 });
 

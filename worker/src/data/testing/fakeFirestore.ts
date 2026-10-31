@@ -147,7 +147,8 @@ export class FakeFirestore {
     }
 
     if (method === 'POST') {
-      const id = `auto${String(this.nextId++).padStart(16, '0')}`;
+      const docIdParam = url.searchParams.get('documentId');
+      const id = docIdParam ?? `auto${String(this.nextId++).padStart(16, '0')}`;
       const now = this.tick();
       const d = { fields: body.fields ?? {}, createTime: now, updateTime: now };
       this.docs.set(`${key}/${id}`, d);

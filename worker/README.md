@@ -76,7 +76,11 @@ unchanged.
 
 ### History and Personal Records
 
-- `log_workout` writes workout summaries to `workout_history`, individual exercise performances to `exercise_history`, and updates `exercise_stats` and per-doc `personalRecords` flags matching the app's `exerciseHistoryService.ts`.
+- `log_workout` writes workout summaries to `workout_history`, individual exercise performances to `exercise_history`, and updates `exercise_stats` and per-doc `personalRecords` flags matching the app's `exerciseHistoryService.ts`. It generates `workoutId` upfront and writes the summary doc in a single write with its ID, omitting unused `notes` fields.
+- **Exercise name resolution**: Exercise names are matched against the bundled index of 1,540 exercises (`public/exercises.json`) and the user's `customExercises` collection (checked first). Matches record canonical `exerciseId`, `muscleGroups`, and `equipment`. Unmatched exercises use deterministic `fallback-<hash>` IDs with `Unknown` muscle groups / equipment and are reported in tool output (`unmatchedExercises` and `fallbackNotice`) advising the user to define them via `add_exercise`.
+- `update_history_entry` supports safe partial updates: omitting an existing exercise does **not** delete it. Exercises can be explicitly deleted with `removeExerciseIds: [...]` or `replaceAllExercises: true`. Sets support in-place edits or granular operations (`addSets: [...]`, `removeSetNumbers: [...]`).
+- **Timezone support**: Both `log_workout` and `update_history_entry` accept optional `tz` (IANA timezone name) or `utcOffset` (minutes offset) to validate local dates and prevent future date entries.
+- **Query efficiency**: `get_history_entry` queries `exercise_history` by `workoutId` without `orderBy`, sorting results in memory to avoid Firestore composite index requirements.
 - `update_history_entry` recomputes workout summary totals and recalculates overall `exercise_stats` for all affected exercises. Per-doc PR flags are updated for exercises in the edited workout. As in the app's own edit flow, per-document PR flags on other past workout records are not re-evaluated retroactively across the entire historical timeline.
 
 Packages: `@modelcontextprotocol/sdk` 1.32.2, `@cloudflare/workers-oauth-provider`

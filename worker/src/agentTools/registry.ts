@@ -143,7 +143,7 @@ export const agentTools: readonly AgentTool[] = [
     name: 'log_workout',
     title: 'Log a past workout',
     description:
-      'Log a completed workout session into the user\'s history (e.g. when the user dictates a past workout like "yesterday I did 4x8 bench at 185 and 3x10 rows at 135"). Date must be past or today (YYYY-MM-DD), never in the future. Writes the workout session summary, creates per-exercise history records, and automatically updates lifetime exercise stats and personal records (PRs) exactly as if logged inside the app.',
+      'Log a completed workout session into the user\'s history (e.g. when the user dictates a past workout like "yesterday I did 4x8 bench at 185 and 3x10 rows at 135"). Date must be past or today (YYYY-MM-DD), never in the future. Supports optional tz (e.g. "America/New_York") or utcOffset to validate local today. Exercise names are resolved against the app library and custom exercises to store real exercise IDs, muscle groups, and equipment; unmatched names keep deterministic fallback IDs (fallback-<hash>) with Unknown muscle groups/equipment, reported in unmatchedExercises. Writes the workout session summary, creates per-exercise history records, and automatically updates lifetime exercise stats and personal records (PRs) exactly as if logged inside the app.',
     input: logWorkoutInput,
     readOnly: false,
     run: (input, { data }) => data.logWorkout(input),
@@ -152,7 +152,7 @@ export const agentTools: readonly AgentTool[] = [
     name: 'update_history_entry',
     title: 'Update a past workout',
     description:
-      'Edit a past workout record (e.g. "change Tuesday\'s bench to 195" or fix reps/weight, add/remove sets, add/remove exercises, change date or name). Call get_history_entry first to get existing exercise IDs and sets. Automatically recomputes the workout totals and recalculates affected exercise stats and personal records (PRs).',
+      'Edit a past workout record (e.g. "change Tuesday\'s bench to 195" or fix reps/weight, add/remove sets, add/remove exercises, change date or name). Call get_history_entry first to get existing exercise IDs and sets. Supports explicit addSets / removeSetNumbers per exercise, explicit removeExerciseIds, and safe partial updates (unlisted exercises are never deleted unless replaceAllExercises: true or named in removeExerciseIds). Automatically recomputes the workout totals and recalculates affected exercise stats and personal records (PRs).',
     input: updateHistoryEntryInput,
     readOnly: false,
     run: (input, { data }) => data.updateHistoryEntry(input),
