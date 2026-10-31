@@ -1062,13 +1062,53 @@ describe('list_workouts and get_workout superset count', () => {
 
 
 describe('search_exercises', () => {
-  it('searches the library and finds exercises', async () => {
+  it('searches the library and finds exercises returning results, total, returned, truncated', async () => {
     const res = await ok('search_exercises', { query: 'Bench Press' });
-    const exercises = res.exercises as { id: string; name: string; custom: boolean; isCustom: boolean }[];
-    expect(exercises.length).toBeGreaterThan(0);
-    const bench = exercises.find((e) => e.name.toLowerCase().includes('bench press'));
+    const results = res.results as { id: string; name: string; custom: boolean; isCustom: boolean; equipment: string; muscleGroups: string[] }[];
+    expect(results.length).toBeGreaterThan(0);
+    expect(res.returned).toBe(results.length);
+    expect(typeof res.total).toBe('number');
+    expect(res.total).toBeGreaterThanOrEqual(results.length);
+    expect(typeof res.truncated).toBe('boolean');
+
+    const bench = results.find((e) => e.name.toLowerCase().includes('bench press'));
     expect(bench).toBeDefined();
     expect(bench?.custom).toBe(false);
+  });
+
+  it('ranks Machine Leg Press first and returns no exercises lacking leg and press', async () => {
+    const res = await ok('search_exercises', { query: 'leg press' });
+    const results = res.results as { id: string; name: string; equipment: string }[];
+    expect(results.length).toBeGreaterThan(0);
+    expect(results[0].name).toBe('Machine Leg Press');
+    expect(results[0].equipment).toBe('Machine');
+
+    for (const r of results) {
+      const lower = r.name.toLowerCase();
+      expect(lower).toContain('leg');
+      expect(lower).toContain('press');
+    }
+  });
+
+  it('respects default limit 10 and max 30 with truncation', async () => {
+    // Default limit 10 on squat which has > 10 matches
+    const resDefault = await ok('search_exercises', { query: 'squat' });
+    const results = resDefault.results as unknown[];
+    expect(results).toHaveLength(10);
+    expect(resDefault.returned).toBe(10);
+    expect(resDefault.total).toBeGreaterThan(10);
+    expect(resDefault.truncated).toBe(true);
+    expect(resDefault.total).toBeGreaterThan(resDefault.returned as number);
+
+    // Explicit limit 5
+    const res5 = await ok('search_exercises', { query: 'squat', limit: 5 });
+    expect(res5.results as unknown[]).toHaveLength(5);
+    expect(res5.returned).toBe(5);
+    expect(res5.truncated).toBe(true);
+
+    // Rejects limit over 30
+    const overCap = await run('search_exercises', { query: 'squat', limit: 35 });
+    expect(overCap.ok).toBe(false);
   });
 
   it('searches custom exercises and returns mediaUrl', async () => {
@@ -1100,8 +1140,12 @@ describe('add_exercise duplicate refusal', () => {
     if (!res.ok) {
       expect(res.error).toMatch(/already exists as a library exercise/);
       expect(res.match).toMatchObject({
-        isCustom: false,
+        id: expect.any(String),
         name: expect.any(String),
+        custom: false,
+        isCustom: false,
+        muscleGroups: expect.any(Array),
+        equipment: expect.any(String),
       });
     }
   });
@@ -1122,8 +1166,12 @@ describe('add_exercise duplicate refusal', () => {
     if (!dup.ok) {
       expect(dup.error).toMatch(/already exists as a custom exercise/);
       expect(dup.match).toMatchObject({
-        isCustom: true,
+        id: expect.any(String),
         name: 'Custom Hack Squat Pro',
+        custom: true,
+        isCustom: true,
+        muscleGroups: expect.any(Array),
+        equipment: 'Machine',
       });
     }
   });
