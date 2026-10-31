@@ -38,17 +38,25 @@ export interface PatchOptions {
   updateTime?: string;
 }
 
+export interface QueryFilter {
+  field: string;
+  op: 'EQUAL' | 'GREATER_THAN_OR_EQUAL' | 'LESS_THAN_OR_EQUAL';
+  value: import('./firestoreValue').FsValue;
+}
+
 export interface QueryOptions {
-  orderBy: string;
-  direction: 'ASCENDING' | 'DESCENDING';
-  limit: number;
+  orderBy?: string;
+  direction?: 'ASCENDING' | 'DESCENDING';
+  limit?: number;
   offset?: number;
+  filters?: QueryFilter[];
 }
 
 export interface FirestoreRest {
   get(path: string[]): Promise<FsDocument | null>;
-  create(collection: string[], fields: FsFields): Promise<FsDocument>;
+  create(collection: string[], fields: FsFields, documentId?: string): Promise<FsDocument>;
   patch(path: string[], fields: FsFields, opts?: PatchOptions): Promise<FsDocument>;
+  delete(path: string[]): Promise<void>;
   query(parent: string[], collectionId: string, opts: QueryOptions): Promise<FsDocument[]>;
 }
 
@@ -87,8 +95,9 @@ export function createFirestoreRest(
       if (res.status === 404) return null;
       return (await res.json()) as FsDocument;
     },
-    async create(collection, fields) {
-      const res = await call(url(collection), { method: 'POST', body: JSON.stringify({ fields }) });
+    async create(collection, fields, documentId) {
+      const qs = documentId ? `?documentId=${encodeURIComponent(documentId)}` : '';
+      const res = await call(`${url(collection)}${qs}`, { method: 'POST', body: JSON.stringify({ fields }) });
       if (res.status === 404) throw new FirestoreError(404, 'NOT_FOUND', 'Collection parent not found');
       return (await res.json()) as FsDocument;
     },
@@ -102,13 +111,42 @@ export function createFirestoreRest(
       if (res.status === 404) throw new FirestoreError(404, 'NOT_FOUND', 'Document not found');
       return (await res.json()) as FsDocument;
     },
+    async delete(path) {
+      const res = await call(url(path), { method: 'DELETE' });
+      if (res.status === 404) return;
+    },
     async query(parent, collectionId, opts) {
-      const structuredQuery = {
+      const structuredQuery: Record<string, unknown> = {
         from: [{ collectionId }],
-        orderBy: [{ field: { fieldPath: opts.orderBy }, direction: opts.direction }],
-        limit: opts.limit,
+        ...(opts.orderBy ? { orderBy: [{ field: { fieldPath: opts.orderBy }, direction: opts.direction ?? 'ASCENDING' }] } : {}),
+        ...(opts.limit !== undefined ? { limit: opts.limit } : {}),
         ...(opts.offset ? { offset: opts.offset } : {}),
       };
+      if (opts.filters && opts.filters.length > 0) {
+        if (opts.filters.length === 1) {
+          const f = opts.filters[0];
+          structuredQuery.where = {
+            fieldFilter: {
+              field: { fieldPath: f.field },
+              op: f.op,
+              value: f.value,
+            },
+          };
+        } else {
+          structuredQuery.where = {
+            compositeFilter: {
+              op: 'AND',
+              filters: opts.filters.map((f) => ({
+                fieldFilter: {
+                  field: { fieldPath: f.field },
+                  op: f.op,
+                  value: f.value,
+                },
+              })),
+            },
+          };
+        }
+      }
       const res = await call(`${url(parent)}:runQuery`, { method: 'POST', body: JSON.stringify({ structuredQuery }) });
       if (res.status === 404) return [];
       const rows = (await res.json()) as { document?: FsDocument }[];

@@ -150,17 +150,40 @@ export function serializeParsedWorkout(w: ParsedWorkout) {
 /** WorkoutStorageService.deserializeWorkoutFromFirestore */
 export function deserializeParsedWorkout(raw: unknown): ParsedWorkout {
   const r = (raw ?? {}) as Record<string, unknown>;
-  const exercises = Array.isArray(r.exercises) ? (r.exercises as ParsedExercise[]) : [];
+  const rawExercises = Array.isArray(r.exercises) ? (r.exercises as ParsedExercise[]) : [];
+  let supersets: ParsedExercise[][] = [];
   if (r._dataFormat === 'serialized_v1') {
-    let supersets: ParsedExercise[][] = [];
     try {
       supersets = typeof r.supersets_serialized === 'string' ? JSON.parse(r.supersets_serialized) : [];
     } catch {
       supersets = [];
     }
-    return { exercises, supersets };
+  } else if (Array.isArray(r.supersets)) {
+    supersets = r.supersets as ParsedExercise[][];
   }
-  return { exercises, supersets: Array.isArray(r.supersets) ? (r.supersets as ParsedExercise[][]) : [] };
+
+  // If supersets was empty, recover any superset groups embedded in exercises
+  if (supersets.length === 0) {
+    for (const ex of rawExercises) {
+      const anyEx = ex as unknown as Record<string, unknown>;
+      if (anyEx.isSuperset && Array.isArray(anyEx.supersetExercises) && anyEx.supersetExercises.length > 0) {
+        supersets.push(anyEx.supersetExercises as ParsedExercise[]);
+      }
+    }
+  }
+
+  // Filter out any synthetic superset group entries from exercises:
+  // 1. Objects marked isSuperset or with supersetExercises
+  // 2. Objects whose name matches the combined superset name ("A + B")
+  const supersetCombinedNames = new Set(supersets.map((group) => group.map((e) => e.name).join(' + ')));
+  const exercises = rawExercises.filter((ex) => {
+    const anyEx = ex as unknown as Record<string, unknown>;
+    if (anyEx.isSuperset || Array.isArray(anyEx.supersetExercises)) return false;
+    if (supersetCombinedNames.has(ex.name)) return false;
+    return true;
+  });
+
+  return { exercises, supersets };
 }
 
 /** `users/{uid}/savedWorkouts/{id}` as WorkoutStorageService.saveWorkout writes it. */
@@ -237,11 +260,15 @@ const str = (v: unknown): v is string => typeof v === 'string';
 
 export function readSavedWorkout(id: string, d: Record<string, unknown>): WorkoutView {
   const parsed = deserializeParsedWorkout(d.parsedWorkout);
+  const workoutText =
+    parsed.exercises.length > 0 || parsed.supersets.length > 0
+      ? formatWorkoutText(parsed)
+      : String(d.workoutText ?? '');
   return {
     id,
     name: String(d.name ?? ''),
     ...(str(d.description) && d.description ? { description: d.description } : {}),
-    workoutText: String(d.workoutText ?? ''),
+    workoutText,
     exercises: parsed.exercises,
     supersets: parsed.supersets,
     tags: Array.isArray(d.tags) ? (d.tags as string[]) : [],
@@ -491,6 +518,7 @@ export function readWorkoutSummary(id: string, d: Record<string, unknown>) {
   return {
     id,
     name: d.name,
+    ...(d.workoutId ? { workoutId: d.workoutId } : {}),
     startTime: d.startTime,
     endTime: d.endTime,
     durationMinutes: d.duration,
@@ -506,13 +534,452 @@ export function readWorkoutSummary(id: string, d: Record<string, unknown>) {
 export function readExerciseHistory(id: string, d: Record<string, unknown>) {
   return {
     id,
+    exerciseId: d.exerciseId,
     exerciseName: d.exerciseName,
     ...(d.customTitle ? { customTitle: d.customTitle } : {}),
     workoutDate: d.workoutDate,
     workoutName: d.workoutName,
     configuration: d.configuration,
     sets: d.sets ?? [],
+    muscleGroups: d.muscleGroups ?? ['Unknown'],
+    equipment: d.equipment ?? 'Unknown',
     totalVolume: d.totalVolume,
+    ...(d.personalRecords ? { personalRecords: d.personalRecords } : {}),
+    ...(d.workoutId ? { workoutId: d.workoutId } : {}),
     ...(d.notes ? { notes: d.notes } : {}),
+  };
+}
+
+// ---- Workout and Exercise History: users/{uid}/workout_history and users/{uid}/exercise_history ----
+
+export interface PerformedSetInput {
+  reps: number;
+  weight?: number;
+  unit?: Unit;
+  rpe?: number;
+  time?: number;
+  rir?: number;
+  completed?: boolean;
+  notes?: string;
+}
+
+export interface ExerciseHistoryInput {
+  id?: string;
+  name: string;
+  sets: PerformedSetInput[];
+  notes?: string;
+  customTitle?: string;
+}
+
+export interface LogWorkoutInput {
+  date: string;
+  name?: string;
+  durationMinutes?: number;
+  tz?: string;
+  utcOffset?: number;
+  exercises: ExerciseHistoryInput[];
+}
+
+export interface UpdateHistoryExerciseInput {
+  id?: string;
+  name: string;
+  sets?: PerformedSetInput[];
+  addSets?: PerformedSetInput[];
+  removeSetNumbers?: number[];
+  notes?: string;
+  customTitle?: string;
+}
+
+export interface UpdateHistoryEntryInput {
+  workoutId: string;
+  date?: string;
+  tz?: string;
+  utcOffset?: number;
+  name?: string;
+  durationMinutes?: number;
+  exercises?: UpdateHistoryExerciseInput[];
+  removeExerciseIds?: string[];
+  replaceAllExercises?: boolean;
+}
+
+export interface StoredPerformedSet {
+  setNumber: number;
+  targetReps: number;
+  actualReps: number;
+  weight: number;
+  unit: Unit;
+  completed: boolean;
+  rpe?: number;
+  time?: number;
+  rir?: number;
+  notes?: string;
+}
+
+export interface PersonalRecordsMap {
+  maxWeight?: boolean;
+  maxReps?: boolean;
+  maxVolume?: boolean;
+}
+
+export function isFutureDate(dateStr: string, now: Date, tz?: string, utcOffset?: number): boolean {
+  let todayStr = now.toISOString().slice(0, 10);
+  if (tz) {
+    try {
+      todayStr = new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(now);
+    } catch {
+      // invalid timezone, fall back
+    }
+  } else if (utcOffset !== undefined) {
+    const localMs = now.getTime() + utcOffset * 60 * 1000;
+    todayStr = new Date(localMs).toISOString().slice(0, 10);
+  }
+  return dateStr > todayStr;
+}
+
+/** ExerciseHistoryService.generateConfigurationString */
+export function generateConfigurationString(sets: Array<{ targetReps?: number; actualReps: number }>): string {
+  if (sets.length === 0) return '';
+  const repGroups = sets.reduce((groups, set) => {
+    const reps = set.targetReps ?? set.actualReps;
+    groups[reps] = (groups[reps] ?? 0) + 1;
+    return groups;
+  }, {} as Record<number, number>);
+
+  const entries = Object.entries(repGroups);
+  if (entries.length === 1) {
+    const [reps, count] = entries[0];
+    return `${count}x${reps}`;
+  }
+  return entries.map(([reps, count]) => `${count}x${reps}`).join(', ');
+}
+
+/** ExerciseHistoryService.checkPersonalRecords */
+export function checkPersonalRecords(
+  currentStats: Record<string, unknown> | null,
+  sets: StoredPerformedSet[],
+  totalVolume: number,
+): PersonalRecordsMap {
+  const prs: PersonalRecordsMap = {};
+  if (!sets.length) return prs;
+
+  const maxWeightInSets = Math.max(...sets.map((s) => s.weight));
+  const currentMaxWeight = typeof currentStats?.maxWeight === 'number' ? currentStats.maxWeight : 0;
+  if (!currentStats || maxWeightInSets > currentMaxWeight) {
+    prs.maxWeight = true;
+  }
+
+  const maxRepsInSets = Math.max(...sets.map((s) => s.actualReps));
+  const currentMaxReps = typeof currentStats?.maxReps === 'number' ? currentStats.maxReps : 0;
+  if (!currentStats || maxRepsInSets > currentMaxReps) {
+    prs.maxReps = true;
+  }
+
+  const prObj = currentStats?.personalRecords as Record<string, unknown> | undefined;
+  const maxVolObj = prObj?.maxVolume as Record<string, unknown> | undefined;
+  const currentMaxVolume = typeof maxVolObj?.volume === 'number' ? maxVolObj.volume : 0;
+  if (!currentStats || totalVolume > currentMaxVolume) {
+    prs.maxVolume = true;
+  }
+
+  return prs;
+}
+
+/** ExerciseHistoryService.saveWorkoutSummary document shape */
+export function buildWorkoutHistoryDoc(
+  uid: string,
+  workoutId: string,
+  input: LogWorkoutInput,
+  now: Date,
+  resolvedExercises?: Array<{ id: string }>,
+): Record<string, unknown> {
+  const startDate = new Date(`${input.date}T12:00:00.000Z`);
+  const duration = input.durationMinutes ?? 0;
+  const endDate = duration > 0 ? new Date(startDate.getTime() + duration * 60000) : startDate;
+
+  let totalSets = 0;
+  let totalReps = 0;
+  let totalVolume = 0;
+
+  const exercisesSummary = input.exercises.map((e, idx) => {
+    const completedSets = e.sets.filter((s) => s.completed !== false);
+    const sets = completedSets.length;
+    const reps = completedSets.reduce((sum, s) => sum + s.reps, 0);
+    const volume = completedSets.reduce((sum, s) => sum + (s.weight ?? 0) * s.reps, 0);
+
+    totalSets += sets;
+    totalReps += reps;
+    totalVolume += volume;
+
+    const resolvedId = resolvedExercises?.[idx]?.id;
+
+    return {
+      exerciseId: resolvedId || fallbackExerciseId(e.name),
+      exerciseName: e.name.trim(),
+      sets,
+      reps,
+      volume,
+    };
+  });
+
+  return {
+    userId: uid,
+    name: input.name?.trim() || 'Workout',
+    workoutId,
+    startTime: startDate,
+    endTime: endDate,
+    duration,
+    totalExercises: exercisesSummary.length,
+    totalSets,
+    totalReps,
+    totalVolume,
+    exercisesSummary,
+  };
+}
+
+/** ExerciseHistoryService.saveExercisePerformance document shape */
+export function buildExerciseHistoryDoc(
+  uid: string,
+  workoutId: string,
+  workoutName: string,
+  workoutDate: Date,
+  exercise: ExerciseHistoryInput,
+  prs: PersonalRecordsMap,
+  now: Date,
+  resolved?: { id: string; muscleGroups?: string[]; equipment?: string },
+): Record<string, unknown> {
+  const completedSets: StoredPerformedSet[] = exercise.sets
+    .filter((s) => s.completed !== false)
+    .map((s, idx) => {
+      const reps = s.reps ?? (s as unknown as { actualReps?: number }).actualReps ?? 0;
+      return {
+        setNumber: idx + 1,
+        targetReps: reps,
+        actualReps: reps,
+        weight: s.weight ?? 0,
+        unit: s.unit ?? 'lbs',
+        completed: true,
+        ...(s.rpe !== undefined ? { rpe: s.rpe } : {}),
+        ...(s.time !== undefined ? { time: s.time } : {}),
+        ...(s.rir !== undefined ? { rir: s.rir } : {}),
+        ...(s.notes?.trim() ? { notes: s.notes.trim() } : {}),
+      };
+    });
+
+  const configuration = generateConfigurationString(completedSets);
+  const totalVolume = completedSets.reduce((sum, s) => sum + s.weight * s.actualReps, 0);
+  const exerciseId = resolved?.id || fallbackExerciseId(exercise.name);
+  const muscleGroups =
+    resolved?.muscleGroups && resolved.muscleGroups.length > 0 ? resolved.muscleGroups : ['Unknown'];
+  const equipment = resolved?.equipment || 'Unknown';
+
+  return {
+    userId: uid,
+    exerciseId,
+    exerciseName: exercise.name.trim(),
+    workoutDate,
+    createdAt: now,
+    sets: completedSets,
+    configuration,
+    muscleGroups,
+    equipment,
+    totalVolume,
+    personalRecords: prs,
+    workoutId,
+    workoutName: workoutName.trim(),
+    ...(exercise.notes?.trim() ? { notes: exercise.notes.trim() } : {}),
+    ...(exercise.customTitle?.trim() ? { customTitle: exercise.customTitle.trim() } : {}),
+  };
+}
+
+export interface RawExerciseHistory {
+  workoutDate: Date | string;
+  sets: Array<{ actualReps: number; weight: number }>;
+  totalVolume: number;
+}
+
+/** ExerciseHistoryService.updateExerciseStats full recomputation from history entries */
+export function computeExerciseStats(
+  exerciseId: string,
+  exerciseName: string,
+  histories: RawExerciseHistory[],
+): Record<string, unknown> {
+  if (histories.length === 0) return {};
+
+  const toDateObj = (d: Date | string) => (d instanceof Date ? d : new Date(d));
+
+  const sorted = histories.slice().sort((a, b) => {
+    return toDateObj(a.workoutDate).getTime() - toDateObj(b.workoutDate).getTime();
+  });
+
+  let totalSets = 0;
+  let totalReps = 0;
+  let totalVolume = 0;
+  let maxWeight = 0;
+  let maxReps = 0;
+
+  let bestWeightSet = { weight: 0, reps: 0, date: toDateObj(sorted[0].workoutDate) };
+  let bestRepsSet = { reps: 0, weight: 0, date: toDateObj(sorted[0].workoutDate) };
+  let bestVolumeSession = { volume: 0, sets: 0, date: toDateObj(sorted[0].workoutDate) };
+
+  for (const h of sorted) {
+    const hDate = toDateObj(h.workoutDate);
+    totalSets += h.sets.length;
+    totalVolume += h.totalVolume;
+
+    if (h.totalVolume >= bestVolumeSession.volume) {
+      bestVolumeSession = { volume: h.totalVolume, sets: h.sets.length, date: hDate };
+    }
+
+    for (const s of h.sets) {
+      totalReps += s.actualReps;
+      if (s.weight >= maxWeight) {
+        maxWeight = s.weight;
+        bestWeightSet = { weight: s.weight, reps: s.actualReps, date: hDate };
+      }
+      if (s.actualReps >= maxReps) {
+        maxReps = s.actualReps;
+        bestRepsSet = { reps: s.actualReps, weight: s.weight, date: hDate };
+      }
+    }
+  }
+
+  const firstDate = toDateObj(sorted[0].workoutDate);
+  const lastDate = toDateObj(sorted[sorted.length - 1].workoutDate);
+
+  return {
+    exerciseId,
+    exerciseName,
+    totalSessions: sorted.length,
+    totalSets,
+    totalReps,
+    totalVolume,
+    lastPerformed: lastDate,
+    firstPerformed: firstDate,
+    maxWeight,
+    maxReps,
+    avgWeight: totalReps > 0 ? Math.round(totalVolume / totalReps) : 0,
+    avgReps: totalSets > 0 ? Math.round(totalReps / totalSets) : 0,
+    frequency: 0,
+    personalRecords: {
+      maxWeight: {
+        weight: bestWeightSet.weight,
+        date: bestWeightSet.date,
+        reps: bestWeightSet.reps,
+      },
+      maxReps: {
+        reps: bestRepsSet.reps,
+        date: bestRepsSet.date,
+        weight: bestRepsSet.weight,
+      },
+      maxVolume: {
+        volume: bestVolumeSession.volume,
+        date: bestVolumeSession.date,
+        sets: bestVolumeSession.sets,
+      },
+    },
+  };
+}
+
+/** ExerciseHistoryService.updateExerciseStats incremental update */
+export function updateExerciseStatsDoc(
+  exerciseId: string,
+  exerciseName: string,
+  currentStats: Record<string, unknown> | null,
+  completedSets: StoredPerformedSet[],
+  totalVolume: number,
+  prs: PersonalRecordsMap,
+  workoutDate: Date,
+): Record<string, unknown> {
+  if (completedSets.length === 0) {
+    return currentStats ?? {};
+  }
+  const maxWeight = Math.max(...completedSets.map((s) => s.weight));
+  const maxReps = Math.max(...completedSets.map((s) => s.actualReps));
+  const newReps = completedSets.reduce((sum, s) => sum + s.actualReps, 0);
+
+  if (currentStats) {
+    const prevSessions = typeof currentStats.totalSessions === 'number' ? currentStats.totalSessions : 0;
+    const prevSets = typeof currentStats.totalSets === 'number' ? currentStats.totalSets : 0;
+    const prevReps = typeof currentStats.totalReps === 'number' ? currentStats.totalReps : 0;
+    const prevVolume = typeof currentStats.totalVolume === 'number' ? currentStats.totalVolume : 0;
+    const prevMaxWeight = typeof currentStats.maxWeight === 'number' ? currentStats.maxWeight : 0;
+    const prevMaxReps = typeof currentStats.maxReps === 'number' ? currentStats.maxReps : 0;
+
+    const newTotalSessions = prevSessions + 1;
+    const newTotalSets = prevSets + completedSets.length;
+    const newTotalReps = prevReps + newReps;
+    const newTotalVolume = prevVolume + totalVolume;
+
+    const prevPRs = (currentStats.personalRecords ?? {}) as Record<string, unknown>;
+    const prevMaxWeightPR = (prevPRs.maxWeight ?? {}) as Record<string, unknown>;
+    const prevMaxRepsPR = (prevPRs.maxReps ?? {}) as Record<string, unknown>;
+    const prevMaxVolPR = (prevPRs.maxVolume ?? {}) as Record<string, unknown>;
+
+    const maxWeightSet = completedSets.find((s) => s.weight === maxWeight);
+    const maxRepsSet = completedSets.find((s) => s.actualReps === maxReps);
+
+    return {
+      exerciseId,
+      exerciseName,
+      totalSessions: newTotalSessions,
+      totalSets: newTotalSets,
+      totalReps: newTotalReps,
+      totalVolume: newTotalVolume,
+      lastPerformed: workoutDate,
+      firstPerformed: currentStats.firstPerformed ? new Date(currentStats.firstPerformed as string | Date) : workoutDate,
+      maxWeight: Math.max(prevMaxWeight, maxWeight),
+      maxReps: Math.max(prevMaxReps, maxReps),
+      avgWeight: newTotalReps > 0 ? Math.round(newTotalVolume / newTotalReps) : 0,
+      avgReps: newTotalSets > 0 ? Math.round(newTotalReps / newTotalSets) : 0,
+      frequency: 0,
+      personalRecords: {
+        maxWeight: prs.maxWeight
+          ? { weight: maxWeight, date: workoutDate, reps: maxWeightSet?.actualReps ?? 0 }
+          : {
+              weight: typeof prevMaxWeightPR.weight === 'number' ? prevMaxWeightPR.weight : prevMaxWeight,
+              date: prevMaxWeightPR.date ? new Date(prevMaxWeightPR.date as string | Date) : workoutDate,
+              reps: typeof prevMaxWeightPR.reps === 'number' ? prevMaxWeightPR.reps : 0,
+            },
+        maxReps: prs.maxReps
+          ? { reps: maxReps, date: workoutDate, weight: maxRepsSet?.weight ?? 0 }
+          : {
+              reps: typeof prevMaxRepsPR.reps === 'number' ? prevMaxRepsPR.reps : prevMaxReps,
+              date: prevMaxRepsPR.date ? new Date(prevMaxRepsPR.date as string | Date) : workoutDate,
+              weight: typeof prevMaxRepsPR.weight === 'number' ? prevMaxRepsPR.weight : 0,
+            },
+        maxVolume: prs.maxVolume
+          ? { volume: totalVolume, date: workoutDate, sets: completedSets.length }
+          : {
+              volume: typeof prevMaxVolPR.volume === 'number' ? prevMaxVolPR.volume : prevVolume,
+              date: prevMaxVolPR.date ? new Date(prevMaxVolPR.date as string | Date) : workoutDate,
+              sets: typeof prevMaxVolPR.sets === 'number' ? prevMaxVolPR.sets : 0,
+            },
+      },
+    };
+  }
+
+  // Create new stats
+  const maxWeightSet = completedSets.find((s) => s.weight === maxWeight);
+  const maxRepsSet = completedSets.find((s) => s.actualReps === maxReps);
+
+  return {
+    exerciseId,
+    exerciseName,
+    totalSessions: 1,
+    totalSets: completedSets.length,
+    totalReps: newReps,
+    totalVolume,
+    lastPerformed: workoutDate,
+    firstPerformed: workoutDate,
+    maxWeight,
+    maxReps,
+    avgWeight: newReps > 0 ? Math.round(totalVolume / newReps) : 0,
+    avgReps: completedSets.length > 0 ? Math.round(newReps / completedSets.length) : 0,
+    frequency: 0,
+    personalRecords: {
+      maxWeight: { weight: maxWeight, date: workoutDate, reps: maxWeightSet?.actualReps ?? 0 },
+      maxReps: { reps: maxReps, date: workoutDate, weight: maxRepsSet?.weight ?? 0 },
+      maxVolume: { volume: totalVolume, date: workoutDate, sets: completedSets.length },
+    },
   };
 }

@@ -248,8 +248,8 @@ describe('MCP round trip (OAuth token + SDK client + mocked Firestore)', () => {
 
     const { tools } = await c.listTools();
     expect(tools.map((t) => t.name).sort()).toEqual([
-      'add_exercise', 'create_workout', 'get_profile', 'get_workout', 'list_history',
-      'list_plans', 'list_workouts', 'plan_workout', 'update_profile', 'update_workout',
+      'add_exercise', 'create_workout', 'get_history_entry', 'get_profile', 'get_workout', 'list_history',
+      'list_plans', 'list_workouts', 'log_workout', 'plan_workout', 'update_history_entry', 'update_profile', 'update_workout',
     ]);
     const create = tools.find((t) => t.name === 'create_workout')!;
     expect(create.annotations).toMatchObject({ readOnlyHint: false });

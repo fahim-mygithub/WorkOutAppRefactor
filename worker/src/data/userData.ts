@@ -6,13 +6,21 @@
  */
 import { docId, FirestoreError, type FirestoreRest, type FsDocument } from './firestore';
 import { fromFields, toFields } from './firestoreValue';
+import type { QueryFilter } from './firestore';
+import { resolveExercise, type CustomExerciseLike } from './exerciseIndex';
 import {
   buildCustomExerciseDoc,
+  buildExerciseHistoryDoc,
   buildPlan,
   buildPlansDoc,
   buildProfileUpdate,
   buildSavedWorkoutDoc,
+  buildWorkoutHistoryDoc,
   buildWorkoutUpdate,
+  checkPersonalRecords,
+  computeExerciseStats,
+  generateConfigurationString,
+  isFutureDate,
   mergePlan,
   readExerciseHistory,
   readPlans,
@@ -21,11 +29,17 @@ import {
   readWorkoutSummary,
   toParsedWorkout,
   toWorkoutExercises,
+  updateExerciseStatsDoc,
   type CustomExerciseInput,
   type ExerciseInput,
+  type LogWorkoutInput,
   type ParsedWorkout,
+  type PerformedSetInput,
   type PlannedWorkout,
   type ProfilePatch,
+  type RawExerciseHistory,
+  type StoredPerformedSet,
+  type UpdateHistoryEntryInput,
   type WorkoutInput,
   type WorkoutPatch,
 } from './shapes';
@@ -57,6 +71,20 @@ function offsetFrom(token: string | undefined): number {
 }
 
 const data = (doc: FsDocument) => fromFields(doc.fields ?? {});
+
+function parseCustomExercises(docs: FsDocument[]): CustomExerciseLike[] {
+  return docs.map((d) => {
+    const docData = data(d);
+    return {
+      id: docId(d),
+      name: String(docData.name ?? ''),
+      muscleGroups: Array.isArray(docData.muscleGroups) ? (docData.muscleGroups as string[]) : undefined,
+      muscleGroup: typeof docData.muscleGroup === 'string' ? docData.muscleGroup : undefined,
+      equipment: typeof docData.equipment === 'string' ? docData.equipment : undefined,
+      searchKeywords: Array.isArray(docData.searchKeywords) ? (docData.searchKeywords as string[]) : undefined,
+    };
+  });
+}
 
 export interface PlanRequest {
   dateKey: string;
@@ -209,19 +237,637 @@ export class UserData {
     throw new DataError('conflict', 'The schedule kept changing while saving; try again.');
   }
 
-  async listHistory(opts: { kind: 'workouts' | 'exercises'; pageSize: number; pageToken?: string }) {
-    const offset = offsetFrom(opts.pageToken);
+  async listHistory(opts: {
+    kind: 'workouts' | 'exercises';
+    pageSize: number;
+    pageToken?: string;
+    cursor?: string;
+    from?: string;
+    to?: string;
+  }) {
+    const token = opts.cursor ?? opts.pageToken;
+    const offset = offsetFrom(token);
     const workouts = opts.kind === 'workouts';
+    const dateField = workouts ? 'endTime' : 'workoutDate';
+    const filters: QueryFilter[] = [];
+    if (opts.from) {
+      filters.push({
+        field: dateField,
+        op: 'GREATER_THAN_OR_EQUAL',
+        value: { timestampValue: `${opts.from}T00:00:00.000Z` },
+      });
+    }
+    if (opts.to) {
+      filters.push({
+        field: dateField,
+        op: 'LESS_THAN_OR_EQUAL',
+        value: { timestampValue: `${opts.to}T23:59:59.999Z` },
+      });
+    }
+
     const docs = await this.fs.query(this.path(), workouts ? 'workout_history' : 'exercise_history', {
-      orderBy: workouts ? 'endTime' : 'workoutDate',
+      orderBy: dateField,
       direction: 'DESCENDING',
       limit: opts.pageSize,
       offset,
+      ...(filters.length ? { filters } : {}),
     });
     const items = docs.map((doc) =>
       workouts ? readWorkoutSummary(docId(doc), data(doc)) : readExerciseHistory(docId(doc), data(doc)),
     );
-    return { items, ...(docs.length === opts.pageSize ? { nextPageToken: String(offset + docs.length) } : {}) };
+    const hasMore = docs.length === opts.pageSize;
+    const nextToken = hasMore ? String(offset + docs.length) : undefined;
+    return {
+      items,
+      ...(nextToken ? { nextPageToken: nextToken, nextCursor: nextToken } : {}),
+    };
+  }
+
+  async getHistoryEntry(workoutId: string) {
+    const id = safeId(workoutId, 'workout history');
+    const doc = await this.fs.get(this.path('workout_history', id));
+    if (!doc) throw new DataError('not-found', `No workout history entry with id ${id}.`);
+    const summary = readWorkoutSummary(docId(doc), data(doc));
+    const linkedWorkoutId = (data(doc).workoutId as string) || id;
+
+    // Do NOT orderBy in the query to avoid composite index requirements in Firestore; sort in memory instead.
+    const exDocs = await this.fs.query(this.path(), 'exercise_history', {
+      filters: [{ field: 'workoutId', op: 'EQUAL', value: { stringValue: linkedWorkoutId } }],
+    });
+
+    let allExDocs = exDocs;
+    if (linkedWorkoutId !== id) {
+      const extraDocs = await this.fs.query(this.path(), 'exercise_history', {
+        filters: [{ field: 'workoutId', op: 'EQUAL', value: { stringValue: id } }],
+      });
+      const seen = new Set(allExDocs.map((d) => docId(d)));
+      for (const d of extraDocs) {
+        if (!seen.has(docId(d))) allExDocs.push(d);
+      }
+    }
+
+    const summaryList = Array.isArray(data(doc).exercisesSummary)
+      ? (data(doc).exercisesSummary as Array<Record<string, unknown>>)
+      : [];
+
+    const usedIndices = new Set<number>();
+    const docOrder = new Map<string, number>();
+
+    for (const d of allExDocs) {
+      const dData = data(d);
+      const exId = String(dData.exerciseId ?? '');
+      const exName = String(dData.exerciseName ?? '');
+      let matchIdx = summaryList.findIndex(
+        (s, idx) => !usedIndices.has(idx) && (s.exerciseId === exId || s.exerciseName === exName),
+      );
+      if (matchIdx === -1) {
+        matchIdx = summaryList.findIndex((_s, idx) => !usedIndices.has(idx));
+      }
+      if (matchIdx >= 0) {
+        usedIndices.add(matchIdx);
+        docOrder.set(docId(d), matchIdx);
+      } else {
+        docOrder.set(docId(d), 999999);
+      }
+    }
+
+    allExDocs.sort((a, b) => {
+      const idxA = docOrder.get(docId(a)) ?? 999999;
+      const idxB = docOrder.get(docId(b)) ?? 999999;
+      if (idxA !== idxB) return idxA - idxB;
+      const timeA = String(a.createTime ?? data(a).createdAt ?? '');
+      const timeB = String(b.createTime ?? data(b).createdAt ?? '');
+      return timeA.localeCompare(timeB);
+    });
+
+    const exercises = allExDocs.map((d) => {
+      const dData = data(d);
+      return {
+        id: docId(d),
+        exerciseId: String(dData.exerciseId ?? ''),
+        exerciseName: String(dData.exerciseName ?? ''),
+        configuration: String(dData.configuration ?? ''),
+        totalVolume: typeof dData.totalVolume === 'number' ? dData.totalVolume : 0,
+        sets: Array.isArray(dData.sets) ? (dData.sets as StoredPerformedSet[]) : [],
+        muscleGroups: Array.isArray(dData.muscleGroups) ? (dData.muscleGroups as string[]) : ['Unknown'],
+        equipment: String(dData.equipment ?? 'Unknown'),
+        ...(dData.notes ? { notes: String(dData.notes) } : {}),
+        ...(dData.customTitle ? { customTitle: String(dData.customTitle) } : {}),
+        ...(dData.personalRecords ? { personalRecords: dData.personalRecords as Record<string, unknown> } : {}),
+      };
+    });
+
+    return {
+      ...summary,
+      exercises,
+    };
+  }
+
+  async logWorkout(input: LogWorkoutInput) {
+    if (isFutureDate(input.date, this.now(), input.tz, input.utcOffset)) {
+      throw new DataError('invalid-argument', 'Cannot log a workout in the future.');
+    }
+    if (!input.exercises || input.exercises.length === 0) {
+      throw new DataError('invalid-argument', 'Workout must have at least one exercise.');
+    }
+    for (const e of input.exercises) {
+      if (!e.sets || e.sets.length === 0) {
+        throw new DataError('invalid-argument', `Exercise "${e.name}" must have at least one set.`);
+      }
+      const completed = e.sets.filter((s) => s.completed !== false);
+      if (completed.length === 0) {
+        throw new DataError('invalid-argument', `Exercise "${e.name}" must have at least one completed set.`);
+      }
+    }
+
+    // Resolve exercise names against custom exercises and the app library
+    const customDocs = await this.fs.query(this.path(), 'customExercises', {});
+    const customExercises = parseCustomExercises(customDocs);
+    const resolvedExercises = input.exercises.map((e) => resolveExercise(e.name, customExercises));
+
+    const now = this.now();
+    const workoutDate = new Date(`${input.date}T12:00:00.000Z`);
+    const workoutName = input.name?.trim() || 'Workout';
+
+    // 1. Create the workout_history summary document with its generated ID upfront in ONE write
+    const workoutId = this.newId();
+    const initialSummary = buildWorkoutHistoryDoc(this.uid, workoutId, input, now, resolvedExercises);
+    await this.fs.create(this.path('workout_history'), toFields(initialSummary), workoutId);
+
+    // 2. Create an exercise_history document for each exercise and update exercise_stats
+    for (let i = 0; i < input.exercises.length; i++) {
+      const e = input.exercises[i];
+      const resolved = resolvedExercises[i];
+      const exerciseId = resolved.id;
+      const statsDoc = await this.fs.get(this.path('exercise_stats', exerciseId));
+      const currentStats = statsDoc ? data(statsDoc) : null;
+
+      const completedSets: StoredPerformedSet[] = e.sets
+        .filter((s) => s.completed !== false)
+        .map((s, idx) => ({
+          setNumber: idx + 1,
+          targetReps: s.reps,
+          actualReps: s.reps,
+          weight: s.weight ?? 0,
+          unit: s.unit ?? 'lbs',
+          completed: true,
+          ...(s.rpe !== undefined ? { rpe: s.rpe } : {}),
+          ...(s.time !== undefined ? { time: s.time } : {}),
+          ...(s.rir !== undefined ? { rir: s.rir } : {}),
+          ...(s.notes?.trim() ? { notes: s.notes.trim() } : {}),
+        }));
+
+      const totalVolume = completedSets.reduce((sum, s) => sum + s.weight * s.actualReps, 0);
+      const prs = checkPersonalRecords(currentStats, completedSets, totalVolume);
+
+      const exDocFields = buildExerciseHistoryDoc(this.uid, workoutId, workoutName, workoutDate, e, prs, now, resolved);
+      await this.fs.create(this.path('exercise_history'), toFields(exDocFields));
+
+      const nextStats = updateExerciseStatsDoc(
+        exerciseId,
+        resolved.matchedName,
+        currentStats,
+        completedSets,
+        totalVolume,
+        prs,
+        workoutDate,
+      );
+      await this.fs.patch(this.path('exercise_stats', exerciseId), toFields(nextStats));
+    }
+
+    const entry = await this.getHistoryEntry(workoutId);
+    const unmatched = resolvedExercises.filter((r) => r.isFallback).map((r) => r.name);
+    return {
+      ...entry,
+      ...(unmatched.length > 0
+        ? {
+            unmatchedExercises: unmatched,
+            fallbackNotice: `Unmatched exercise(s) [${unmatched.join(', ')}] were saved with fallback IDs and Unknown muscle groups. Use add_exercise to add them to your custom library.`,
+          }
+        : {}),
+    };
+  }
+
+  async updateHistoryEntry(input: UpdateHistoryEntryInput) {
+    const workoutId = safeId(input.workoutId, 'workout history');
+    const workoutDoc = await this.fs.get(this.path('workout_history', workoutId));
+    if (!workoutDoc) throw new DataError('not-found', `No workout history entry with id ${workoutId}.`);
+    const currentWorkout = data(workoutDoc);
+
+    if (input.date) {
+      if (isFutureDate(input.date, this.now(), input.tz, input.utcOffset)) {
+        throw new DataError('invalid-argument', 'Cannot log a workout in the future.');
+      }
+    }
+
+    const linkedWorkoutId = (currentWorkout.workoutId as string) || workoutId;
+    let existingDocs = await this.fs.query(this.path(), 'exercise_history', {
+      filters: [{ field: 'workoutId', op: 'EQUAL', value: { stringValue: linkedWorkoutId } }],
+    });
+    if (linkedWorkoutId !== workoutId) {
+      const extraDocs = await this.fs.query(this.path(), 'exercise_history', {
+        filters: [{ field: 'workoutId', op: 'EQUAL', value: { stringValue: workoutId } }],
+      });
+      const seen = new Set(existingDocs.map((d) => docId(d)));
+      for (const d of extraDocs) {
+        if (!seen.has(docId(d))) existingDocs.push(d);
+      }
+    }
+    const existingById = new Map(existingDocs.map((d) => [docId(d), d]));
+
+    // Validate removeExerciseIds belong to this workout
+    if (input.removeExerciseIds && input.removeExerciseIds.length > 0) {
+      for (const remId of input.removeExerciseIds) {
+        safeId(remId, 'exercise history');
+        if (!existingById.has(remId)) {
+          throw new DataError('invalid-argument', `Exercise history id ${remId} does not belong to this workout.`);
+        }
+      }
+    }
+
+    interface PreparedExercise {
+      isNew: boolean;
+      existingDoc?: FsDocument;
+      name: string;
+      id?: string;
+      customTitle?: string;
+      notes?: string;
+      inputSets?: PerformedSetInput[];
+      completedSets: StoredPerformedSet[];
+      resolved: { id: string; matchedName: string; muscleGroups: string[]; equipment: string };
+    }
+
+    const preparedExercises: PreparedExercise[] = [];
+    const customDocs = await this.fs.query(this.path(), 'customExercises', {});
+    const customExercises = parseCustomExercises(customDocs);
+
+    if (input.exercises && input.exercises.length > 0) {
+      for (const ex of input.exercises) {
+        const resolved = resolveExercise(ex.name, customExercises);
+        if (ex.id) {
+          safeId(ex.id, 'exercise history');
+          if (!existingById.has(ex.id)) {
+            throw new DataError('invalid-argument', `Exercise history id ${ex.id} does not belong to this workout.`);
+          }
+          const currentDoc = existingById.get(ex.id)!;
+          const currentSets = (Array.isArray(data(currentDoc).sets) ? data(currentDoc).sets : []) as StoredPerformedSet[];
+
+          let completedSets: StoredPerformedSet[];
+          if (ex.sets) {
+            completedSets = ex.sets
+              .filter((s) => s.completed !== false)
+              .map((s, idx) => ({
+                setNumber: idx + 1,
+                targetReps: s.reps,
+                actualReps: s.reps,
+                weight: s.weight ?? 0,
+                unit: s.unit ?? 'lbs',
+                completed: true,
+                ...(s.rpe !== undefined ? { rpe: s.rpe } : {}),
+                ...(s.time !== undefined ? { time: s.time } : {}),
+                ...(s.rir !== undefined ? { rir: s.rir } : {}),
+                ...(s.notes?.trim() ? { notes: s.notes.trim() } : {}),
+              }));
+          } else {
+            let workingSets = currentSets.slice();
+            if (ex.removeSetNumbers && ex.removeSetNumbers.length > 0) {
+              const removeSet = new Set(ex.removeSetNumbers);
+              workingSets = workingSets.filter((s, idx) => !removeSet.has(s.setNumber ?? idx + 1));
+            }
+            if (ex.addSets && ex.addSets.length > 0) {
+              const newSets: StoredPerformedSet[] = ex.addSets
+                .filter((s) => s.completed !== false)
+                .map((s) => ({
+                  setNumber: 0,
+                  targetReps: s.reps,
+                  actualReps: s.reps,
+                  weight: s.weight ?? 0,
+                  unit: s.unit ?? 'lbs',
+                  completed: true,
+                  ...(s.rpe !== undefined ? { rpe: s.rpe } : {}),
+                  ...(s.time !== undefined ? { time: s.time } : {}),
+                  ...(s.rir !== undefined ? { rir: s.rir } : {}),
+                  ...(s.notes?.trim() ? { notes: s.notes.trim() } : {}),
+                }));
+              workingSets.push(...newSets);
+            }
+            completedSets = workingSets.map((s, idx) => ({ ...s, setNumber: idx + 1 }));
+          }
+
+          if (completedSets.length === 0) {
+            throw new DataError('invalid-argument', `Exercise "${ex.name}" must have at least one completed set.`);
+          }
+
+          preparedExercises.push({
+            isNew: false,
+            existingDoc: currentDoc,
+            name: ex.name,
+            id: ex.id,
+            customTitle: ex.customTitle,
+            notes: ex.notes,
+            completedSets,
+            resolved,
+          });
+        } else {
+          // New exercise to add
+          if (!ex.sets || ex.sets.length === 0) {
+            throw new DataError('invalid-argument', `New exercise "${ex.name}" must have at least one set.`);
+          }
+          const completedSets = ex.sets
+            .filter((s) => s.completed !== false)
+            .map((s, idx) => ({
+              setNumber: idx + 1,
+              targetReps: s.reps,
+              actualReps: s.reps,
+              weight: s.weight ?? 0,
+              unit: s.unit ?? 'lbs',
+              completed: true,
+              ...(s.rpe !== undefined ? { rpe: s.rpe } : {}),
+              ...(s.time !== undefined ? { time: s.time } : {}),
+              ...(s.rir !== undefined ? { rir: s.rir } : {}),
+              ...(s.notes?.trim() ? { notes: s.notes.trim() } : {}),
+            }));
+
+          if (completedSets.length === 0) {
+            throw new DataError('invalid-argument', `Exercise "${ex.name}" must have at least one completed set.`);
+          }
+
+          preparedExercises.push({
+            isNew: true,
+            name: ex.name,
+            customTitle: ex.customTitle,
+            notes: ex.notes,
+            inputSets: ex.sets,
+            completedSets,
+            resolved,
+          });
+        }
+      }
+    }
+
+    // All validations passed; start writes
+    const now = this.now();
+    const dateChanged = Boolean(input.date);
+    const nameChanged = Boolean(input.name);
+    const workoutDate = input.date
+      ? new Date(`${input.date}T12:00:00.000Z`)
+      : new Date((currentWorkout.startTime as string | Date) || now);
+    const workoutName = input.name?.trim() ?? ((currentWorkout.name as string) || 'Workout');
+
+    const affectedExerciseIds = new Set<string>();
+
+    // 1. Explicit removals via removeExerciseIds
+    if (input.removeExerciseIds && input.removeExerciseIds.length > 0) {
+      for (const remId of input.removeExerciseIds) {
+        await this.fs.delete(this.path('exercise_history', remId));
+        const exId = data(existingById.get(remId)!).exerciseId as string;
+        if (exId) affectedExerciseIds.add(exId);
+        existingById.delete(remId);
+      }
+    }
+
+    // 2. If replaceAllExercises is true, remove any unlisted exercises
+    if (input.replaceAllExercises === true && input.exercises) {
+      const keptIds = new Set(input.exercises.map((e) => e.id).filter(Boolean));
+      for (const [id, doc] of existingById.entries()) {
+        if (!keptIds.has(id)) {
+          await this.fs.delete(this.path('exercise_history', id));
+          const exId = data(doc).exerciseId as string;
+          if (exId) affectedExerciseIds.add(exId);
+          existingById.delete(id);
+        }
+      }
+    }
+
+    // 3. Update or add exercises from preparedExercises
+    const updatedExistingDocIds = new Set<string>();
+    for (const prep of preparedExercises) {
+      const exerciseId = prep.resolved.id;
+      affectedExerciseIds.add(exerciseId);
+
+      const totalVolume = prep.completedSets.reduce((sum, s) => sum + s.weight * s.actualReps, 0);
+      const configuration = generateConfigurationString(prep.completedSets);
+
+      const statsDoc = await this.fs.get(this.path('exercise_stats', exerciseId));
+      const currentStats = statsDoc ? data(statsDoc) : null;
+      const prs = checkPersonalRecords(currentStats, prep.completedSets, totalVolume);
+
+      if (!prep.isNew && prep.id && prep.existingDoc) {
+        updatedExistingDocIds.add(prep.id);
+        const prevExId = data(prep.existingDoc).exerciseId as string;
+        if (prevExId && prevExId !== exerciseId) affectedExerciseIds.add(prevExId);
+
+        const fields: Record<string, unknown> = {
+          exerciseId,
+          exerciseName: prep.name.trim(),
+          sets: prep.completedSets,
+          configuration,
+          totalVolume,
+          workoutDate,
+          workoutName,
+          personalRecords: prs,
+          updatedAt: now,
+          muscleGroups: prep.resolved.muscleGroups,
+          equipment: prep.resolved.equipment,
+          ...(prep.notes?.trim() !== undefined ? { notes: prep.notes.trim() } : {}),
+          ...(prep.customTitle?.trim() !== undefined ? { customTitle: prep.customTitle.trim() } : {}),
+        };
+        const mask = [
+          'exerciseId',
+          'exerciseName',
+          'sets',
+          'configuration',
+          'totalVolume',
+          'workoutDate',
+          'workoutName',
+          'personalRecords',
+          'updatedAt',
+          'muscleGroups',
+          'equipment',
+        ];
+        if (prep.notes !== undefined) mask.push('notes');
+        if (prep.customTitle !== undefined) mask.push('customTitle');
+        await this.fs.patch(this.path('exercise_history', prep.id), toFields(fields), { mask });
+      } else {
+        // Add new exercise
+        const newDoc = buildExerciseHistoryDoc(
+          this.uid,
+          linkedWorkoutId,
+          workoutName,
+          workoutDate,
+          {
+            name: prep.name,
+            sets:
+              prep.inputSets ||
+              prep.completedSets.map((s) => ({
+                reps: s.actualReps,
+                weight: s.weight,
+                unit: s.unit,
+                rpe: s.rpe,
+                time: s.time,
+                rir: s.rir,
+                completed: s.completed,
+                notes: s.notes,
+              })),
+            notes: prep.notes,
+            customTitle: prep.customTitle,
+          },
+          prs,
+          now,
+          prep.resolved,
+        );
+        await this.fs.create(this.path('exercise_history'), toFields(newDoc));
+      }
+    }
+
+    // 4. Update unlisted preserved exercises when date or name changed
+    if (dateChanged || nameChanged) {
+      for (const [id, doc] of existingById.entries()) {
+        if (!updatedExistingDocIds.has(id)) {
+          const exId = data(doc).exerciseId as string;
+          if (exId && dateChanged) affectedExerciseIds.add(exId);
+          const patchFields: Record<string, unknown> = { updatedAt: now };
+          const mask = ['updatedAt'];
+          if (dateChanged) {
+            patchFields.workoutDate = workoutDate;
+            mask.push('workoutDate');
+          }
+          if (nameChanged) {
+            patchFields.workoutName = workoutName;
+            mask.push('workoutName');
+          }
+          await this.fs.patch(this.path('exercise_history', id), toFields(patchFields), { mask });
+        }
+      }
+    }
+
+    // Recompute workout summary totals
+    let finalExDocs = await this.fs.query(this.path(), 'exercise_history', {
+      filters: [{ field: 'workoutId', op: 'EQUAL', value: { stringValue: linkedWorkoutId } }],
+    });
+    if (linkedWorkoutId !== workoutId) {
+      const extraDocs = await this.fs.query(this.path(), 'exercise_history', {
+        filters: [{ field: 'workoutId', op: 'EQUAL', value: { stringValue: workoutId } }],
+      });
+      const seen = new Set(finalExDocs.map((d) => docId(d)));
+      for (const d of extraDocs) {
+        if (!seen.has(docId(d))) finalExDocs.push(d);
+      }
+    }
+
+    // Order finalExDocs deterministically
+    const prevSummary = Array.isArray(currentWorkout.exercisesSummary)
+      ? (currentWorkout.exercisesSummary as Array<Record<string, unknown>>)
+      : [];
+
+    finalExDocs.sort((a, b) => {
+      const idA = docId(a);
+      const idB = docId(b);
+      const dataA = data(a);
+      const dataB = data(b);
+
+      if (input.replaceAllExercises && input.exercises) {
+        const idxA = input.exercises.findIndex(
+          (e) => e.id === idA || e.name.toLowerCase() === String(dataA.exerciseName).toLowerCase(),
+        );
+        const idxB = input.exercises.findIndex(
+          (e) => e.id === idB || e.name.toLowerCase() === String(dataB.exerciseName).toLowerCase(),
+        );
+        return (idxA >= 0 ? idxA : 999) - (idxB >= 0 ? idxB : 999);
+      }
+
+      const exIdA = String(dataA.exerciseId ?? '');
+      const exIdB = String(dataB.exerciseId ?? '');
+      const prevIdxA = prevSummary.findIndex((s) => s.exerciseId === exIdA || s.exerciseName === dataA.exerciseName);
+      const prevIdxB = prevSummary.findIndex((s) => s.exerciseId === exIdB || s.exerciseName === dataB.exerciseName);
+
+      const rankA = prevIdxA >= 0 ? prevIdxA : 1000;
+      const rankB = prevIdxB >= 0 ? prevIdxB : 1000;
+      if (rankA !== rankB) return rankA - rankB;
+
+      const timeA = String(a.createTime ?? dataA.createdAt ?? '');
+      const timeB = String(b.createTime ?? dataB.createdAt ?? '');
+      return timeA.localeCompare(timeB);
+    });
+
+    let totalSets = 0;
+    let totalReps = 0;
+    let totalVolume = 0;
+
+    const exercisesSummary = finalExDocs.map((d) => {
+      const dData = data(d);
+      const setsArr = Array.isArray(dData.sets) ? (dData.sets as StoredPerformedSet[]) : [];
+      const sets = setsArr.length;
+      const reps = setsArr.reduce((sum, s) => sum + (s.actualReps || 0), 0);
+      const volume = typeof dData.totalVolume === 'number' ? dData.totalVolume : 0;
+      totalSets += sets;
+      totalReps += reps;
+      totalVolume += volume;
+      return {
+        exerciseId: String(dData.exerciseId ?? ''),
+        exerciseName: String(dData.exerciseName ?? ''),
+        sets,
+        reps,
+        volume,
+      };
+    });
+
+    const duration =
+      input.durationMinutes !== undefined
+        ? input.durationMinutes
+        : (typeof currentWorkout.duration === 'number' ? currentWorkout.duration : 0);
+    const startDate = workoutDate;
+    const endDate = duration > 0 ? new Date(startDate.getTime() + duration * 60000) : startDate;
+
+    const summaryPatch: Record<string, unknown> = {
+      name: workoutName,
+      startTime: startDate,
+      endTime: endDate,
+      duration,
+      totalExercises: exercisesSummary.length,
+      totalSets,
+      totalReps,
+      totalVolume,
+      exercisesSummary,
+      updatedAt: now,
+    };
+    const summaryMask = [
+      'name',
+      'startTime',
+      'endTime',
+      'duration',
+      'totalExercises',
+      'totalSets',
+      'totalReps',
+      'totalVolume',
+      'exercisesSummary',
+      'updatedAt',
+    ];
+    await this.fs.patch(this.path('workout_history', workoutId), toFields(summaryPatch), { mask: summaryMask });
+
+    // Recompute stats and PRs for all affected exercises
+    for (const exId of affectedExerciseIds) {
+      const exHistories = await this.fs.query(this.path(), 'exercise_history', {
+        filters: [{ field: 'exerciseId', op: 'EQUAL', value: { stringValue: exId } }],
+      });
+      if (exHistories.length === 0) {
+        await this.fs.delete(this.path('exercise_stats', exId));
+      } else {
+        const rawHistories: RawExerciseHistory[] = exHistories.map((d) => {
+          const dData = data(d);
+          return {
+            workoutDate: new Date(dData.workoutDate as string | Date),
+            sets: (Array.isArray(dData.sets) ? dData.sets : []) as Array<{ actualReps: number; weight: number }>,
+            totalVolume: typeof dData.totalVolume === 'number' ? dData.totalVolume : 0,
+          };
+        });
+        const exName = String(data(exHistories[0]).exerciseName ?? '');
+        const computedStats = computeExerciseStats(exId, exName, rawHistories);
+        await this.fs.patch(this.path('exercise_stats', exId), toFields(computedStats));
+      }
+    }
+
+    return this.getHistoryEntry(workoutId);
   }
 
   async addExercise(input: CustomExerciseInput) {
@@ -230,4 +876,3 @@ export class UserData {
     return { id: docId(doc), name: fields.name, muscleGroup: fields.muscleGroup, equipment: fields.equipment };
   }
 }
-

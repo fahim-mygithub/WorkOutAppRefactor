@@ -10,12 +10,15 @@ import { DataError, type UserData } from '../data/userData';
 import {
   addExerciseInput,
   createWorkoutInput,
+  getHistoryEntryInput,
   getProfileInput,
   getWorkoutInput,
   listHistoryInput,
   listPlansInput,
   listWorkoutsInput,
+  logWorkoutInput,
   planWorkoutInput,
+  updateHistoryEntryInput,
   updateProfileInput,
   updateWorkoutInput,
 } from './schemas';
@@ -122,10 +125,37 @@ export const agentTools: readonly AgentTool[] = [
     name: 'list_history',
     title: 'List workout history',
     description:
-      'Read finished workouts, newest first (read only). kind "workouts" gives one row per session with totals; kind "exercises" gives one row per exercise performed with every set. Page with nextPageToken.',
+      'Read finished workouts, newest first (read only). kind "workouts" gives one row per session with totals (use workout id with get_history_entry or update_history_entry); kind "exercises" gives one row per exercise performed with every set. Supports date filtering (from/to YYYY-MM-DD) and cursor/nextPageToken paging through the user\'s entire history.',
     input: listHistoryInput,
     readOnly: true,
     run: (input, { data }) => data.listHistory(input),
+  }),
+  define({
+    name: 'get_history_entry',
+    title: 'Get history entry',
+    description:
+      'Read one past workout session in full by workoutId: its date, duration, totals, and every exercise with all completed sets (reps, weight, unit, rpe, time), configuration, total volume, notes, and individual exercise history IDs.',
+    input: getHistoryEntryInput,
+    readOnly: true,
+    run: (input, { data }) => data.getHistoryEntry(input.workoutId),
+  }),
+  define({
+    name: 'log_workout',
+    title: 'Log a past workout',
+    description:
+      'Log a completed workout session into the user\'s history (e.g. when the user dictates a past workout like "yesterday I did 4x8 bench at 185 and 3x10 rows at 135"). Date must be past or today (YYYY-MM-DD), never in the future. Supports optional tz (e.g. "America/New_York") or utcOffset to validate local today. Exercise names are resolved against the app library and custom exercises to store real exercise IDs, muscle groups, and equipment; unmatched names keep deterministic fallback IDs (fallback-<hash>) with Unknown muscle groups/equipment, reported in unmatchedExercises. Writes the workout session summary, creates per-exercise history records, and automatically updates lifetime exercise stats and personal records (PRs) exactly as if logged inside the app. Notes are stored per exercise (exercises[].notes) or per set (exercises[].sets[].notes), matching the app\'s history structure.',
+    input: logWorkoutInput,
+    readOnly: false,
+    run: (input, { data }) => data.logWorkout(input),
+  }),
+  define({
+    name: 'update_history_entry',
+    title: 'Update a past workout',
+    description:
+      'Edit a past workout record (e.g. "change Tuesday\'s bench to 195" or fix reps/weight, add/remove sets, add/remove exercises, change date or name). Call get_history_entry first to get existing exercise IDs and sets. Supports explicit addSets / removeSetNumbers per exercise, explicit removeExerciseIds, and safe partial updates (unlisted exercises are never deleted unless replaceAllExercises: true or named in removeExerciseIds). Automatically recomputes the workout totals and recalculates affected exercise stats and personal records (PRs). Notes can be updated per exercise (exercises[].notes) or per set (exercises[].sets[].notes).',
+    input: updateHistoryEntryInput,
+    readOnly: false,
+    run: (input, { data }) => data.updateHistoryEntry(input),
   }),
   define({
     name: 'add_exercise',
