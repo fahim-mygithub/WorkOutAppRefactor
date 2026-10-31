@@ -186,31 +186,61 @@ export function matchHistoryExercise(
   const key = query.join(' ');
   const alias = ALIASES[key];
 
-  const candidates: HistoryExerciseLike[] = [];
+  const exactCandidates: HistoryExerciseLike[] = [];
+  const partialCandidates: { h: HistoryExerciseLike; extra: number }[] = [];
+
   for (const h of historyList) {
     if (!h.exerciseName) continue;
-    const hKey = exerciseTokens(h.exerciseName).join(' ');
+    const hTokens = exerciseTokens(h.exerciseName);
+    const hKey = hTokens.join(' ');
+
     if (
       hKey === key ||
       (alias !== undefined && hKey === alias) ||
       (ALIASES[hKey] !== undefined && ALIASES[hKey] === key)
     ) {
-      candidates.push(h);
+      exactCandidates.push(h);
+      continue;
+    }
+
+    const queryInH = query.every((q) => hTokens.includes(q));
+    const hInQuery = hTokens.length > 1 && hTokens.every((t) => query.includes(t));
+    if (queryInH || hInQuery) {
+      const extra = hTokens.filter((t) => !query.includes(t) && !EQUIPMENT.has(t)).length;
+      partialCandidates.push({ h, extra });
     }
   }
 
-  if (candidates.length === 0) return null;
+  const sortExact = (list: HistoryExerciseLike[]) => {
+    list.sort((a, b) => {
+      const timeA = toTimestamp(a.workoutDate);
+      const timeB = toTimestamp(b.workoutDate);
+      if (timeB !== timeA) return timeB - timeA;
+      const groupsA = a.muscleGroups?.length ?? 0;
+      const groupsB = b.muscleGroups?.length ?? 0;
+      return groupsB - groupsA;
+    });
+    return list[0];
+  };
 
-  candidates.sort((a, b) => {
-    const timeA = toTimestamp(a.workoutDate);
-    const timeB = toTimestamp(b.workoutDate);
-    if (timeB !== timeA) return timeB - timeA;
-    const groupsA = a.muscleGroups?.length ?? 0;
-    const groupsB = b.muscleGroups?.length ?? 0;
-    return groupsB - groupsA;
-  });
+  if (exactCandidates.length > 0) {
+    return sortExact(exactCandidates);
+  }
 
-  return candidates[0];
+  if (partialCandidates.length > 0) {
+    partialCandidates.sort((a, b) => {
+      if (a.extra !== b.extra) return a.extra - b.extra;
+      const timeA = toTimestamp(a.h.workoutDate);
+      const timeB = toTimestamp(b.h.workoutDate);
+      if (timeB !== timeA) return timeB - timeA;
+      const groupsA = a.h.muscleGroups?.length ?? 0;
+      const groupsB = b.h.muscleGroups?.length ?? 0;
+      return groupsB - groupsA;
+    });
+    return partialCandidates[0].h;
+  }
+
+  return null;
 }
 
 let memoryLibrary: LibraryExercise[] | null = null;
@@ -253,7 +283,20 @@ export function resolveExercise(
 
   // 1. Check user's history / stats first (most recent wins)
   if (historyExercises && historyExercises.length > 0) {
-    const historyMatch = matchHistoryExercise(trimmed, historyExercises);
+    let historyMatch = matchHistoryExercise(trimmed, historyExercises);
+    // At minimum, also try the library-matched name and custom-matched name against history
+    if (!historyMatch) {
+      const libCandidate = matchExerciseInList(trimmed, library);
+      if (libCandidate) {
+        historyMatch = matchHistoryExercise(libCandidate.name, historyExercises);
+      }
+    }
+    if (!historyMatch && customExercises && customExercises.length > 0) {
+      const customCandidate = matchCustomExercise(trimmed, customExercises);
+      if (customCandidate) {
+        historyMatch = matchHistoryExercise(customCandidate.name, historyExercises);
+      }
+    }
     if (historyMatch) {
       const libMatch = matchExerciseInList(trimmed, library);
       const rawGroups = historyMatch.muscleGroups?.filter(Boolean);

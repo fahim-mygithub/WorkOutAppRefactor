@@ -195,7 +195,11 @@ export async function runEffects(effects: readonly AiEffect[], deps: EffectDeps)
  * Undo for plans that support one (the build / plan / profile tools), else
  * undefined. Rejects, with the store put back, when a save fails.
  */
-export async function applyPlan(plan: ToolPlan, deps: EffectDeps): Promise<(() => Promise<void>) | undefined> {
+export type PlanUndoFn = (() => Promise<void>) & {
+  inverses?: readonly AiEffect[];
+};
+
+export async function applyPlan(plan: ToolPlan, deps: EffectDeps): Promise<PlanUndoFn | undefined> {
   if (plan.kind !== 'confirm') return undefined;
   const effects = plan.effects ?? [];
   if (effects.length && !deps.userId) throw new Error('Sign in to save.');
@@ -208,8 +212,10 @@ export async function applyPlan(plan: ToolPlan, deps: EffectDeps): Promise<(() =
     throw err;
   }
   if (!plan.undo && effects.length === 0) return undefined;
-  return async () => {
+  const undoFn: PlanUndoFn = async () => {
     plan.undo?.forEach((a) => deps.dispatch(a));
     await runEffects(inverses, deps);
   };
+  undoFn.inverses = inverses;
+  return undoFn;
 }

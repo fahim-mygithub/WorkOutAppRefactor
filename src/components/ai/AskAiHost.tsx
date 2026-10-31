@@ -94,9 +94,40 @@ function getPlanRecordKeys(plan: { effects?: AiEffect[]; apply: UnknownAction[];
         break;
     }
   }
-  if (keys.length === 0) {
-    const actionTypes = plan.apply.map((a) => a.type).join(',');
-    if (actionTypes) keys.push(`action:${actionTypes}`);
+  for (const a of plan.apply) {
+    const payload = (a as any).payload;
+    if (!payload) continue;
+    switch (a.type) {
+      case 'plannedWorkouts/planAdded':
+        if (payload.id) keys.push(`plan:${payload.id}`);
+        if (payload.dateKey) keys.push(`planDate:${payload.dateKey}`);
+        break;
+      case 'plannedWorkouts/planRemoved':
+        if (typeof payload === 'string') keys.push(`plan:${payload}`);
+        break;
+      case 'trackedLifts/liftUpdated':
+        if (payload.id) keys.push(`lift:${payload.id}`);
+        break;
+      case 'trackedLifts/liftRemoved':
+        if (typeof payload === 'string') keys.push(`lift:${payload}`);
+        break;
+      case 'trackedLifts/liftAdded':
+        if (payload.lift?.id) keys.push(`lift:${payload.lift.id}`);
+        if (payload.lift?.name) keys.push(`liftName:${payload.lift.name.toLowerCase()}`);
+        break;
+      case 'workout/replaceExerciseMovement':
+      case 'workout/setsPatched':
+        if (payload.exerciseId) keys.push(`activeExercise:${payload.exerciseId}`);
+        break;
+      case 'customExercises/customExerciseAdded':
+        if (payload.id) keys.push(`customExercise:${payload.id}`);
+        if (payload.name) keys.push(`customExercise:${payload.name}`);
+        break;
+      case 'user/updateProfile':
+      case 'user/setPreferences':
+        keys.push('profile');
+        break;
+    }
   }
   return keys;
 }
@@ -285,6 +316,20 @@ export function AskAiHost() {
           const savedChanged = touchesSavedWorkouts(plan.effects);
           if (savedChanged) savedWorkouts.current = null;
           const recordKeys = getPlanRecordKeys(plan);
+          const inverses = (undo as any)?.inverses as AiEffect[] | undefined;
+          if (inverses) {
+            for (const inv of inverses) {
+              if (inv.type === 'undoLogPastWorkout' && inv.workoutId) {
+                recordKeys.push(`pastWorkout:${inv.workoutId}`);
+              }
+              if (inv.type === 'deleteSavedWorkout' && inv.id) {
+                recordKeys.push(`savedWorkout:${inv.id}`);
+              }
+              if (inv.type === 'removeCustomExercise' && inv.id) {
+                recordKeys.push(`customExercise:${inv.id}`);
+              }
+            }
+          }
           setDecisions((d) => ({ ...d, [proposal.id]: 'applied' }));
           if (undo) {
             const takeBack = undo;
@@ -294,10 +339,15 @@ export function AskAiHost() {
             };
             setSessionUndos((prev) => {
               const next = new Map(prev);
+              const replacedIds = new Set<string>();
               for (const [id, entry] of prev) {
                 if (entry.recordKeys.some((k) => recordKeys.includes(k))) {
                   next.delete(id);
+                  replacedIds.add(id);
                 }
+              }
+              if (replacedIds.size > 0) {
+                setUndos((q) => q.filter((u) => !replacedIds.has(u.id)));
               }
               next.set(proposal.id, {
                 proposalId: proposal.id,

@@ -90,4 +90,51 @@ describe('exerciseIndex', () => {
     expect(unknown.muscleGroups).toEqual(['Unknown']);
     expect(unknown.equipment).toBe('Unknown');
   });
+  it('matches the exact exercise ID contract written by useFinishWorkout / ExerciseHistoryService in a fresh session', () => {
+    const library = getCachedLibrary();
+    const sampleNames = [
+      'Barbell Bench Press',
+      'bench press',
+      'Squat',
+      'Deadlift',
+      'Unregistered Super Move 99',
+    ];
+
+    // In the app (src/hooks/useFinishWorkout.ts -> src/services/workoutStorageService.ts):
+    // useFinishWorkout saves each completed exercise with:
+    //   ExerciseHistoryService.saveExercisePerformance(userId, { exerciseId: exercise.exercise.id, ... })
+    // where exercise.exercise.id was derived by matchExercise(name, library)?.id || fallbackExerciseId(name)
+    for (const name of sampleNames) {
+      const appMatch = matchExercise(name, library as any);
+      const expectedAppStoredId = appMatch ? appMatch.id : fallbackExerciseId(name);
+
+      const workerResolved = resolveExercise(name);
+      expect(workerResolved.id).toBe(expectedAppStoredId);
+      expect(workerResolved.isFallback).toBe(expectedAppStoredId.startsWith('fallback-'));
+    }
+  });
+
+  it('reuses previous app fallback ID from history when logging either canonical name or gym shorthand', () => {
+    const library = getCachedLibrary();
+    const appStoredBenchId = fallbackExerciseId('Barbell Bench Press'); // fallback-eo82lz
+    const historyList = [
+      {
+        exerciseId: appStoredBenchId,
+        exerciseName: 'Barbell Bench Press',
+        workoutDate: new Date('2026-10-01'),
+        muscleGroups: ['Barbell', 'Chest', 'Mid and Lower Chest'],
+        equipment: 'Barbell',
+      },
+    ];
+
+    // 1. Canonical name reuses history id
+    const canonical = resolveExercise('Barbell Bench Press', undefined, library, historyList);
+    expect(canonical.id).toBe(appStoredBenchId);
+    expect(canonical.matchedBy).toBe('history');
+
+    // 2. Gym shorthand 'bench press' also matches history and reuses appStoredBenchId instead of library id
+    const shorthand = resolveExercise('bench press', undefined, library, historyList);
+    expect(shorthand.id).toBe(appStoredBenchId);
+    expect(shorthand.matchedBy).toBe('history');
+  });
 });

@@ -365,8 +365,8 @@ export class UserData {
 
   async loadHistoryExercises(): Promise<HistoryExerciseLike[]> {
     const [historyDocs, statsDocs] = await Promise.all([
-      this.fs.query(this.path(), 'exercise_history', {}).catch(() => []),
-      this.fs.query(this.path(), 'exercise_stats', {}).catch(() => []),
+      this.fs.query(this.path(), 'exercise_history', {}),
+      this.fs.query(this.path(), 'exercise_stats', {}),
     ]);
 
     const result: HistoryExerciseLike[] = [];
@@ -421,7 +421,7 @@ export class UserData {
     // Resolve exercise names against user's history/stats, custom exercises and the app library
     const [historyExercises, customDocs] = await Promise.all([
       this.loadHistoryExercises(),
-      this.fs.query(this.path(), 'customExercises', {}).catch(() => []),
+      this.fs.query(this.path(), 'customExercises', {}),
     ]);
     const customExercises = parseCustomExercises(customDocs);
     const resolvedExercises = input.exercises.map((e) =>
@@ -543,7 +543,7 @@ export class UserData {
     const preparedExercises: PreparedExercise[] = [];
     const [historyExercises, customDocs] = await Promise.all([
       this.loadHistoryExercises(),
-      this.fs.query(this.path(), 'customExercises', {}).catch(() => []),
+      this.fs.query(this.path(), 'customExercises', {}),
     ]);
     const customExercises = parseCustomExercises(customDocs);
 

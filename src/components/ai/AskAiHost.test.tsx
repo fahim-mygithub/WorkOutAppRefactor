@@ -538,4 +538,150 @@ describe('AskAiHost — build, plan and profile tools', () => {
     await waitFor(() => expect(historyUndoLog).toHaveBeenCalledTimes(2));
     expect(await screen.findByText('Undone')).toBeInTheDocument();
   });
+
+  it('logging a workout and then editing it replaces the log Undo with the edit Undo on the same workout', async () => {
+    const historyLog = vi.fn().mockResolvedValue({ workoutId: 'w-ai-10', exerciseIds: ['ex-ai-10'] });
+    const historyEdit = vi.fn().mockResolvedValue({ prior: { name: 'Push', date: '2026-10-30', exercises: [] } });
+    const historyUndoEdit = vi.fn().mockResolvedValue(undefined);
+    const historyUndoLog = vi.fn().mockResolvedValue(undefined);
+    svc.history = {
+      log: historyLog,
+      undoLog: historyUndoLog,
+      edit: historyEdit,
+      undoEdit: historyUndoEdit,
+    };
+
+    // First turn: log workout
+    vi.spyOn(aiClient, 'chat')
+      .mockResolvedValueOnce({
+        reply: 'Logged Push workout.',
+        source: 'backend',
+        toolCalls: [{
+          id: 'call-log-1',
+          name: 'logPastWorkout',
+          input: {
+            date: '2026-10-30',
+            name: 'Push',
+            exercises: [{ name: 'Barbell Bench Press', sets: [{ reps: 5, weight: 135 }] }],
+          },
+        }],
+      })
+      // Second turn: edit that same workout
+      .mockResolvedValueOnce({
+        reply: 'Updated weight to 145.',
+        source: 'backend',
+        toolCalls: [{
+          id: 'call-edit-1',
+          name: 'editPastWorkout',
+          input: {
+            workoutId: 'w-ai-10',
+            name: 'Push',
+            exercises: [{ name: 'Barbell Bench Press', sets: [{ reps: 5, weight: 145 }] }],
+          },
+        }],
+      });
+
+    const store = signedInStore();
+    renderHost(store, '/build');
+    const u = await send('log bench 135');
+
+    // Apply the log proposal
+    const applyButtons = await screen.findAllByRole('button', { name: 'Apply' });
+    await u.click(applyButtons[0]);
+    await waitFor(() => expect(historyLog).toHaveBeenCalledTimes(1));
+
+    // Check the proposal cards
+    let cards = await screen.findAllByTestId('apply-reject-card');
+    expect(cards).toHaveLength(1);
+    expect(within(cards[0]).getByRole('button', { name: 'Undo' })).toBeInTheDocument();
+
+    // Send second message to trigger edit on the same workout
+    await u.type(screen.getByLabelText('Message'), 'change weight to 145');
+    await u.click(screen.getByRole('button', { name: 'Send' }));
+
+    // Apply the edit proposal
+    cards = await screen.findAllByTestId('apply-reject-card');
+    expect(cards).toHaveLength(2);
+    const editApplyBtn = within(cards[1]).getByRole('button', { name: 'Apply' });
+    await u.click(editApplyBtn);
+    await waitFor(() => expect(historyEdit).toHaveBeenCalledTimes(1));
+
+    // The 'a later Apply on the same record replaces the Undo' rule:
+    // The first card (log) no longer has an Undo button!
+    expect(within(cards[0]).queryByRole('button', { name: 'Undo' })).not.toBeInTheDocument();
+    // The second card (edit) DOES have an Undo button!
+    const editUndoBtn = within(cards[1]).getByRole('button', { name: 'Undo' });
+    expect(editUndoBtn).toBeInTheDocument();
+
+    // Clicking Undo on the edit card undoes the edit, NOT the log!
+    await u.click(editUndoBtn);
+    await waitFor(() => expect(historyUndoEdit).toHaveBeenCalledWith('w-ai-10', expect.anything()));
+    expect(historyUndoLog).not.toHaveBeenCalled();
+  });
+
+  it('plans on different records do not cancel each others Undo', async () => {
+    svc.history = {
+      log: vi.fn(),
+      undoLog: vi.fn(),
+      edit: vi.fn(),
+      undoEdit: vi.fn(),
+    };
+
+    // First turn: plan workout for date 2026-11-01
+    vi.spyOn(aiClient, 'chat')
+      .mockResolvedValueOnce({
+        reply: 'Planned workout 1.',
+        source: 'backend',
+        toolCalls: [{
+          id: 'call-plan-1',
+          name: 'planWorkout',
+          input: {
+            dateKey: '2026-11-01',
+            name: 'Push Day',
+            exercises: [{ name: 'Barbell Bench Press', sets: 3, reps: 5 }],
+          },
+        }],
+      })
+      // Second turn: plan workout for date 2026-11-02 (different record/date)
+      .mockResolvedValueOnce({
+        reply: 'Planned workout 2.',
+        source: 'backend',
+        toolCalls: [{
+          id: 'call-plan-2',
+          name: 'planWorkout',
+          input: {
+            dateKey: '2026-11-02',
+            name: 'Pull Day',
+            exercises: [{ name: 'Barbell Row', sets: 3, reps: 8 }],
+          },
+        }],
+      });
+
+    const store = signedInStore();
+    renderHost(store, '/build');
+    const u = await send('plan push on nov 1');
+
+    // Apply the first plan
+    const apply1 = await screen.findByRole('button', { name: 'Apply' });
+    await u.click(apply1);
+
+    // First card has Undo
+    let cards = await screen.findAllByTestId('apply-reject-card');
+    expect(cards).toHaveLength(1);
+    expect(within(cards[0]).getByRole('button', { name: 'Undo' })).toBeInTheDocument();
+
+    // Send second plan message
+    await u.type(screen.getByLabelText('Message'), 'plan pull on nov 2');
+    await u.click(screen.getByRole('button', { name: 'Send' }));
+
+    // Apply the second plan
+    cards = await screen.findAllByTestId('apply-reject-card');
+    expect(cards).toHaveLength(2);
+    const apply2 = within(cards[1]).getByRole('button', { name: 'Apply' });
+    await u.click(apply2);
+
+    // Both cards still have their Undo buttons! (No over-invalidation across different records)
+    expect(within(cards[0]).getByRole('button', { name: 'Undo' })).toBeInTheDocument();
+    expect(within(cards[1]).getByRole('button', { name: 'Undo' })).toBeInTheDocument();
+  });
 });
