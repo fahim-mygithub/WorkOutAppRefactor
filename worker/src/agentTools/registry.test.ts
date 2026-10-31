@@ -771,6 +771,164 @@ describe('update_history_entry', () => {
     expect(exHistDoc.equipment).toBe('Machine');
     expect(exHistDoc.exerciseId).not.toMatch(/^fallback-/);
   });
+
+  it('updates workoutDate and workoutName for unlisted exercises when date or name changes with a partial exercise list', async () => {
+    const created = await ok('log_workout', {
+      date: '2026-10-25',
+      name: 'Original Workout',
+      exercises: [
+        { name: 'Bench Press', sets: [{ reps: 8, weight: 185 }] },
+        { name: 'Squat', sets: [{ reps: 5, weight: 225 }] },
+      ],
+    });
+    const workoutId = created.id as string;
+    const initialExercises = created.exercises as { id: string; exerciseName: string }[];
+    const benchDocId = initialExercises.find((e) => e.exerciseName === 'Bench Press')!.id;
+    const squatDocId = initialExercises.find((e) => e.exerciseName === 'Squat')!.id;
+
+    // Update with new date 2026-10-20, new name 'Updated Workout', and only Bench Press in exercises
+    const updated = await ok('update_history_entry', {
+      workoutId,
+      date: '2026-10-20',
+      name: 'Updated Workout',
+      exercises: [
+        { id: benchDocId, name: 'Bench Press', sets: [{ reps: 10, weight: 185 }] },
+      ],
+    });
+
+    expect(updated.name).toBe('Updated Workout');
+    expect(new Date(updated.startTime as string).toISOString().slice(0, 10)).toBe('2026-10-20');
+
+    // Both Bench Press AND Squat must have the updated workoutDate and workoutName
+    const benchDoc = fs.read(['users', UID, 'exercise_history', benchDocId])!;
+    expect(new Date(benchDoc.workoutDate as string).toISOString().slice(0, 10)).toBe('2026-10-20');
+    expect(benchDoc.workoutName).toBe('Updated Workout');
+
+    const squatDoc = fs.read(['users', UID, 'exercise_history', squatDocId])!;
+    expect(new Date(squatDoc.workoutDate as string).toISOString().slice(0, 10)).toBe('2026-10-20');
+    expect(squatDoc.workoutName).toBe('Updated Workout');
+
+    // Stats for both Bench and Squat must be recomputed with the new date
+    const benchStats = fs.read(['users', UID, 'exercise_stats', benchDoc.exerciseId as string])!;
+    expect(new Date(benchStats.lastPerformed as string).toISOString().slice(0, 10)).toBe('2026-10-20');
+
+    const squatStats = fs.read(['users', UID, 'exercise_stats', squatDoc.exerciseId as string])!;
+    expect(new Date(squatStats.lastPerformed as string).toISOString().slice(0, 10)).toBe('2026-10-20');
+  });
+
+  it('rejects workout-level notes while accepting and persisting exercise and set notes', async () => {
+    // Workout-level notes rejected on log_workout
+    const rLogNotes = await run('log_workout', {
+      date: '2026-10-25',
+      notes: 'Session notes are not on workout_history',
+      exercises: [{ name: 'Bench Press', sets: [{ reps: 8, weight: 185 }] }],
+    });
+    expect(rLogNotes.ok).toBe(false);
+    if (!rLogNotes.ok) expect(rLogNotes.error).toMatch(/unrecognized key/i);
+
+    // Workout-level notes rejected on update_history_entry
+    const valid = await ok('log_workout', {
+      date: '2026-10-25',
+      exercises: [
+        {
+          name: 'Bench Press',
+          notes: 'Felt good on chest',
+          sets: [{ reps: 8, weight: 185, notes: 'Paused rep' }],
+        },
+      ],
+    });
+    const workoutId = valid.id as string;
+
+    const rUpNotes = await run('update_history_entry', {
+      workoutId,
+      notes: 'New session note',
+    });
+    expect(rUpNotes.ok).toBe(false);
+    if (!rUpNotes.ok) expect(rUpNotes.error).toMatch(/unrecognized key/i);
+
+    // Notes on exercise and sets are properly saved
+    const exHistId = (valid.exercises as { id: string }[])[0].id;
+    const exDoc = fs.read(['users', UID, 'exercise_history', exHistId])!;
+    expect(exDoc.notes).toBe('Felt good on chest');
+    const sets = exDoc.sets as { notes?: string }[];
+    expect(sets[0].notes).toBe('Paused rep');
+  });
+
+  it('validates all changes before writing and does not leave partial mutations on error', async () => {
+    const created = await ok('log_workout', {
+      date: '2026-10-25',
+      name: 'Two Exercise Session',
+      exercises: [
+        { name: 'Bench Press', sets: [{ reps: 8, weight: 185 }] },
+        { name: 'Squat', sets: [{ reps: 5, weight: 225 }] },
+      ],
+    });
+    const workoutId = created.id as string;
+    const initialExercises = created.exercises as { id: string; exerciseName: string }[];
+    const benchDocId = initialExercises.find((e) => e.exerciseName === 'Bench Press')!.id;
+    const squatDocId = initialExercises.find((e) => e.exerciseName === 'Squat')!.id;
+
+    // Attempt to remove Bench AND remove set 1 from Squat (leaving Squat with 0 sets)
+    const r = await run('update_history_entry', {
+      workoutId,
+      removeExerciseIds: [benchDocId],
+      exercises: [
+        {
+          id: squatDocId,
+          name: 'Squat',
+          removeSetNumbers: [1],
+        },
+      ],
+    });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error).toMatch(/must have at least one completed set/i);
+
+    // Bench Press must NOT have been deleted because validation happens before writes
+    const benchDoc = fs.read(['users', UID, 'exercise_history', benchDocId]);
+    expect(benchDoc).toBeDefined();
+
+    // Squat must still have its set
+    const squatDoc = fs.read(['users', UID, 'exercise_history', squatDocId])!;
+    expect((squatDoc.sets as unknown[])).toHaveLength(1);
+  });
+
+  it('returns exercises in get_history_entry in the user-dictated order', async () => {
+    const created = await ok('log_workout', {
+      date: '2026-10-25',
+      name: 'Full Routine',
+      exercises: [
+        { name: 'Lat Pulldown', sets: [{ reps: 10, weight: 120 }] },
+        { name: 'Bench Press', sets: [{ reps: 8, weight: 185 }] },
+        { name: 'Squat', sets: [{ reps: 5, weight: 225 }] },
+      ],
+    });
+    const workoutId = created.id as string;
+
+    const entry = await ok('get_history_entry', { workoutId });
+    const exNames = (entry.exercises as { exerciseName: string }[]).map((e) => e.exerciseName);
+    expect(exNames).toEqual(['Lat Pulldown', 'Bench Press', 'Squat']);
+
+    // Partial update to Lat Pulldown preserves the order
+    const latId = (entry.exercises as { id: string }[])[0].id;
+    const updated = await ok('update_history_entry', {
+      workoutId,
+      exercises: [{ id: latId, name: 'Lat Pulldown', sets: [{ reps: 12, weight: 130 }] }],
+    });
+    const updatedExNames = (updated.exercises as { exerciseName: string }[]).map((e) => e.exerciseName);
+    expect(updatedExNames).toEqual(['Lat Pulldown', 'Bench Press', 'Squat']);
+
+    // replaceAllExercises reorders according to input
+    const reordered = await ok('update_history_entry', {
+      workoutId,
+      replaceAllExercises: true,
+      exercises: [
+        { name: 'Squat', sets: [{ reps: 5, weight: 225 }] },
+        { name: 'Bench Press', sets: [{ reps: 8, weight: 185 }] },
+      ],
+    });
+    const reorderedNames = (reordered.exercises as { exerciseName: string }[]).map((e) => e.exerciseName);
+    expect(reorderedNames).toEqual(['Squat', 'Bench Press']);
+  });
 });
 
 describe('list_history paging and date range', () => {

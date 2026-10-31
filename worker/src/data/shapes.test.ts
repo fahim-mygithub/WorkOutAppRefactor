@@ -281,7 +281,7 @@ describe('workout history documents (ExerciseHistoryService)', () => {
         durationMinutes: 45,
         notes: 'Felt strong today',
         exercises: [{ name: 'Bench Press', sets: [{ reps: 8, weight: 185 }] }],
-      },
+      } as unknown as import('./shapes').LogWorkoutInput,
       NOW,
     );
     expect(docWithNotes).not.toHaveProperty('notes');

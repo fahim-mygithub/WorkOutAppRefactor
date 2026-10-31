@@ -34,6 +34,7 @@ import {
   type ExerciseInput,
   type LogWorkoutInput,
   type ParsedWorkout,
+  type PerformedSetInput,
   type PlannedWorkout,
   type ProfilePatch,
   type RawExerciseHistory,
@@ -305,10 +306,38 @@ export class UserData {
       }
     }
 
+    const summaryList = Array.isArray(data(doc).exercisesSummary)
+      ? (data(doc).exercisesSummary as Array<Record<string, unknown>>)
+      : [];
+
+    const usedIndices = new Set<number>();
+    const docOrder = new Map<string, number>();
+
+    for (const d of allExDocs) {
+      const dData = data(d);
+      const exId = String(dData.exerciseId ?? '');
+      const exName = String(dData.exerciseName ?? '');
+      let matchIdx = summaryList.findIndex(
+        (s, idx) => !usedIndices.has(idx) && (s.exerciseId === exId || s.exerciseName === exName),
+      );
+      if (matchIdx === -1) {
+        matchIdx = summaryList.findIndex((_s, idx) => !usedIndices.has(idx));
+      }
+      if (matchIdx >= 0) {
+        usedIndices.add(matchIdx);
+        docOrder.set(docId(d), matchIdx);
+      } else {
+        docOrder.set(docId(d), 999999);
+      }
+    }
+
     allExDocs.sort((a, b) => {
-      const dateA = String(data(a).workoutDate ?? '');
-      const dateB = String(data(b).workoutDate ?? '');
-      return dateA.localeCompare(dateB);
+      const idxA = docOrder.get(docId(a)) ?? 999999;
+      const idxB = docOrder.get(docId(b)) ?? 999999;
+      if (idxA !== idxB) return idxA - idxB;
+      const timeA = String(a.createTime ?? data(a).createdAt ?? '');
+      const timeB = String(b.createTime ?? data(b).createdAt ?? '');
+      return timeA.localeCompare(timeB);
     });
 
     const exercises = allExDocs.map((d) => {
@@ -323,6 +352,7 @@ export class UserData {
         muscleGroups: Array.isArray(dData.muscleGroups) ? (dData.muscleGroups as string[]) : ['Unknown'],
         equipment: String(dData.equipment ?? 'Unknown'),
         ...(dData.notes ? { notes: String(dData.notes) } : {}),
+        ...(dData.customTitle ? { customTitle: String(dData.customTitle) } : {}),
         ...(dData.personalRecords ? { personalRecords: dData.personalRecords as Record<string, unknown> } : {}),
       };
     });
@@ -445,18 +475,6 @@ export class UserData {
     }
     const existingById = new Map(existingDocs.map((d) => [docId(d), d]));
 
-    // Validate any exercise ids in input belong to this workout
-    if (input.exercises) {
-      for (const ex of input.exercises) {
-        if (ex.id) {
-          safeId(ex.id, 'exercise history');
-          if (!existingById.has(ex.id)) {
-            throw new DataError('invalid-argument', `Exercise history id ${ex.id} does not belong to this workout.`);
-          }
-        }
-      }
-    }
-
     // Validate removeExerciseIds belong to this workout
     if (input.removeExerciseIds && input.removeExerciseIds.length > 0) {
       for (const remId of input.removeExerciseIds) {
@@ -467,53 +485,34 @@ export class UserData {
       }
     }
 
+    interface PreparedExercise {
+      isNew: boolean;
+      existingDoc?: FsDocument;
+      name: string;
+      id?: string;
+      customTitle?: string;
+      notes?: string;
+      inputSets?: PerformedSetInput[];
+      completedSets: StoredPerformedSet[];
+      resolved: { id: string; matchedName: string; muscleGroups: string[]; equipment: string };
+    }
+
+    const preparedExercises: PreparedExercise[] = [];
     const customDocs = await this.fs.query(this.path(), 'customExercises', {});
     const customExercises = parseCustomExercises(customDocs);
 
-    const affectedExerciseIds = new Set<string>();
-
-    // 1. Explicit removals via removeExerciseIds
-    if (input.removeExerciseIds && input.removeExerciseIds.length > 0) {
-      for (const remId of input.removeExerciseIds) {
-        await this.fs.delete(this.path('exercise_history', remId));
-        const exId = data(existingById.get(remId)!).exerciseId as string;
-        if (exId) affectedExerciseIds.add(exId);
-        existingById.delete(remId);
-      }
-    }
-
-    // 2. If replaceAllExercises is true, remove any unlisted exercises
-    if (input.replaceAllExercises === true && input.exercises) {
-      const keptIds = new Set(input.exercises.map((e) => e.id).filter(Boolean));
-      for (const [id, doc] of existingById.entries()) {
-        if (!keptIds.has(id)) {
-          await this.fs.delete(this.path('exercise_history', id));
-          const exId = data(doc).exerciseId as string;
-          if (exId) affectedExerciseIds.add(exId);
-          existingById.delete(id);
-        }
-      }
-    }
-
-    const now = this.now();
-    const workoutDate = input.date
-      ? new Date(`${input.date}T12:00:00.000Z`)
-      : new Date((currentWorkout.startTime as string | Date) || now);
-    const workoutName = input.name?.trim() ?? ((currentWorkout.name as string) || 'Workout');
-
-    // 3. Update or add exercises
     if (input.exercises && input.exercises.length > 0) {
       for (const ex of input.exercises) {
         const resolved = resolveExercise(ex.name, customExercises);
-        const exerciseId = resolved.id;
-        affectedExerciseIds.add(exerciseId);
-
-        let completedSets: StoredPerformedSet[];
-
-        if (ex.id && existingById.has(ex.id)) {
+        if (ex.id) {
+          safeId(ex.id, 'exercise history');
+          if (!existingById.has(ex.id)) {
+            throw new DataError('invalid-argument', `Exercise history id ${ex.id} does not belong to this workout.`);
+          }
           const currentDoc = existingById.get(ex.id)!;
           const currentSets = (Array.isArray(data(currentDoc).sets) ? data(currentDoc).sets : []) as StoredPerformedSet[];
 
+          let completedSets: StoredPerformedSet[];
           if (ex.sets) {
             completedSets = ex.sets
               .filter((s) => s.completed !== false)
@@ -559,53 +558,22 @@ export class UserData {
             throw new DataError('invalid-argument', `Exercise "${ex.name}" must have at least one completed set.`);
           }
 
-          const configuration = generateConfigurationString(completedSets);
-          const totalVolume = completedSets.reduce((sum, s) => sum + s.weight * s.actualReps, 0);
-
-          const statsDoc = await this.fs.get(this.path('exercise_stats', exerciseId));
-          const currentStats = statsDoc ? data(statsDoc) : null;
-          const prs = checkPersonalRecords(currentStats, completedSets, totalVolume);
-
-          const prevExId = data(currentDoc).exerciseId as string;
-          if (prevExId && prevExId !== exerciseId) affectedExerciseIds.add(prevExId);
-
-          const fields: Record<string, unknown> = {
-            exerciseId,
-            exerciseName: ex.name.trim(),
-            sets: completedSets,
-            configuration,
-            totalVolume,
-            workoutDate,
-            workoutName,
-            personalRecords: prs,
-            updatedAt: now,
-            muscleGroups: resolved.muscleGroups,
-            equipment: resolved.equipment,
-            ...(ex.notes?.trim() !== undefined ? { notes: ex.notes.trim() } : {}),
-            ...(ex.customTitle?.trim() !== undefined ? { customTitle: ex.customTitle.trim() } : {}),
-          };
-          const mask = [
-            'exerciseId',
-            'exerciseName',
-            'sets',
-            'configuration',
-            'totalVolume',
-            'workoutDate',
-            'workoutName',
-            'personalRecords',
-            'updatedAt',
-            'muscleGroups',
-            'equipment',
-          ];
-          if (ex.notes !== undefined) mask.push('notes');
-          if (ex.customTitle !== undefined) mask.push('customTitle');
-          await this.fs.patch(this.path('exercise_history', ex.id), toFields(fields), { mask });
+          preparedExercises.push({
+            isNew: false,
+            existingDoc: currentDoc,
+            name: ex.name,
+            id: ex.id,
+            customTitle: ex.customTitle,
+            notes: ex.notes,
+            completedSets,
+            resolved,
+          });
         } else {
-          // Add new exercise
+          // New exercise to add
           if (!ex.sets || ex.sets.length === 0) {
             throw new DataError('invalid-argument', `New exercise "${ex.name}" must have at least one set.`);
           }
-          completedSets = ex.sets
+          const completedSets = ex.sets
             .filter((s) => s.completed !== false)
             .map((s, idx) => ({
               setNumber: idx + 1,
@@ -624,46 +592,152 @@ export class UserData {
             throw new DataError('invalid-argument', `Exercise "${ex.name}" must have at least one completed set.`);
           }
 
-          const totalVolume = completedSets.reduce((sum, s) => sum + s.weight * s.actualReps, 0);
-
-          const statsDoc = await this.fs.get(this.path('exercise_stats', exerciseId));
-          const currentStats = statsDoc ? data(statsDoc) : null;
-          const prs = checkPersonalRecords(currentStats, completedSets, totalVolume);
-
-          const newDoc = buildExerciseHistoryDoc(
-            this.uid,
-            linkedWorkoutId,
-            workoutName,
-            workoutDate,
-            {
-              name: ex.name,
-              sets: ex.sets,
-              notes: ex.notes,
-              customTitle: ex.customTitle,
-            },
-            prs,
-            now,
+          preparedExercises.push({
+            isNew: true,
+            name: ex.name,
+            customTitle: ex.customTitle,
+            notes: ex.notes,
+            inputSets: ex.sets,
+            completedSets,
             resolved,
-          );
-          await this.fs.create(this.path('exercise_history'), toFields(newDoc));
+          });
         }
       }
-    } else if (input.date || input.name) {
-      for (const d of existingDocs) {
-        const id = docId(d);
-        const exId = data(d).exerciseId as string;
+    }
+
+    // All validations passed; start writes
+    const now = this.now();
+    const dateChanged = Boolean(input.date);
+    const nameChanged = Boolean(input.name);
+    const workoutDate = input.date
+      ? new Date(`${input.date}T12:00:00.000Z`)
+      : new Date((currentWorkout.startTime as string | Date) || now);
+    const workoutName = input.name?.trim() ?? ((currentWorkout.name as string) || 'Workout');
+
+    const affectedExerciseIds = new Set<string>();
+
+    // 1. Explicit removals via removeExerciseIds
+    if (input.removeExerciseIds && input.removeExerciseIds.length > 0) {
+      for (const remId of input.removeExerciseIds) {
+        await this.fs.delete(this.path('exercise_history', remId));
+        const exId = data(existingById.get(remId)!).exerciseId as string;
         if (exId) affectedExerciseIds.add(exId);
-        const patchFields: Record<string, unknown> = { updatedAt: now };
-        const mask = ['updatedAt'];
-        if (input.date) {
-          patchFields.workoutDate = workoutDate;
-          mask.push('workoutDate');
+        existingById.delete(remId);
+      }
+    }
+
+    // 2. If replaceAllExercises is true, remove any unlisted exercises
+    if (input.replaceAllExercises === true && input.exercises) {
+      const keptIds = new Set(input.exercises.map((e) => e.id).filter(Boolean));
+      for (const [id, doc] of existingById.entries()) {
+        if (!keptIds.has(id)) {
+          await this.fs.delete(this.path('exercise_history', id));
+          const exId = data(doc).exerciseId as string;
+          if (exId) affectedExerciseIds.add(exId);
+          existingById.delete(id);
         }
-        if (input.name) {
-          patchFields.workoutName = workoutName;
-          mask.push('workoutName');
+      }
+    }
+
+    // 3. Update or add exercises from preparedExercises
+    const updatedExistingDocIds = new Set<string>();
+    for (const prep of preparedExercises) {
+      const exerciseId = prep.resolved.id;
+      affectedExerciseIds.add(exerciseId);
+
+      const totalVolume = prep.completedSets.reduce((sum, s) => sum + s.weight * s.actualReps, 0);
+      const configuration = generateConfigurationString(prep.completedSets);
+
+      const statsDoc = await this.fs.get(this.path('exercise_stats', exerciseId));
+      const currentStats = statsDoc ? data(statsDoc) : null;
+      const prs = checkPersonalRecords(currentStats, prep.completedSets, totalVolume);
+
+      if (!prep.isNew && prep.id && prep.existingDoc) {
+        updatedExistingDocIds.add(prep.id);
+        const prevExId = data(prep.existingDoc).exerciseId as string;
+        if (prevExId && prevExId !== exerciseId) affectedExerciseIds.add(prevExId);
+
+        const fields: Record<string, unknown> = {
+          exerciseId,
+          exerciseName: prep.name.trim(),
+          sets: prep.completedSets,
+          configuration,
+          totalVolume,
+          workoutDate,
+          workoutName,
+          personalRecords: prs,
+          updatedAt: now,
+          muscleGroups: prep.resolved.muscleGroups,
+          equipment: prep.resolved.equipment,
+          ...(prep.notes?.trim() !== undefined ? { notes: prep.notes.trim() } : {}),
+          ...(prep.customTitle?.trim() !== undefined ? { customTitle: prep.customTitle.trim() } : {}),
+        };
+        const mask = [
+          'exerciseId',
+          'exerciseName',
+          'sets',
+          'configuration',
+          'totalVolume',
+          'workoutDate',
+          'workoutName',
+          'personalRecords',
+          'updatedAt',
+          'muscleGroups',
+          'equipment',
+        ];
+        if (prep.notes !== undefined) mask.push('notes');
+        if (prep.customTitle !== undefined) mask.push('customTitle');
+        await this.fs.patch(this.path('exercise_history', prep.id), toFields(fields), { mask });
+      } else {
+        // Add new exercise
+        const newDoc = buildExerciseHistoryDoc(
+          this.uid,
+          linkedWorkoutId,
+          workoutName,
+          workoutDate,
+          {
+            name: prep.name,
+            sets:
+              prep.inputSets ||
+              prep.completedSets.map((s) => ({
+                reps: s.actualReps,
+                weight: s.weight,
+                unit: s.unit,
+                rpe: s.rpe,
+                time: s.time,
+                rir: s.rir,
+                completed: s.completed,
+                notes: s.notes,
+              })),
+            notes: prep.notes,
+            customTitle: prep.customTitle,
+          },
+          prs,
+          now,
+          prep.resolved,
+        );
+        await this.fs.create(this.path('exercise_history'), toFields(newDoc));
+      }
+    }
+
+    // 4. Update unlisted preserved exercises when date or name changed
+    if (dateChanged || nameChanged) {
+      for (const [id, doc] of existingById.entries()) {
+        if (!updatedExistingDocIds.has(id)) {
+          const exId = data(doc).exerciseId as string;
+          if (exId && dateChanged) affectedExerciseIds.add(exId);
+          const patchFields: Record<string, unknown> = { updatedAt: now };
+          const mask = ['updatedAt'];
+          if (dateChanged) {
+            patchFields.workoutDate = workoutDate;
+            mask.push('workoutDate');
+          }
+          if (nameChanged) {
+            patchFields.workoutName = workoutName;
+            mask.push('workoutName');
+          }
+          await this.fs.patch(this.path('exercise_history', id), toFields(patchFields), { mask });
         }
-        await this.fs.patch(this.path('exercise_history', id), toFields(patchFields), { mask });
       }
     }
 
@@ -680,6 +754,42 @@ export class UserData {
         if (!seen.has(docId(d))) finalExDocs.push(d);
       }
     }
+
+    // Order finalExDocs deterministically
+    const prevSummary = Array.isArray(currentWorkout.exercisesSummary)
+      ? (currentWorkout.exercisesSummary as Array<Record<string, unknown>>)
+      : [];
+
+    finalExDocs.sort((a, b) => {
+      const idA = docId(a);
+      const idB = docId(b);
+      const dataA = data(a);
+      const dataB = data(b);
+
+      if (input.replaceAllExercises && input.exercises) {
+        const idxA = input.exercises.findIndex(
+          (e) => e.id === idA || e.name.toLowerCase() === String(dataA.exerciseName).toLowerCase(),
+        );
+        const idxB = input.exercises.findIndex(
+          (e) => e.id === idB || e.name.toLowerCase() === String(dataB.exerciseName).toLowerCase(),
+        );
+        return (idxA >= 0 ? idxA : 999) - (idxB >= 0 ? idxB : 999);
+      }
+
+      const exIdA = String(dataA.exerciseId ?? '');
+      const exIdB = String(dataB.exerciseId ?? '');
+      const prevIdxA = prevSummary.findIndex((s) => s.exerciseId === exIdA || s.exerciseName === dataA.exerciseName);
+      const prevIdxB = prevSummary.findIndex((s) => s.exerciseId === exIdB || s.exerciseName === dataB.exerciseName);
+
+      const rankA = prevIdxA >= 0 ? prevIdxA : 1000;
+      const rankB = prevIdxB >= 0 ? prevIdxB : 1000;
+      if (rankA !== rankB) return rankA - rankB;
+
+      const timeA = String(a.createTime ?? dataA.createdAt ?? '');
+      const timeB = String(b.createTime ?? dataB.createdAt ?? '');
+      return timeA.localeCompare(timeB);
+    });
+
     let totalSets = 0;
     let totalReps = 0;
     let totalVolume = 0;
@@ -720,7 +830,6 @@ export class UserData {
       totalVolume,
       exercisesSummary,
       updatedAt: now,
-      ...(input.notes !== undefined ? { notes: input.notes.trim() } : {}),
     };
     const summaryMask = [
       'name',
@@ -734,7 +843,6 @@ export class UserData {
       'exercisesSummary',
       'updatedAt',
     ];
-    if (input.notes !== undefined) summaryMask.push('notes');
     await this.fs.patch(this.path('workout_history', workoutId), toFields(summaryPatch), { mask: summaryMask });
 
     // Recompute stats and PRs for all affected exercises

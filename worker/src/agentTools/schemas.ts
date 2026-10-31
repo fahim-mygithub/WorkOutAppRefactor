@@ -155,7 +155,7 @@ export const performedSetInput = z
     time: z.number().int().min(0).max(3600).optional().describe('Duration in seconds if timed.'),
     rir: z.number().min(0).max(10).optional().describe('Reps in reserve.'),
     completed: z.boolean().optional().describe('Defaults to true for logged workouts.'),
-    notes: z.string().max(500).optional(),
+    notes: z.string().max(500).optional().describe('Notes for this set.'),
   })
   .strict();
 
@@ -200,13 +200,12 @@ export const logWorkoutInput = z
       .max(1440)
       .optional()
       .describe('Total workout duration in minutes if known.'),
-    notes: z.string().max(1000).optional().describe('Notes for the workout session.'),
     exercises: z
       .array(exerciseHistoryInput)
       .min(1)
       .max(40)
       .describe(
-        'Exercises performed with completed sets (reps, weight, unit, rpe/time). Exercise names are matched to the library and custom exercises; unmatched names keep fallback IDs.',
+        'Exercises performed with completed sets (reps, weight, unit, rpe/time). Exercise names are matched to the library and custom exercises; unmatched names keep fallback IDs. Notes are attached per exercise or set.',
       ),
   })
   .strict();
@@ -241,7 +240,7 @@ export const updateHistoryExerciseInput = z
       .max(30)
       .optional()
       .describe('Explicitly remove sets by 1-based set number.'),
-    notes: z.string().max(500).optional(),
+    notes: z.string().max(500).optional().describe('Notes for this exercise.'),
     customTitle: z.string().trim().max(120).optional(),
   })
   .strict();
@@ -265,7 +264,6 @@ export const updateHistoryEntryInput = z
       .describe('User UTC offset in minutes (e.g. -300 for UTC-5, +540 for UTC+9).'),
     name: z.string().trim().min(1).max(100).optional().describe('New workout name.'),
     durationMinutes: z.number().int().min(1).max(1440).optional().describe('New duration in minutes.'),
-    notes: z.string().max(1000).optional().describe('New workout notes.'),
     exercises: z
       .array(updateHistoryExerciseInput)
       .min(1)
