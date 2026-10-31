@@ -26,10 +26,10 @@ FIREBASE_AUTH_DOMAIN = "workout-pwa-nf0sf.firebaseapp.com"
 
 [[kv_namespaces]]
 binding = "AI_USAGE"
-id = "REPLACE_AT_DEPLOY"
+id = "c18a66f0897d469eab1b86cf8ae4bd18"
 
 # OAuth clients, grants and tokens for the Claude connector
 # (`npx wrangler kv namespace create OAUTH_KV`, paste the id here).
 [[kv_namespaces]]
 binding = "OAUTH_KV"
-id = "REPLACE_AT_DEPLOY_OAUTH"
+id = "205b4a8fcaf54c728458f43b91d059a1"
