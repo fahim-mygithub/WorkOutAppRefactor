@@ -416,4 +416,29 @@ describe('AiChatSheet — async Apply', () => {
     expect(document.body.querySelectorAll('li')).toHaveLength(2);
     expect(document.body.querySelector('table')).not.toBeNull();
   });
+  it('wires onUndoProposal and renders Undo button on applied proposal card', async () => {
+    const user = userEvent.setup();
+    const onUndoProposal = vi.fn();
+    render(
+      <AiChatSheet
+        open
+        onOpenChange={() => {}}
+        client={makeClient(turn)}
+        onApplyProposal={vi.fn()}
+        onUndoProposal={onUndoProposal}
+      />,
+    );
+    await user.type(await screen.findByLabelText('Message'), 'make me a push day');
+    await user.click(screen.getByRole('button', { name: 'Send' }));
+    await user.click(await screen.findByRole('button', { name: 'Apply' }));
+    expect(await screen.findByText('Applied')).toBeInTheDocument();
+
+    const undoBtn = screen.getByRole('button', { name: 'Undo' });
+    expect(undoBtn).toBeInTheDocument();
+    await user.click(undoBtn);
+    expect(onUndoProposal).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'p1' }),
+    );
+    expect(await screen.findByText('Undone')).toBeInTheDocument();
+  });
 });

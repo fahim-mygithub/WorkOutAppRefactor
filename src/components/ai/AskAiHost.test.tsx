@@ -26,6 +26,12 @@ vi.mock('../../ai/appServices', () => ({
     deleteWorkout: vi.fn(),
     saveProfile: vi.fn(),
     listSavedWorkouts: vi.fn(),
+    history: {
+      log: vi.fn(),
+      undoLog: vi.fn(),
+      edit: vi.fn(),
+      undoEdit: vi.fn(),
+    },
   },
 }));
 
@@ -384,7 +390,7 @@ describe('AskAiHost — build, plan and profile tools', () => {
     expect(svc.saveWorkout).not.toHaveBeenCalled();
     await u.click(apply);
     await waitFor(() => expect(svc.saveWorkout).toHaveBeenCalledWith('u1', expect.objectContaining({ name: 'Push' })));
-    await u.click(await screen.findByRole('button', { name: 'Undo' }));
+    await u.click((await screen.findAllByRole('button', { name: 'Undo' }))[0]);
     await waitFor(() => expect(svc.deleteWorkout).toHaveBeenCalledWith('u1', 'new1'));
   });
 
@@ -398,7 +404,7 @@ describe('AskAiHost — build, plan and profile tools', () => {
     const u = await send('plan push');
     await u.click(await screen.findByRole('button', { name: 'Apply' }));
     await waitFor(() => expect(store.getState().plannedWorkouts.plans).toHaveLength(1));
-    await u.click(await screen.findByRole('button', { name: 'Undo' }));
+    await u.click((await screen.findAllByRole('button', { name: 'Undo' }))[0]);
     await waitFor(() => expect(store.getState().plannedWorkouts.plans).toHaveLength(0));
   });
 
@@ -413,5 +419,77 @@ describe('AskAiHost — build, plan and profile tools', () => {
     await u.click(await screen.findByRole('button', { name: 'Apply' }));
     expect(await screen.findByTestId('ai-error')).toHaveTextContent("Couldn't save");
     expect(screen.getByRole('button', { name: 'Apply' })).toBeEnabled();
+  });
+  it("Undo remains clickable after a second message is sent and after the toast timeout, and still calls the history undo", async () => {
+    let toastTimeoutFn: (() => void) | undefined;
+    const origSetTimeout = globalThis.setTimeout;
+    vi.spyOn(globalThis, 'setTimeout').mockImplementation((fn: any, ms: any) => {
+      if (ms === 8000) {
+        toastTimeoutFn = fn;
+        return 9999 as any;
+      }
+      return origSetTimeout(fn, ms);
+    });
+
+    const historyLog = vi.fn().mockResolvedValue({ workoutId: "w-ai-1", exerciseIds: ["ex-ai-1"] });
+    const historyUndoLog = vi.fn().mockResolvedValue(undefined);
+    svc.history = {
+      log: historyLog,
+      undoLog: historyUndoLog,
+      edit: vi.fn(),
+      undoEdit: vi.fn(),
+    };
+    vi.spyOn(aiClient, "chat")
+      .mockResolvedValueOnce({
+        reply: "Logged it for you.",
+        source: "backend",
+        toolCalls: [{
+          id: "call-log-1",
+          name: "logPastWorkout",
+          input: {
+            date: "2026-10-30",
+            name: "Chest Session",
+            exercises: [{ name: "Barbell Bench Press", sets: [{ reps: 5, weight: 135 }] }],
+          },
+        }],
+      })
+      .mockResolvedValueOnce({
+        reply: "Second turn response.",
+        source: "backend",
+        toolCalls: [],
+      });
+
+    const store = signedInStore();
+    renderHost(store, "/build");
+    const u = await send("log yesterday bench 5 at 135");
+
+    // 1. Proposal card rendered with Apply button
+    const applyBtn = await screen.findByRole("button", { name: "Apply" });
+    await u.click(applyBtn);
+
+    // Verify log was called
+    await waitFor(() => expect(historyLog).toHaveBeenCalledTimes(1));
+
+    // 2. User sends a second chat message
+    await u.type(screen.getByLabelText("Message"), "what should I do next?");
+    await u.click(screen.getByRole("button", { name: "Send" }));
+    expect(await screen.findByText("Second turn response.")).toBeInTheDocument();
+
+    // 3. Fast-forward past the toast timeout (8 seconds)
+    expect(toastTimeoutFn).toBeDefined();
+    act(() => {
+      toastTimeoutFn?.();
+    });
+
+    // Verify the toast is gone
+    await waitFor(() => expect(screen.queryByTestId("undo-toast")).not.toBeInTheDocument());
+
+    // 4. The Undo button on the card remains clickable!
+    const cardUndo = screen.getByRole("button", { name: /undo/i });
+    expect(cardUndo).toBeInTheDocument();
+    await u.click(cardUndo);
+
+    // 5. It still calls the history undo!
+    await waitFor(() => expect(historyUndoLog).toHaveBeenCalledWith("w-ai-1", ["ex-ai-1"]));
   });
 });

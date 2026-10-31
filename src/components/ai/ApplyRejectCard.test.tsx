@@ -157,4 +157,50 @@ describe('ApplyRejectCard', () => {
     expect(ref.current).toBeInstanceOf(HTMLDivElement);
     expect(ref.current).toHaveAttribute('data-testid', 'apply-reject-card');
   });
+  it('renders Undo button when applied and onUndo is provided', async () => {
+    const user = userEvent.setup();
+    const onUndo = vi.fn();
+    render(
+      <ApplyRejectCard
+        proposal={proposal}
+        decision="applied"
+        onApply={() => {}}
+        onReject={() => {}}
+        onUndo={onUndo}
+      />,
+    );
+    expect(screen.getByText('Applied')).toBeInTheDocument();
+    const undoBtn = screen.getByRole('button', { name: /undo/i });
+    expect(undoBtn).toBeInTheDocument();
+    await user.click(undoBtn);
+    expect(onUndo).toHaveBeenCalledWith(proposal);
+  });
+
+  it('omits Undo button when canUndo is false', () => {
+    render(
+      <ApplyRejectCard
+        proposal={proposal}
+        decision="applied"
+        onApply={() => {}}
+        onReject={() => {}}
+        onUndo={() => {}}
+        canUndo={false}
+      />,
+    );
+    expect(screen.getByText('Applied')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /undo/i })).not.toBeInTheDocument();
+  });
+
+  it('renders Undone state when decision is undone', () => {
+    render(
+      <ApplyRejectCard
+        proposal={proposal}
+        decision="undone"
+        onApply={() => {}}
+        onReject={() => {}}
+      />,
+    );
+    expect(screen.getByText('Undone')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /undo/i })).not.toBeInTheDocument();
+  });
 });

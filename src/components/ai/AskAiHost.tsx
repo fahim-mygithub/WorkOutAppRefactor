@@ -38,6 +38,7 @@ import type { AiErrorCode, AiToolCall } from '../../ai/types';
 import { useExerciseLibrary } from '../workout/useExerciseLibrary';
 import { AiChatSheet, type AiChatClient } from './AiChatSheet';
 import { UndoToast } from './UndoToast';
+import { type ApplyRejectDecision } from './ApplyRejectCard';
 
 const FRIENDLY: Partial<Record<AiErrorCode, string>> = {
   limit: 'AI limit reached for today.',
@@ -56,6 +57,49 @@ interface QueuedUndo {
 
 const touchesSavedWorkouts = (effects: readonly AiEffect[] | undefined): boolean =>
   (effects ?? []).some((e) => e.type.endsWith('SavedWorkout'));
+
+interface ActiveUndo {
+  proposalId: string;
+  recordKeys: string[];
+  undo: () => Promise<void>;
+  message: string;
+}
+
+function getPlanRecordKeys(plan: { effects?: AiEffect[]; apply: UnknownAction[]; summary?: string }): string[] {
+  const keys: string[] = [];
+  for (const e of plan.effects ?? []) {
+    switch (e.type) {
+      case 'editPastWorkout':
+      case 'undoEditPastWorkout':
+        keys.push(`pastWorkout:${e.workoutId}`);
+        break;
+      case 'updateSavedWorkout':
+      case 'deleteSavedWorkout':
+        keys.push(`savedWorkout:${e.id}`);
+        break;
+      case 'removeCustomExercise':
+        keys.push(`customExercise:${e.id}`);
+        break;
+      case 'updateProfile':
+        keys.push('profile');
+        break;
+      case 'logPastWorkout':
+        keys.push(`pastWorkout:${e.workout.date}:${e.workout.name}`);
+        break;
+      case 'createSavedWorkout':
+        keys.push(`savedWorkout:${e.workout.name}`);
+        break;
+      case 'addCustomExercise':
+        keys.push(`customExercise:${e.exercise.name}`);
+        break;
+    }
+  }
+  if (keys.length === 0) {
+    const actionTypes = plan.apply.map((a) => a.type).join(',');
+    if (actionTypes) keys.push(`action:${actionTypes}`);
+  }
+  return keys;
+}
 
 export function AskAiHost() {
   const dispatch = useAppDispatch();
@@ -87,9 +131,13 @@ export function AskAiHost() {
     if (!open) {
       pendingCalls.current.clear();
       savedWorkouts.current = null;
+      setSessionUndos(new Map());
+      setDecisions({});
     }
   }, [open]);
   const [undos, setUndos] = React.useState<QueuedUndo[]>([]);
+  const [sessionUndos, setSessionUndos] = React.useState<Map<string, ActiveUndo>>(new Map());
+  const [decisions, setDecisions] = React.useState<Record<string, ApplyRejectDecision>>({});
 
   const planNow = React.useCallback((call: AiToolCall) => {
     const now = store.getState();
@@ -236,22 +284,67 @@ export function AskAiHost() {
           }
           const savedChanged = touchesSavedWorkouts(plan.effects);
           if (savedChanged) savedWorkouts.current = null;
+          const recordKeys = getPlanRecordKeys(plan);
+          setDecisions((d) => ({ ...d, [proposal.id]: 'applied' }));
           if (undo) {
             const takeBack = undo;
+            const activeUndoFn = async () => {
+              await takeBack();
+              if (savedChanged) savedWorkouts.current = null;
+            };
+            setSessionUndos((prev) => {
+              const next = new Map(prev);
+              for (const [id, entry] of prev) {
+                if (entry.recordKeys.some((k) => recordKeys.includes(k))) {
+                  next.delete(id);
+                }
+              }
+              next.set(proposal.id, {
+                proposalId: proposal.id,
+                recordKeys,
+                undo: activeUndoFn,
+                message: plan.summary,
+              });
+              return next;
+            });
+
             setUndos((q) => [...q, {
               id: plan.id,
               message: plan.summary,
               undo: () => {
-                takeBack()
+                activeUndoFn()
                   .then(() => {
-                    if (savedChanged) savedWorkouts.current = null;
+                    setDecisions((d) => ({ ...d, [proposal.id]: 'undone' }));
+                    setSessionUndos((prev) => {
+                      const next = new Map(prev);
+                      next.delete(proposal.id);
+                      return next;
+                    });
                   })
                   .catch((e) => console.error('AI undo failed', e));
               },
             }]);
           }
         }}
-        onRejectProposal={(proposal) => pendingCalls.current.delete(proposal.id)}
+        onUndoProposal={async (proposal) => {
+          const active = sessionUndos.get(proposal.id);
+          if (!active) return;
+          setSessionUndos((prev) => {
+            const next = new Map(prev);
+            next.delete(proposal.id);
+            return next;
+          });
+          setUndos((q) => q.filter((u) => u.id !== proposal.id));
+          setDecisions((d) => ({ ...d, [proposal.id]: 'undone' }));
+          await active.undo();
+        }}
+        isProposalUndoable={(proposalId) => sessionUndos.has(proposalId)}
+        decisions={decisions}
+        onDecisionChange={(id, dec) => setDecisions((d) => ({ ...d, [id]: dec }))}
+        onRejectProposal={(proposal) => {
+          pendingCalls.current.delete(proposal.id);
+          setDecisions((d) => ({ ...d, [proposal.id]: 'rejected' }));
+        }}
         overlay={open ? toast : undefined}
       />
       {open ? null : toast}

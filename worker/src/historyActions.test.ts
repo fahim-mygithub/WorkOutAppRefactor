@@ -227,6 +227,68 @@ describe('history log / undoLog', () => {
     expect(logged.unmatchedExercises).toEqual(['Zorblax Thruster 9000']);
   });
 
+  it('reuses the user existing exercise ID from past exercise_history, updates stats in place, and sets no false PR', async () => {
+    const APP_BENCH_ID = 'fallback-eo82lz';
+    fs.put([...user(UID), 'exercise_history', 'pastBenchDoc1'], {
+      userId: UID,
+      workoutId: 'pastWorkout1',
+      workoutName: 'Chest Day',
+      workoutDate: new Date('2026-10-01T12:00:00.000Z'),
+      exerciseId: APP_BENCH_ID,
+      exerciseName: 'Barbell Bench Press',
+      sets: [set(1, 5, 205), set(2, 5, 205)],
+      totalVolume: 2050,
+      muscleGroups: ['Chest', 'Triceps'],
+      equipment: 'Barbell',
+    });
+    fs.put([...user(UID), 'exercise_stats', APP_BENCH_ID], {
+      exerciseId: APP_BENCH_ID,
+      exerciseName: 'Barbell Bench Press',
+      totalSessions: 1,
+      totalSets: 2,
+      totalReps: 10,
+      totalVolume: 2050,
+      maxWeight: 205,
+      maxReps: 5,
+      lastPerformed: new Date('2026-10-01T12:00:00.000Z'),
+      personalRecords: {
+        maxWeight: { weight: 205, reps: 5, date: '2026-10-01' },
+        maxReps: { reps: 5, weight: 205, date: '2026-10-01' },
+        maxVolume: { volume: 2050, date: '2026-10-01' },
+      },
+    });
+
+    const logged = await okRun('log', {
+      date: '2026-10-30',
+      name: 'AI test',
+      exercises: [{ name: 'Barbell Bench Press', sets: [{ reps: 5, weight: 135 }, { reps: 5, weight: 135 }] }],
+    });
+
+    // 1. Reuses the app's exerciseId (fallback-eo82lz) instead of library id (exercise-1335)
+    const newExDoc = fs.read([...user(UID), 'exercise_history', (logged.exerciseIds as string[])[0]])!;
+    expect(newExDoc.exerciseId).toBe(APP_BENCH_ID);
+
+    // 2. Stats update in place at fallback-eo82lz, NOT creating exercise-1335
+    expect(fs.read([...user(UID), 'exercise_stats', 'exercise-1335'])).toBeUndefined();
+    const updatedStats = fs.read([...user(UID), 'exercise_stats', APP_BENCH_ID])!;
+    expect(updatedStats.totalSessions).toBe(2);
+    expect(updatedStats.totalSets).toBe(4);
+    expect(updatedStats.maxWeight).toBe(205);
+
+    // 3. No false PRs (since 5@135 is below previous 5@205 and volume 1350 is below 2050)
+    expect(newExDoc.personalRecords).toEqual({});
+  });
+
+  it('a library exercise with no history matches what the app would store', async () => {
+    const logged = await okRun('log', {
+      date: '2026-10-30',
+      name: 'Leg Day',
+      exercises: [{ name: 'Barbell Bench Press', sets: [{ reps: 5, weight: 135 }] }],
+    });
+    const doc = fs.read([...user(UID), 'exercise_history', (logged.exerciseIds as string[])[0]])!;
+    expect(doc.exerciseId).toBe('exercise-1335');
+  });
+
   it('refuses a future date', async () => {
     const r = await run('log', { ...workout, date: '2999-01-01' });
     expect(r.ok).toBe(false);
