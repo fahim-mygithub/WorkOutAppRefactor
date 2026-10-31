@@ -368,7 +368,7 @@ describe('AskAiHost — build, plan and profile tools', () => {
     await screen.findByText('ok');
     const context = chat.mock.calls[0][0].context as AiContext;
     expect(svc.listSavedWorkouts).toHaveBeenCalledWith('u1');
-    expect(context.savedWorkouts).toEqual([{ id: 'w1', name: 'Push', exercises: ['1x8 Barbell Bench Press'] }]);
+    expect(context.savedWorkouts).toBeUndefined();
     expect(context.profile).toMatchObject({ displayName: 'Alex', weightUnit: 'lbs' });
     expect(context.today).toMatch(/^\d{4}-\d{2}-\d{2}$/);
   });

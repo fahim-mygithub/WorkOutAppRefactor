@@ -147,7 +147,7 @@ export const buildToolSchemas = {
 
   updateWorkout: z
     .object({
-      workoutId: z.string().describe('Saved workout id from `savedWorkouts` in the context.'),
+      workoutId: z.string().describe('Saved workout id from list_workouts (or savedWorkouts).'),
       name: z.string().min(1).max(80).optional().describe('New name.'),
       exercises: workoutExercisesSchema
         .optional()
@@ -186,6 +186,73 @@ export const buildToolSchemas = {
   addExercise: z
     .object({ ...exerciseDraftFields })
     .describe("Add an exercise (e.g. a machine from a photo) to the lifter's exercise library. Needs confirmation."),
+
+  logPastWorkout: z
+    .object({
+      date: z
+        .string()
+        .regex(/^\d{4}-\d{2}-\d{2}$/)
+        .describe('Date the workout was performed, YYYY-MM-DD.'),
+      name: z.string().min(1).max(80).optional().describe('Workout name, e.g. "Push Day" or "Upper Body".'),
+      exercises: z
+        .array(
+          z.object({
+            name: z.string().min(1).max(120).describe('Exercise name, e.g. "Barbell Bench Press".'),
+            sets: z
+              .array(
+                z.object({
+                  reps: z.number().int().positive().describe('Reps completed.'),
+                  weight: z.number().nonnegative().optional().describe('Load lifted in lbs or kg; omit or 0 for bodyweight.'),
+                  unit: z.enum(['lbs', 'kg']).optional().describe('Weight unit (lbs or kg).'),
+                  rpe: z.number().min(1).max(10).optional().describe('Rate of perceived exertion (1-10).'),
+                }),
+              )
+              .min(1)
+              .max(20)
+              .describe('Completed sets in order.'),
+            notes: z.string().max(200).optional().describe('Optional exercise notes.'),
+          }),
+        )
+        .min(1)
+        .max(20)
+        .describe('Completed exercises with sets.'),
+      durationMinutes: z.number().int().min(1).max(360).optional().describe('Workout duration in minutes.'),
+    })
+    .describe('Log a past completed workout session into workout history. Needs confirmation.'),
+
+  editPastWorkout: z
+    .object({
+      workoutId: z.string().describe('ID of the workout history entry to edit.'),
+      name: z.string().min(1).max(80).optional().describe('Updated workout name.'),
+      date: z
+        .string()
+        .regex(/^\d{4}-\d{2}-\d{2}$/)
+        .optional()
+        .describe('Updated workout date, YYYY-MM-DD.'),
+      durationMinutes: z.number().int().min(1).max(360).optional().describe('Updated duration in minutes.'),
+      exercises: z
+        .array(
+          z.object({
+            id: z.string().optional().describe('Exercise history ID from get_history_entry (exercises[].id) when updating an existing exercise.'),
+            name: z.string().min(1).max(120).describe('Exercise name.'),
+            sets: z
+              .array(
+                z.object({
+                  reps: z.number().int().positive().describe('Reps completed.'),
+                  weight: z.number().nonnegative().optional().describe('Load lifted in lbs or kg.'),
+                  unit: z.enum(['lbs', 'kg']).optional().describe('Weight unit (lbs or kg).'),
+                  rpe: z.number().min(1).max(10).optional().describe('Rate of perceived exertion.'),
+                }),
+              )
+              .min(1)
+              .max(20)
+              .describe('Updated sets.'),
+          }),
+        )
+        .optional()
+        .describe('Updated exercises and sets for the workout.'),
+    })
+    .describe('Edit an existing past workout in history. Needs confirmation.'),
 } as const;
 
 // ---------------------------------------------------------------------------

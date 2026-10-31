@@ -50,7 +50,11 @@ export type AiRequestPayload =
   | ({ action: 'chat' } & AiChatRequest)
   | { action: 'readLift'; text: string }
   | { action: 'findExercise'; name: string }
-  | { action: 'readMachine'; image: AiImage };
+  | { action: 'readMachine'; image: AiImage }
+  | { action: 'history'; op: HistoryOp; input: Record<string, unknown> };
+
+/** What the Worker's `history` action can do (worker/src/historyActions.ts). */
+export type HistoryOp = 'log' | 'edit' | 'undoLog' | 'undoEdit';
 
 /** Worker `chat` success body. */
 interface WorkerChatResult {
@@ -226,6 +230,22 @@ export async function readMachinePhoto(image: AiImage, deps?: AiClientDeps): Pro
     throw new AiBackendError('AI could not read that photo.', 'failed');
   }
   return data.result;
+}
+
+/**
+ * Run one past-workout operation on the Worker, which writes through its data
+ * layer for the signed-in user (the uid comes from the token, never the body).
+ * Resolves with the Worker's result fields; throws `AiBackendError` when the
+ * Worker cannot serve it, and a plain `Error` with its reason when it refuses.
+ */
+export async function runHistory<T extends object>(
+  op: HistoryOp,
+  input: Record<string, unknown>,
+  deps?: AiClientDeps,
+): Promise<T> {
+  const data = await callAi<{ ok?: boolean; error?: string } & T>({ action: 'history', op, input }, deps);
+  if (!data || data.ok !== true) throw new Error(data?.error || 'Could not update workout history.');
+  return data;
 }
 
 /**

@@ -399,4 +399,21 @@ describe('AiChatSheet — async Apply', () => {
     expect(screen.getByTestId('apply-reject-card')).toHaveAttribute('data-decision', 'pending');
     expect(screen.getByRole('button', { name: 'Apply' })).toBeEnabled();
   });
+
+  it('renders markdown elements (bold, lists, tables) in assistant replies', async () => {
+    const user = userEvent.setup();
+    const markdownReply = 'Here is your summary:\n- **Bench Press**: 3x8 at 225 lbs\n- **Incline DB**: 3x10 at 75 lbs\n\n| Exercise | Weight |\n| --- | --- |\n| Bench Press | 225 lbs |';
+
+    const client = makeClient({ text: markdownReply });
+    const { container } = render(<AiChatSheet open onOpenChange={() => {}} client={client} />);
+    await screen.findByRole('dialog');
+
+    await user.type(screen.getByLabelText('Message'), 'show summary');
+    await user.click(screen.getByRole('button', { name: /send/i }));
+
+    await screen.findByText('Here is your summary:');
+    expect(document.body.querySelectorAll('strong')).toHaveLength(2);
+    expect(document.body.querySelectorAll('li')).toHaveLength(2);
+    expect(document.body.querySelector('table')).not.toBeNull();
+  });
 });

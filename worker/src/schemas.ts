@@ -151,8 +151,20 @@ export const readMachineResultSchema = z
 
 export type ReadMachineResult = z.infer<typeof readMachineResultSchema>;
 
+// ---------------------------------------------------------------------------
+// history action — Apply / Undo of a dictated or corrected past workout, run
+// through the data layer (historyActions.ts). `input` is validated per op.
+// ---------------------------------------------------------------------------
+
+export const historyRequestSchema = z.object({
+  action: z.literal('history'),
+  op: z.enum(['log', 'edit', 'undoLog', 'undoEdit']),
+  input: z.record(z.unknown()),
+});
+
 export const aiRequestSchema = z.discriminatedUnion('action', [
   chatRequestSchema,
+  historyRequestSchema,
   readLiftRequestSchema,
   findExerciseRequestSchema,
   readMachineRequestSchema,
