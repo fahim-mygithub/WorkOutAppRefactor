@@ -3,11 +3,12 @@
 // shown in an editable card. Nothing is saved until Add: then a name the
 // library already has is used as is, anything else is saved as a custom
 // exercise, and the exercise goes onto the board with the draft's sets.
+// After Add, offer "Save this photo to the exercise" to upload and attach it.
 //
 // Hidden entirely when AI can't be used (no Worker URL, offline, signed out,
 // or the Worker said not-allowed / limit / unconfigured).
 import { useEffect, useId, useRef, useState } from 'react';
-import { Camera, Loader2 } from 'lucide-react';
+import { Camera, Check, Loader2 } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
@@ -15,7 +16,7 @@ import { Textarea } from '../ui/textarea';
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from '../ui/sheet';
 import { useAppDispatch, useAppSelector } from '../../store/hooks';
 import { aiDisabled } from '../../store/slices/aiSlice';
-import { saveCustomExercise } from '../../store/slices/customExerciseSlice';
+import { saveCustomExercise, updateCustomExercise } from '../../store/slices/customExerciseSlice';
 import {
   AiBackendError,
   isBackendAvailable,
@@ -24,6 +25,7 @@ import {
   type ReadMachineResult,
 } from '../../ai/aiClient';
 import { compressImage, ImageTooLargeError } from '../../ai/image';
+import { uploadMedia, type MediaUploadResult } from '../../ai/mediaUpload';
 import type { AiImage } from '../../ai/types';
 import { customToExercise, useExerciseLibrary } from '../workout/useExerciseLibrary';
 import type { Exercise } from '../../types/exercise';
@@ -46,7 +48,17 @@ type Phase =
   | { kind: 'idle' }
   | { kind: 'reading'; photo?: AiImage }
   | { kind: 'error'; line: string }
-  | { kind: 'draft'; photo: AiImage };
+  | { kind: 'draft'; photo: AiImage }
+  | {
+      kind: 'photoOffer';
+      photo: AiImage;
+      rawFile?: File;
+      customId?: string;
+      exerciseName: string;
+      muscles?: string;
+      equipment?: string;
+      cues?: string;
+    };
 
 function errorLine(err: unknown): string {
   if (err instanceof ImageTooLargeError) return 'That photo is too large — try another.';
@@ -78,15 +90,31 @@ function whole(v: string, min: number, max: number): number | null {
   return Number.isInteger(n) && n >= min && n <= max ? n : null;
 }
 
+function aiImageToBlob(image: AiImage): Blob {
+  const binaryString = atob(image.data);
+  const bytes = new Uint8Array(binaryString.length);
+  for (let i = 0; i < binaryString.length; i++) {
+    bytes[i] = binaryString.charCodeAt(i);
+  }
+  return new Blob([bytes], { type: image.mediaType });
+}
+
 export interface MachinePhotoAddProps {
   /** The picked or newly saved exercise, with the sets to start it at. */
   onAdd: (exercise: Exercise, defaults: MachineDefaults) => void;
   /** Shrinks a picked photo for the Worker. Defaults to `compressImage`. */
   prepareImage?: (file: File) => Promise<AiImage>;
+  /** Uploads a media file. Defaults to `uploadMedia`. */
+  uploadFile?: (file: File | Blob) => Promise<MediaUploadResult>;
   className?: string;
 }
 
-export function MachinePhotoAdd({ onAdd, prepareImage = compressImage, className }: MachinePhotoAddProps) {
+export function MachinePhotoAdd({
+  onAdd,
+  prepareImage = compressImage,
+  uploadFile = uploadMedia,
+  className,
+}: MachinePhotoAddProps) {
   const dispatch = useAppDispatch();
   const library = useExerciseLibrary();
   const userId = useAppSelector((s) => s.user?.profile?.uid);
@@ -94,9 +122,13 @@ export function MachinePhotoAdd({ onAdd, prepareImage = compressImage, className
   const id = useId();
   const inputRef = useRef<HTMLInputElement>(null);
   const [phase, setPhase] = useState<Phase>({ kind: 'idle' });
+  const [rawFile, setRawFile] = useState<File | null>(null);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [saving, setSaving] = useState(false);
+  const [savingPhoto, setSavingPhoto] = useState(false);
+  const [photoSaveSuccess, setPhotoSaveSuccess] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
+
   // Each photo gets a number; a reply for an older (or cancelled) one is dropped.
   const request = useRef(0);
   const alive = useRef(true);
@@ -115,14 +147,19 @@ export function MachinePhotoAdd({ onAdd, prepareImage = compressImage, className
     setDraft(null);
     setProblem(null);
     setSaving(false);
+    setSavingPhoto(false);
+    setPhotoSaveSuccess(false);
+    setRawFile(null);
   };
 
   const read = async (file: File) => {
     const mine = ++request.current;
     const current = () => alive.current && request.current === mine;
     setPhase({ kind: 'reading' });
+    setRawFile(file);
     setDraft(null);
     setProblem(null);
+    setPhotoSaveSuccess(false);
     try {
       const photo = await prepareImage(file);
       if (!current()) return;
@@ -148,11 +185,25 @@ export function MachinePhotoAdd({ onAdd, prepareImage = compressImage, className
     if (sets === null || reps === null) return setProblem('Sets 1–10, reps 1–50.');
     const defaults = { sets, reps };
     const known = library.find((e) => e.name.trim().toLowerCase() === name.toLowerCase());
+
     if (known) {
       onAdd(known, defaults);
-      close();
+      if (phase.kind === 'draft') {
+        setPhase({
+          kind: 'photoOffer',
+          photo: phase.photo,
+          rawFile: rawFile ?? undefined,
+          exerciseName: known.name,
+          muscles: known.muscleGroup,
+          equipment: known.equipment,
+          cues: known.instructions?.join('\n') || '',
+        });
+      } else {
+        close();
+      }
       return;
     }
+
     if (!userId) return setProblem('Sign in to save.');
     setSaving(true);
     setProblem(null);
@@ -174,11 +225,69 @@ export function MachinePhotoAdd({ onAdd, prepareImage = compressImage, className
       ).unwrap();
       if (!alive.current) return;
       onAdd(customToExercise(saved), defaults);
-      close();
+      if (phase.kind === 'draft') {
+        setPhase({
+          kind: 'photoOffer',
+          photo: phase.photo,
+          rawFile: rawFile ?? undefined,
+          customId: saved.id,
+          exerciseName: saved.name,
+          muscles: saved.muscleGroup,
+          equipment: saved.equipment,
+          cues: saved.instructions?.join('\n') || '',
+        });
+      } else {
+        close();
+      }
     } catch {
       if (alive.current) {
         setProblem("Couldn't save — try again.");
         setSaving(false);
+      }
+    }
+  };
+
+  const savePhotoToExercise = async () => {
+    if (phase.kind !== 'photoOffer' || savingPhoto) return;
+    setSavingPhoto(true);
+    setProblem(null);
+    try {
+      const blob = rawFile ?? aiImageToBlob(phase.photo);
+      const uploaded = await uploadFile(blob);
+      if (!alive.current) return;
+
+      if (phase.customId && userId) {
+        await dispatch(
+          updateCustomExercise({
+            userId,
+            exerciseId: phase.customId,
+            updates: { videoLinks: [uploaded.url] },
+          }),
+        ).unwrap();
+      } else if (userId) {
+        await dispatch(
+          saveCustomExercise({
+            userId,
+            exerciseData: {
+              originalName: phase.exerciseName,
+              name: phase.exerciseName,
+              muscleGroup: phase.muscles || 'Unknown',
+              equipment: phase.equipment || 'Machine',
+              difficulty: 'Intermediate',
+              instructions: splitList(phase.cues || '', /\n/),
+              videoLinks: [uploaded.url],
+            },
+          }),
+        ).unwrap();
+      }
+      setPhotoSaveSuccess(true);
+    } catch {
+      if (alive.current) {
+        setProblem("Couldn't save photo — try again.");
+      }
+    } finally {
+      if (alive.current) {
+        setSavingPhoto(false);
       }
     }
   };
@@ -190,7 +299,10 @@ export function MachinePhotoAdd({ onAdd, prepareImage = compressImage, className
       setDraft((d) => (d ? { ...d, [key]: e.target.value } : d)),
   });
 
-  const photo = phase.kind === 'draft' || phase.kind === 'reading' ? phase.photo : undefined;
+  const photo =
+    phase.kind === 'draft' || phase.kind === 'reading' || phase.kind === 'photoOffer'
+      ? phase.photo
+      : undefined;
 
   return (
     <div className={className}>
@@ -218,8 +330,14 @@ export function MachinePhotoAdd({ onAdd, prepareImage = compressImage, className
 
       <Sheet open={phase.kind !== 'idle'} onOpenChange={(open) => !open && close()}>
         <SheetContent>
-          <SheetTitle className="text-title">Add from a photo</SheetTitle>
-          <SheetDescription>AI reads the machine. Check it, then Add — nothing is saved before.</SheetDescription>
+          <SheetTitle className="text-title">
+            {phase.kind === 'photoOffer' ? 'Photo added' : 'Add from a photo'}
+          </SheetTitle>
+          <SheetDescription>
+            {phase.kind === 'photoOffer'
+              ? 'Save this photo to the exercise in your library.'
+              : 'AI reads the machine. Check it, then Add — nothing is saved before.'}
+          </SheetDescription>
 
           <div className="mt-4 flex flex-col gap-4">
             {photo ? (
@@ -311,6 +429,42 @@ export function MachinePhotoAdd({ onAdd, prepareImage = compressImage, className
                   </Button>
                 </div>
               </form>
+            ) : null}
+
+            {phase.kind === 'photoOffer' ? (
+              <div className="flex flex-col gap-4">
+                <div className="flex flex-col gap-1">
+                  <p className="text-body font-semibold text-ink">Exercise added to workout</p>
+                  <p className="text-body-sm text-ink-muted">
+                    Save this photo to {phase.exerciseName} in your exercise library?
+                  </p>
+                </div>
+                {photoSaveSuccess ? (
+                  <div className="flex items-center gap-2 rounded-2xl bg-surface-raised px-4 py-3 text-body-sm text-ink">
+                    <Check className="h-4 w-4 text-accent" aria-hidden="true" />
+                    Photo saved to exercise
+                  </div>
+                ) : null}
+                {problem ? (
+                  <p role="alert" className="text-caption text-danger">
+                    {problem}
+                  </p>
+                ) : null}
+                <div className="flex flex-wrap gap-2">
+                  {!photoSaveSuccess && (
+                    <Button
+                      type="button"
+                      disabled={savingPhoto}
+                      onClick={() => void savePhotoToExercise()}
+                    >
+                      {savingPhoto ? 'Saving photo…' : 'Save this photo to the exercise'}
+                    </Button>
+                  )}
+                  <Button type="button" variant="ghost" onClick={close}>
+                    {photoSaveSuccess ? 'Done' : 'Not now'}
+                  </Button>
+                </div>
+              </div>
             ) : null}
           </div>
         </SheetContent>

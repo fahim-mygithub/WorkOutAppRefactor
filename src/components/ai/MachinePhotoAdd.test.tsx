@@ -31,14 +31,18 @@ function makeStore(lib: Partial<Exercise>[] = []) {
   return store;
 }
 
-function renderAdd(onAdd = vi.fn(), store = makeStore()) {
+function renderAdd(
+  onAdd = vi.fn(),
+  store = makeStore(),
+  uploadFile = vi.fn().mockResolvedValue({ url: 'https://r2.test/photo.jpg', kind: 'photo', bytes: 1024 }),
+) {
   const prepareImage = vi.fn().mockResolvedValue(photo);
   render(
     <Provider store={store}>
-      <MachinePhotoAdd onAdd={onAdd} prepareImage={prepareImage} />
+      <MachinePhotoAdd onAdd={onAdd} prepareImage={prepareImage} uploadFile={uploadFile} />
     </Provider>,
   );
-  return { onAdd, store, prepareImage };
+  return { onAdd, store, prepareImage, uploadFile };
 }
 
 const takePhoto = () =>
@@ -145,5 +149,69 @@ describe('MachinePhotoAdd', () => {
     const { store } = renderAdd();
     takePhoto();
     await waitFor(() => expect(store.getState().ai.disabledReason).toBe('not-allowed'));
+  });
+
+  it('offers "Save this photo to the exercise" after Add and uploads when clicked', async () => {
+    vi.spyOn(aiClient, 'readMachinePhoto').mockResolvedValue(machine);
+    vi.spyOn(CustomExerciseService, 'saveCustomExercise').mockResolvedValue('c9');
+    vi.spyOn(CustomExerciseService, 'getUserCustomExercises').mockResolvedValue([
+      { id: 'c9', name: 'Seated Leg Curl', muscleGroup: 'Hamstrings', equipment: 'Machine' } as CustomExercise,
+    ]);
+    const update = vi.spyOn(CustomExerciseService, 'updateCustomExercise').mockResolvedValue();
+    const uploadFile = vi.fn().mockResolvedValue({
+      url: 'https://r2.test/media/u1/photo.jpg',
+      kind: 'photo',
+      bytes: 2048,
+    });
+
+    const u = userEvent.setup();
+    const { onAdd } = renderAdd(vi.fn(), makeStore(), uploadFile);
+
+    takePhoto();
+    await screen.findByLabelText('Name');
+    await u.click(screen.getByRole('button', { name: 'Add' }));
+
+    // Exercise is added immediately
+    await waitFor(() => expect(onAdd).toHaveBeenCalledTimes(1));
+
+    // Offer to save photo is shown
+    const savePhotoBtn = await screen.findByRole('button', { name: 'Save this photo to the exercise' });
+    expect(savePhotoBtn).toBeInTheDocument();
+
+    await u.click(savePhotoBtn);
+
+    await waitFor(() => expect(uploadFile).toHaveBeenCalledTimes(1));
+    await waitFor(() => {
+      expect(update).toHaveBeenCalledWith('u1', 'c9', {
+        videoLinks: ['https://r2.test/media/u1/photo.jpg'],
+      });
+    });
+
+    expect(screen.getByText('Photo saved to exercise')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Done' })).toBeInTheDocument();
+  });
+
+  it('offers "Save this photo to the exercise" after Add and allows skipping', async () => {
+    vi.spyOn(aiClient, 'readMachinePhoto').mockResolvedValue(machine);
+    vi.spyOn(CustomExerciseService, 'saveCustomExercise').mockResolvedValue('c9');
+    vi.spyOn(CustomExerciseService, 'getUserCustomExercises').mockResolvedValue([
+      { id: 'c9', name: 'Seated Leg Curl', muscleGroup: 'Hamstrings', equipment: 'Machine' } as CustomExercise,
+    ]);
+    const uploadFile = vi.fn();
+
+    const u = userEvent.setup();
+    renderAdd(vi.fn(), makeStore(), uploadFile);
+
+    takePhoto();
+    await screen.findByLabelText('Name');
+    await u.click(screen.getByRole('button', { name: 'Add' }));
+
+    const notNowBtn = await screen.findByRole('button', { name: 'Not now' });
+    expect(notNowBtn).toBeInTheDocument();
+
+    await u.click(notNowBtn);
+
+    await waitFor(() => expect(screen.queryByText('Save this photo to the exercise')).not.toBeInTheDocument());
+    expect(uploadFile).not.toHaveBeenCalled();
   });
 });
