@@ -146,7 +146,7 @@ export function matchExerciseInList(name: string, library: readonly LibraryExerc
   return byKeyword ?? null;
 }
 
-function matchCustomExercise(name: string, customList: readonly CustomExerciseLike[]): CustomExerciseLike | null {
+export function matchCustomExercise(name: string, customList: readonly CustomExerciseLike[]): CustomExerciseLike | null {
   const query = exerciseTokens(name);
   if (query.length === 0 || customList.length === 0) return null;
   const key = query.join(' ');
@@ -344,4 +344,122 @@ export function resolveExercise(
     isFallback: true,
     matchedBy: 'fallback',
   };
+}
+
+export interface SearchExerciseResult {
+  id: string;
+  name: string;
+  muscles: string[];
+  muscleGroups: string[];
+  equipment: string;
+  custom: boolean;
+  isCustom: boolean;
+  mediaUrl?: string;
+}
+
+export function searchExerciseIndex(
+  query: string,
+  customExercises: readonly (CustomExerciseLike & { videoLinks?: string[] })[] = [],
+  library: readonly LibraryExercise[] = getCachedLibrary(),
+): SearchExerciseResult[] {
+  const trimmed = query.trim().toLowerCase();
+  if (!trimmed) return [];
+  const qTokens = exerciseTokens(trimmed);
+
+  interface ScoredCandidate {
+    result: SearchExerciseResult;
+    score: number;
+  }
+  const scored: ScoredCandidate[] = [];
+
+  // 1. Custom exercises
+  for (const c of customExercises) {
+    const nameLower = c.name.toLowerCase();
+    const cTokens = exerciseTokens(c.name);
+    let score = 0;
+
+    if (nameLower === trimmed || (qTokens.length > 0 && cTokens.join(' ') === qTokens.join(' '))) {
+      score = 1100;
+    } else if (nameLower.startsWith(trimmed)) {
+      score = 850;
+    } else if (nameLower.includes(trimmed)) {
+      score = 650;
+    } else if (qTokens.length > 0 && qTokens.every((t) => cTokens.includes(t))) {
+      score = 550;
+    } else if (c.searchKeywords?.some((k) => k.toLowerCase().includes(trimmed) || (qTokens.length > 0 && qTokens.every((t) => exerciseTokens(k).includes(t))))) {
+      score = 350;
+    } else if (c.muscleGroups?.some((m) => m.toLowerCase().includes(trimmed)) || (c.muscleGroup && c.muscleGroup.toLowerCase().includes(trimmed))) {
+      score = 250;
+    } else if (c.equipment?.toLowerCase().includes(trimmed)) {
+      score = 200;
+    } else if (qTokens.length > 0 && qTokens.some((t) => cTokens.includes(t))) {
+      score = 120;
+    }
+
+    if (score > 0) {
+      const groups =
+        c.muscleGroups && c.muscleGroups.length > 0
+          ? c.muscleGroups
+          : c.muscleGroup
+            ? c.muscleGroup.split(',').map((s) => s.trim()).filter(Boolean)
+            : ['Custom'];
+      const mediaUrl = Array.isArray(c.videoLinks) && c.videoLinks.length > 0 ? c.videoLinks[0] : undefined;
+      scored.push({
+        score,
+        result: {
+          id: c.id,
+          name: c.name,
+          muscles: groups,
+          muscleGroups: groups,
+          equipment: c.equipment || 'Custom',
+          custom: true,
+          isCustom: true,
+          mediaUrl,
+        },
+      });
+    }
+  }
+
+  // 2. Library exercises
+  for (const lib of library) {
+    const nameLower = lib.name.toLowerCase();
+    const lTokens = exerciseTokens(lib.name);
+    let score = 0;
+
+    if (nameLower === trimmed || (qTokens.length > 0 && lTokens.join(' ') === qTokens.join(' '))) {
+      score = 1000;
+    } else if (nameLower.startsWith(trimmed)) {
+      score = 800;
+    } else if (nameLower.includes(trimmed)) {
+      score = 600;
+    } else if (qTokens.length > 0 && qTokens.every((t) => lTokens.includes(t))) {
+      score = 500;
+    } else if (lib.searchKeywords?.some((k) => k.toLowerCase().includes(trimmed) || (qTokens.length > 0 && qTokens.every((t) => exerciseTokens(k).includes(t))))) {
+      score = 300;
+    } else if (lib.muscleGroups?.some((m) => m.toLowerCase().includes(trimmed))) {
+      score = 200;
+    } else if (lib.equipment?.toLowerCase().includes(trimmed)) {
+      score = 150;
+    } else if (qTokens.length > 0 && qTokens.some((t) => lTokens.includes(t))) {
+      score = 100;
+    }
+
+    if (score > 0) {
+      scored.push({
+        score,
+        result: {
+          id: lib.id,
+          name: lib.name,
+          muscles: lib.muscleGroups || [],
+          muscleGroups: lib.muscleGroups || [],
+          equipment: lib.equipment || 'Unknown',
+          custom: false,
+          isCustom: false,
+        },
+      });
+    }
+  }
+
+  scored.sort((a, b) => b.score - a.score || a.result.name.length - b.result.name.length);
+  return scored.slice(0, 30).map((s) => s.result);
 }

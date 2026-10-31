@@ -52,6 +52,13 @@ const superset = z
 const category = z.enum(['Strength', 'Cardio', 'Flexibility', 'Sports', 'Other']);
 const difficulty = z.enum(['Beginner', 'Intermediate', 'Advanced']);
 
+/** Media URLs end up in the app's <video>/<img> src: https only (no http:, javascript:, data:). */
+const httpsUrl = z
+  .string()
+  .url()
+  .max(1000)
+  .refine((u) => u.toLowerCase().startsWith('https://'), 'Media URL must be https.');
+
 const workoutFields = {
   name: z.string().trim().min(1).max(100).describe('Workout name shown in the app, e.g. "Push Day A".'),
   description: z.string().max(500).optional(),
@@ -161,12 +168,16 @@ export const performedSetInput = z
 
 export const exerciseHistoryInput = z
   .object({
-    name: z.string().trim().min(1).max(120).describe('Exercise name, e.g. "Barbell Bench Press" or "Chest Supported Row".'),
+    id: docId('exercise').optional().describe('Exercise ID if known (from search_exercises or add_exercise).'),
+    name: z.string().trim().min(1).max(120).optional().describe('Exercise name, e.g. "Barbell Bench Press" or "Chest Supported Row".'),
     sets: z.array(performedSetInput).min(1).max(30).describe('Sets completed, in order.'),
     notes: z.string().max(500).optional().describe('Notes for this exercise.'),
     customTitle: z.string().trim().max(120).optional().describe('Optional custom variation display name.'),
   })
-  .strict();
+  .strict()
+  .refine((d) => Boolean(d.id || d.name), {
+    message: 'Either id or name must be provided.',
+  });
 
 export const logWorkoutInput = z
   .object({
@@ -297,5 +308,42 @@ export const addExerciseInput = z
     unit: unit.optional(),
     difficulty: difficulty.optional(),
     notes: z.string().max(500).optional(),
+    media_url: httpsUrl.optional().describe('Optional media URL (photo, gif, or video) for the exercise.'),
+  })
+  .strict();
+
+export const searchExercisesInput = z
+  .object({
+    query: z
+      .string()
+      .trim()
+      .min(1)
+      .max(100)
+      .describe('Search query, e.g. "bench", "chest", "cable row", or machine name.'),
+  })
+  .strict();
+
+export const updateExerciseInput = z
+  .object({
+    exercise_id: docId('custom exercise').describe('The custom exercise ID to update.'),
+    name: z.string().trim().min(1).max(120).optional().describe('New exercise name.'),
+    muscles: z.array(z.string().trim().min(1).max(40)).min(1).max(6).optional().describe('Muscle groups.'),
+    equipment: z.string().trim().min(1).max(60).optional().describe('Equipment type.'),
+    setupCues: z.array(z.string().trim().min(1).max(200)).max(10).optional().describe('Setup cues or instructions.'),
+    notes: z.string().max(500).optional().describe('Notes.'),
+    media: httpsUrl.optional().describe('Media URL for the exercise.'),
+  })
+  .strict();
+
+export const attachMediaFromUrlInput = z
+  .object({
+    exercise_id: docId('custom exercise').describe('The custom exercise ID to attach media to.'),
+    url: z.string().url().max(2000).describe('Public HTTPS URL of the photo, gif, or video file.'),
+  })
+  .strict();
+
+export const createMediaUploadLinkInput = z
+  .object({
+    exercise_id: docId('custom exercise').describe('The custom exercise ID to generate an upload link for.'),
   })
   .strict();
