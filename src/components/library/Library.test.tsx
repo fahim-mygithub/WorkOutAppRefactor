@@ -9,7 +9,7 @@ import customExercise, { addCustomExerciseLocally } from '../../store/slices/cus
 import user, { setProfile } from '../../store/slices/userSlice';
 import ai from '../../store/slices/aiSlice';
 import { CustomExerciseService, type CustomExercise } from '../../services/customExerciseService';
-import LibraryPage from '../../pages/LibraryPage';
+import ExercisesPage from '../../pages/ExercisesPage';
 import { CustomExerciseSheet } from './CustomExerciseSheet';
 import { LibraryMediaClip } from './LibraryMediaClip';
 import * as aiClient from '../../ai/aiClient';
@@ -122,7 +122,7 @@ function renderLibrary(store = makeStore([sampleCustomExercise, sampleCustomPhot
   return render(
     <Provider store={store}>
       <MemoryRouter>
-        <LibraryPage />
+        <ExercisesPage />
       </MemoryRouter>
     </Provider>,
   );
@@ -169,7 +169,7 @@ describe('LibraryMediaClip', () => {
   });
 });
 
-describe('LibraryPage', () => {
+describe('ExercisesPage (Library)', () => {
   it('My exercises lists custom exercises with media', async () => {
     const u = userEvent.setup();
     renderLibrary();
@@ -212,7 +212,7 @@ describe('LibraryPage', () => {
     expect(nameInput).toHaveValue('Nordic Curl Machine');
   });
 
-  it('edit saves through customExerciseService', async () => {
+  it('edit saves through customExerciseService with exactly 1 call', async () => {
     const updateSpy = vi.spyOn(CustomExerciseService, 'updateCustomExercise').mockResolvedValue();
     const u = userEvent.setup();
     renderLibrary();
@@ -239,6 +239,7 @@ describe('LibraryPage', () => {
     await u.click(saveBtn);
 
     await waitFor(() => {
+      expect(updateSpy).toHaveBeenCalledTimes(1);
       expect(updateSpy).toHaveBeenCalledWith('u1', 'custom-1', expect.objectContaining({
         name: 'Cable Fly High-to-Low',
         instructions: ['Slight elbow bend.', 'Squeeze at center.'],
@@ -246,8 +247,62 @@ describe('LibraryPage', () => {
     });
   });
 
-  it('create saves a custom exercise with uploaded media through customExerciseService', async () => {
+  it('edit saves with uploaded media through customExerciseService', async () => {
+    const updateSpy = vi.spyOn(CustomExerciseService, 'updateCustomExercise').mockResolvedValue();
+    const uploadMock = vi.fn().mockResolvedValue({
+      url: 'https://r2.test/cable-fly-new.mp4',
+      kind: 'video',
+      bytes: 8192,
+    });
+    const u = userEvent.setup();
+
+    render(
+      <Provider store={makeStore([sampleCustomExercise])}>
+        <CustomExerciseSheet
+          open={true}
+          onOpenChange={vi.fn()}
+          exercise={sampleCustomExercise}
+          uploadFile={uploadMock}
+        />
+      </Provider>,
+    );
+
+    // Remove existing media first
+    const removeBtn = screen.getByRole('button', { name: /Remove media/i });
+    await u.click(removeBtn);
+
+    // Upload new media
+    const fileInput = screen.getByTestId('custom-exercise-media-input');
+    const fakeFile = new File(['fake video data'], 'fly.mp4', { type: 'video/mp4' });
+    await u.upload(fileInput, fakeFile);
+
+    await waitFor(() => {
+      expect(uploadMock).toHaveBeenCalledWith(fakeFile);
+    });
+
+    const saveBtn = screen.getByRole('button', { name: /Save changes/i });
+    await u.click(saveBtn);
+
+    await waitFor(() => {
+      expect(updateSpy).toHaveBeenCalledTimes(1);
+      expect(updateSpy).toHaveBeenCalledWith('u1', 'custom-1', expect.objectContaining({
+        name: 'Cable Fly High-to-Low',
+        videoLinks: ['https://r2.test/cable-fly-new.mp4'],
+      }));
+    });
+  });
+
+  it('create saves a custom exercise with uploaded media through customExerciseService with exactly 1 call', async () => {
     const saveSpy = vi.spyOn(CustomExerciseService, 'saveCustomExercise').mockResolvedValue('c-new');
+    vi.spyOn(CustomExerciseService, 'getUserCustomExercises').mockResolvedValue([
+      {
+        id: 'c-new',
+        name: 'Pendlay Row',
+        muscleGroup: 'Back',
+        equipment: 'Barbell',
+        videoLinks: ['https://r2.test/new-custom.gif'],
+      } as CustomExercise,
+    ]);
     const uploadMock = vi.fn().mockResolvedValue({
       url: 'https://r2.test/new-custom.gif',
       kind: 'gif',
@@ -279,18 +334,26 @@ describe('LibraryPage', () => {
     const equipmentInput = screen.getByLabelText(/Equipment/i);
     await u.type(equipmentInput, 'Barbell');
 
-    // Upload media via "Add GIF or video"
-    const addMediaBtn = screen.getByRole('button', { name: /Add GIF or video/i });
-    expect(addMediaBtn).toBeInTheDocument();
+    // Actually upload media via file picker
+    const fileInput = screen.getByTestId('custom-exercise-media-input');
+    const fakeFile = new File(['fake gif data'], 'row.gif', { type: 'image/gif' });
+    await u.upload(fileInput, fakeFile);
+
+    await waitFor(() => {
+      expect(uploadMock).toHaveBeenCalledWith(fakeFile);
+    });
 
     const saveBtn = screen.getByRole('button', { name: /Create exercise/i });
     await u.click(saveBtn);
 
     await waitFor(() => {
+      // Must call saveCustomExercise exactly ONCE with videoLinks attached
+      expect(saveSpy).toHaveBeenCalledTimes(1);
       expect(saveSpy).toHaveBeenCalledWith('u1', expect.objectContaining({
         name: 'Pendlay Row',
         muscleGroup: 'Back',
         equipment: 'Barbell',
+        videoLinks: ['https://r2.test/new-custom.gif'],
       }));
     });
   });

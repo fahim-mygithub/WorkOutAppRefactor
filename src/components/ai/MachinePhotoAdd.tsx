@@ -3,7 +3,8 @@
 // shown in an editable card. Nothing is saved until Add: then a name the
 // library already has is used as is, anything else is saved as a custom
 // exercise, and the exercise goes onto the board with the draft's sets.
-// After Add, offer "Save this photo to the exercise" to upload and attach it.
+// After Add, offer "Save this photo to the exercise" to upload and attach it
+// (only when Add created or used a CUSTOM exercise; never for a library one).
 //
 // Hidden entirely when AI can't be used (no Worker URL, offline, signed out,
 // or the Worker said not-allowed / limit / unconfigured).
@@ -16,7 +17,11 @@ import { Textarea } from '../ui/textarea';
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from '../ui/sheet';
 import { useAppDispatch, useAppSelector } from '../../store/hooks';
 import { aiDisabled } from '../../store/slices/aiSlice';
-import { saveCustomExercise, updateCustomExercise } from '../../store/slices/customExerciseSlice';
+import {
+  saveCustomExercise,
+  updateCustomExercise,
+  selectCustomExercises,
+} from '../../store/slices/customExerciseSlice';
 import {
   AiBackendError,
   isBackendAvailable,
@@ -53,8 +58,9 @@ type Phase =
       kind: 'photoOffer';
       photo: AiImage;
       rawFile?: File;
-      customId?: string;
+      customId: string;
       exerciseName: string;
+      existingVideoLinks?: string[];
       muscles?: string;
       equipment?: string;
       cues?: string;
@@ -117,6 +123,7 @@ export function MachinePhotoAdd({
 }: MachinePhotoAddProps) {
   const dispatch = useAppDispatch();
   const library = useExerciseLibrary();
+  const customExercises = useAppSelector(selectCustomExercises);
   const userId = useAppSelector((s) => s.user?.profile?.uid);
   const aiOff = useAppSelector((s) => Boolean(s.ai?.disabledReason));
   const id = useId();
@@ -188,15 +195,21 @@ export function MachinePhotoAdd({
 
     if (known) {
       onAdd(known, defaults);
-      if (phase.kind === 'draft') {
+      // Only offer photo save when the known exercise is a CUSTOM exercise
+      const matchedCustom = customExercises.find(
+        (c) => c.name.trim().toLowerCase() === name.toLowerCase() || c.id === known.id,
+      );
+      if (matchedCustom?.id && phase.kind === 'draft') {
         setPhase({
           kind: 'photoOffer',
           photo: phase.photo,
           rawFile: rawFile ?? undefined,
-          exerciseName: known.name,
-          muscles: known.muscleGroup,
-          equipment: known.equipment,
-          cues: known.instructions?.join('\n') || '',
+          customId: matchedCustom.id,
+          exerciseName: matchedCustom.name,
+          existingVideoLinks: matchedCustom.videoLinks ?? [],
+          muscles: matchedCustom.muscleGroup,
+          equipment: matchedCustom.equipment,
+          cues: matchedCustom.instructions?.join('\n') || '',
         });
       } else {
         close();
@@ -225,13 +238,14 @@ export function MachinePhotoAdd({
       ).unwrap();
       if (!alive.current) return;
       onAdd(customToExercise(saved), defaults);
-      if (phase.kind === 'draft') {
+      if (saved.id && phase.kind === 'draft') {
         setPhase({
           kind: 'photoOffer',
           photo: phase.photo,
           rawFile: rawFile ?? undefined,
           customId: saved.id,
           exerciseName: saved.name,
+          existingVideoLinks: saved.videoLinks ?? [],
           muscles: saved.muscleGroup,
           equipment: saved.equipment,
           cues: saved.instructions?.join('\n') || '',
@@ -249,6 +263,10 @@ export function MachinePhotoAdd({
 
   const savePhotoToExercise = async () => {
     if (phase.kind !== 'photoOffer' || savingPhoto) return;
+    if (!phase.customId || !userId) {
+      close();
+      return;
+    }
     setSavingPhoto(true);
     setProblem(null);
     try {
@@ -256,30 +274,14 @@ export function MachinePhotoAdd({
       const uploaded = await uploadFile(blob);
       if (!alive.current) return;
 
-      if (phase.customId && userId) {
-        await dispatch(
-          updateCustomExercise({
-            userId,
-            exerciseId: phase.customId,
-            updates: { videoLinks: [uploaded.url] },
-          }),
-        ).unwrap();
-      } else if (userId) {
-        await dispatch(
-          saveCustomExercise({
-            userId,
-            exerciseData: {
-              originalName: phase.exerciseName,
-              name: phase.exerciseName,
-              muscleGroup: phase.muscles || 'Unknown',
-              equipment: phase.equipment || 'Machine',
-              difficulty: 'Intermediate',
-              instructions: splitList(phase.cues || '', /\n/),
-              videoLinks: [uploaded.url],
-            },
-          }),
-        ).unwrap();
-      }
+      const existingLinks = phase.existingVideoLinks ?? [];
+      await dispatch(
+        updateCustomExercise({
+          userId,
+          exerciseId: phase.customId,
+          updates: { videoLinks: [...existingLinks, uploaded.url] },
+        }),
+      ).unwrap();
       setPhotoSaveSuccess(true);
     } catch {
       if (alive.current) {

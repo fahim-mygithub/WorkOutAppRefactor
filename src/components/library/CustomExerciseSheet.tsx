@@ -10,10 +10,9 @@ import {
   saveCustomExercise,
   updateCustomExercise,
 } from '../../store/slices/customExerciseSlice';
-import {
-  CustomExerciseService,
-  type CustomExercise,
-  type SaveCustomExerciseData,
+import type {
+  CustomExercise,
+  SaveCustomExerciseData,
 } from '../../services/customExerciseService';
 import { uploadMedia, type MediaUploadResult } from '../../ai/mediaUpload';
 import { isBackendAvailable, isSignedIn } from '../../ai/aiClient';
@@ -126,9 +125,7 @@ export function CustomExerciseSheet({
 
     try {
       if (exercise?.id) {
-        // Direct service update ensuring the test requirement passes
-        await CustomExerciseService.updateCustomExercise(userId, exercise.id, exerciseData);
-        // Dispatch to update Redux store
+        // Dispatch to update Redux store and Firestore via thunk
         await dispatch(
           updateCustomExercise({
             userId,
@@ -143,35 +140,15 @@ export function CustomExerciseSheet({
           updatedAt: new Date(),
         });
       } else {
-        const id = await CustomExerciseService.saveCustomExercise(userId, exerciseData);
-        const created: CustomExercise = {
-          ...exerciseData,
-          videoLinks: exerciseData.videoLinks || [],
-          id,
-          userId,
-          isCustom: true,
-          force: null,
-          grips: null,
-          mechanic: null,
-          searchKeywords: [
-            cleanName.toLowerCase(),
-            exerciseData.muscleGroup.toLowerCase(),
-            exerciseData.equipment.toLowerCase(),
-            ...cleanName.toLowerCase().split(' '),
-          ].filter(Boolean),
-          instructions,
-          createdAt: new Date(),
-          updatedAt: new Date(),
-          usageCount: 1,
-        };
-        await dispatch(
+        // Dispatch to save in Firestore and Redux store via thunk
+        const saved = await dispatch(
           saveCustomExercise({
             userId,
             exerciseData,
           }),
         ).unwrap();
 
-        onSaved?.(created);
+        onSaved?.(saved);
       }
       onOpenChange(false);
     } catch (err) {
@@ -297,9 +274,10 @@ export function CustomExerciseSheet({
                   type="file"
                   accept="image/*"
                   capture="environment"
+                  aria-label="Upload photo"
+                  data-testid="custom-exercise-photo-input"
                   className="sr-only"
                   tabIndex={-1}
-                  aria-hidden="true"
                   onChange={(e) => {
                     const file = e.target.files?.[0];
                     e.target.value = '';
@@ -310,9 +288,10 @@ export function CustomExerciseSheet({
                   ref={mediaInputRef}
                   type="file"
                   accept="image/gif,video/mp4,video/webm,video/quicktime,video/*"
+                  aria-label="Upload GIF or video"
+                  data-testid="custom-exercise-media-input"
                   className="sr-only"
                   tabIndex={-1}
-                  aria-hidden="true"
                   onChange={(e) => {
                     const file = e.target.files?.[0];
                     e.target.value = '';
