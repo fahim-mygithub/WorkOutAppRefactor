@@ -310,4 +310,114 @@ describe('Media: Endpoints & Routing', () => {
     const reuseRes = await handleMediaRequest(postReq, env, ctx, deps);
     expect(reuseRes.status).toBe(404);
   });
+  it('GET /media: no listing, and CORS only for ALLOWED_ORIGINS', async () => {
+    await r2.put('user123/abc123.jpg', SAMPLE_JPEG, { httpMetadata: { contentType: 'image/jpeg' } });
+    for (const path of ['/media/', '/media/user123', '/media/user123/', '/media/../user123/abc123.jpg', '/media/user123/abc123']) {
+      const res = await handleMediaRequest(new Request(`https://worker.test${path}`), env, ctx, deps);
+      expect([400, 404]).toContain(res.status);
+    }
+    const allowed = await handleMediaRequest(
+      new Request('https://worker.test/media/user123/abc123.jpg', { headers: { Origin: 'https://app.test' } }),
+      env, ctx, deps,
+    );
+    expect(allowed.headers.get('access-control-allow-origin')).toBe('https://app.test');
+    const evil = await handleMediaRequest(
+      new Request('https://worker.test/media/user123/abc123.jpg', { headers: { Origin: 'https://evil.test' } }),
+      env, ctx, deps,
+    );
+    expect(evil.status).toBe(200);
+    expect(evil.headers.get('access-control-allow-origin')).toBeNull();
+    const pre = await handleMediaRequest(
+      new Request('https://worker.test/media', { method: 'OPTIONS', headers: { Origin: 'https://evil.test' } }),
+      env, ctx, deps,
+    );
+    expect(pre.headers.get('access-control-allow-origin')).toBeNull();
+  });
+
+  it('POST /media: refuses a declared body over the cap with 413 before reading it', async () => {
+    let pulled = 0;
+    const body = new ReadableStream<Uint8Array>({
+      pull(c) {
+        pulled++;
+        c.enqueue(new Uint8Array(1024 * 1024));
+      },
+    });
+    const req = new Request('https://worker.test/media', {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer valid-token',
+        'content-type': 'multipart/form-data; boundary=x',
+        'content-length': String(500 * 1024 * 1024),
+      },
+      body,
+      // @ts-expect-error node needs duplex for stream bodies
+      duplex: 'half',
+    });
+    const res = await handleMediaRequest(req, env, ctx, deps);
+    expect(res.status).toBe(413);
+    expect(pulled).toBeLessThanOrEqual(1);
+  });
+
+  it('POST /media: cuts off a chunked body with no content-length that runs past the cap', async () => {
+    let pulled = 0;
+    const body = new ReadableStream<Uint8Array>({
+      pull(c) {
+        pulled++;
+        c.enqueue(new Uint8Array(1024 * 1024));
+      },
+    });
+    const req = new Request('https://worker.test/media', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer valid-token', 'content-type': 'multipart/form-data; boundary=x' },
+      body,
+      // @ts-expect-error node needs duplex for stream bodies
+      duplex: 'half',
+    });
+    const res = await handleMediaRequest(req, env, ctx, deps);
+    expect(res.status).toBe(413);
+    expect(pulled).toBeLessThan(80);
+  });
+
+  it('Upload link: a token cannot attach to an exercise that is not under its own uid, and refuses bad files', async () => {
+    // The exercise exists only under another user. The token is bound to user123, so the
+    // path resolves under user123 where nothing exists: refused, nothing stored or created.
+    fs.put(['users', 'stranger', 'customExercises', 'victim-row'], { name: 'Victim Row', videoLinks: [] });
+    const { token } = await createUploadToken(kv, 'user123', 'victim-row');
+    const form = new FormData();
+    form.append('file', new Blob([SAMPLE_GIF]));
+    const res = await handleMediaRequest(
+      new Request(`https://worker.test/upload/${token}`, { method: 'POST', headers: { Accept: 'application/json' }, body: form }),
+      env, ctx, deps,
+    );
+    expect(res.status).toBe(404);
+    expect(fs.read(['users', 'user123', 'customExercises', 'victim-row'])).toBeUndefined();
+    expect(fs.read(['users', 'stranger', 'customExercises', 'victim-row'])?.videoLinks).toEqual([]);
+    expect([...r2.store.keys()]).toEqual([]);
+
+    // A text file is refused with 415.
+    fs.put(['users', 'user123', 'customExercises', 'my-row'], { name: 'My Row', videoLinks: [] });
+    const t2 = (await createUploadToken(kv, 'user123', 'my-row')).token;
+    const bad = new FormData();
+    bad.append('file', new Blob([new TextEncoder().encode('just some text')]));
+    const badRes = await handleMediaRequest(
+      new Request(`https://worker.test/upload/${t2}`, { method: 'POST', body: bad }),
+      env, ctx, deps,
+    );
+    expect(badRes.status).toBe(415);
+    expect([...r2.store.keys()]).toEqual([]);
+  });
+
+  it('Upload link: refuses an over-cap declared body with 413', async () => {
+    fs.put(['users', 'user123', 'customExercises', 'my-row'], { name: 'My Row', videoLinks: [] });
+    const { token } = await createUploadToken(kv, 'user123', 'my-row');
+    const req = new Request(`https://worker.test/upload/${token}`, {
+      method: 'POST',
+      headers: { 'content-type': 'multipart/form-data; boundary=x', 'content-length': String(300 * 1024 * 1024) },
+      body: new ReadableStream<Uint8Array>({ pull(c) { c.close(); } }),
+      // @ts-expect-error node needs duplex for stream bodies
+      duplex: 'half',
+    });
+    const res = await handleMediaRequest(req, env, ctx, deps);
+    expect(res.status).toBe(413);
+  });
 });

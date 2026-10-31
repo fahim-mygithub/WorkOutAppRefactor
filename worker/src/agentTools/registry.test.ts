@@ -1248,6 +1248,106 @@ describe('attach_media_from_url', () => {
   });
 });
 
+describe('media URLs saved on exercises must be https', () => {
+  it('refuses http and script URLs in add_exercise.media_url and update_exercise.media', async () => {
+    for (const bad of ['http://example.com/a.mp4', 'javascript:alert(1)', 'data:text/html;base64,AAAA']) {
+      const r = await run('add_exercise', {
+        name: 'Zercher Rack Station', muscleGroups: ['Quads'], equipment: 'Rack', media_url: bad,
+      });
+      expect(r.ok).toBe(false);
+    }
+    const added = await ok('add_exercise', { name: 'Zercher Rack Station', muscleGroups: ['Quads'], equipment: 'Rack' });
+    for (const bad of ['http://example.com/a.mp4', 'javascript:alert(1)']) {
+      const r = await run('update_exercise', { exercise_id: added.id, media: bad });
+      expect(r.ok).toBe(false);
+    }
+  });
+});
+
+describe('attach_media_from_url: private hosts, redirects and streaming caps', () => {
+  const JPEG = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46, 1, 2, 3, 4]);
+  const addEx = () =>
+    ok('add_exercise', { name: 'Reverse Hyper Rig Prototype', muscleGroups: ['Glutes'], equipment: 'Machine' });
+
+  it.each([
+    'https://localhost/a.jpg',
+    'https://127.0.0.1/a.jpg',
+    'https://[::1]/a.jpg',
+    'https://169.254.169.254/latest/meta-data',
+    'https://10.1.2.3/a.jpg',
+    'https://192.168.0.9/a.jpg',
+    'https://0.0.0.0/a.jpg',
+    'https://printer.local/a.jpg',
+  ])('never fetches %s', async (url) => {
+    const added = await addEx();
+    let calls = 0;
+    fetchMock = async () => {
+      calls++;
+      return new Response(JPEG);
+    };
+    const r = await run('attach_media_from_url', { exercise_id: added.id, url });
+    expect(r.ok).toBe(false);
+    expect(calls).toBe(0);
+  });
+
+  it('does not follow a redirect to a private host or to http', async () => {
+    const added = await addEx();
+    for (const location of ['https://169.254.169.254/latest', 'http://example.com/a.jpg', 'https://10.0.0.2/a.jpg']) {
+      const seen: string[] = [];
+      fetchMock = async (u, init) => {
+        seen.push(String(u));
+        expect(init?.redirect).toBe('manual');
+        return new Response(null, { status: 302, headers: { location } });
+      };
+      const r = await run('attach_media_from_url', { exercise_id: added.id, url: 'https://example.com/a.jpg' });
+      expect(r.ok).toBe(false);
+      expect(seen).toEqual(['https://example.com/a.jpg']);
+    }
+    expect([...r2Bucket.store.keys()]).toEqual([]);
+  });
+
+  it('follows a bounded number of redirects between public https hosts', async () => {
+    const added = await addEx();
+    fetchMock = async (u) => {
+      const s = String(u);
+      if (s === 'https://example.com/a.jpg') return new Response(null, { status: 301, headers: { location: 'https://cdn.example.net/b.jpg' } });
+      if (s === 'https://cdn.example.net/b.jpg') return new Response(JPEG, { status: 200 });
+      return new Response('?', { status: 404 });
+    };
+    const r = await ok('attach_media_from_url', { exercise_id: added.id, url: 'https://example.com/a.jpg' });
+    expect(r.kind).toBe('photo');
+
+    let hops = 0;
+    fetchMock = async () => {
+      hops++;
+      return new Response(null, { status: 302, headers: { location: `https://example.com/${hops}.jpg` } });
+    };
+    const loop = await run('attach_media_from_url', { exercise_id: added.id, url: 'https://example.com/0.jpg' });
+    expect(loop.ok).toBe(false);
+    expect(hops).toBeLessThanOrEqual(5);
+  });
+
+  it('stops reading a body that streams past the cap with no content-length', async () => {
+    const added = await addEx();
+    let pulled = 0;
+    fetchMock = async () =>
+      new Response(
+        new ReadableStream<Uint8Array>({
+          pull(c) {
+            pulled++;
+            const chunk = new Uint8Array(1024 * 1024);
+            if (pulled === 1) chunk.set(JPEG);
+            c.enqueue(chunk);
+          },
+        }),
+        { status: 200 },
+      );
+    const r = await run('attach_media_from_url', { exercise_id: added.id, url: 'https://example.com/endless.jpg' });
+    expect(r.ok).toBe(false);
+    expect(pulled).toBeLessThanOrEqual(10);
+  });
+});
+
 describe('create_media_upload_link', () => {
   it('generates a 15-minute single-use upload link for custom exercise', async () => {
     const added = await ok('add_exercise', {

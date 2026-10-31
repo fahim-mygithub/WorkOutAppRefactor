@@ -137,13 +137,14 @@ Custom exercise photos, GIFs, and videos are stored in Cloudflare R2 under bucke
     - **GIFs**: <= 15 MB
     - **Videos** (MP4, WebM, MOV): <= 60 MB
     - Daily upload count rate-limited per user via `AI_USAGE` KV.
+  - Upload bodies (`POST /media`, `POST /upload/<token>`) are counted as they stream in: a declared `Content-Length` over 61 MB, or a stream that runs past it, gets `413` without being buffered.
   - `GET /upload/<token>` & `POST /upload/<token>`: Temporary mobile web page for users to upload media directly from device camera (`accept="image/*,video/*"`, `capture="environment"`). Tokens are single-use, expire after 15 minutes, bound to user and exercise IDs, and managed in KV.
 
 - **Connector Tools for Agents**:
   - `search_exercises(query)`: Searches both the 1,540-exercise built-in library and the user's custom exercises by name, muscle groups, or equipment. Returns canonical IDs, names, muscle groups, equipment, whether custom, and existing media URLs.
   - `add_exercise`: Adds a new custom exercise with support for `media_url`. Refuses near-duplicates of library exercises or existing custom exercises, returning the matching exercise in the response.
   - `update_exercise`: Updates custom exercise fields (name, muscles, equipment, setup cues, notes, media URL). Refuses edits to built-in library exercises.
-  - `attach_media_from_url(exercise_id, url)`: Downloads a media file from a public HTTPS URL, validates magic bytes and size caps (photos <= 8MB, GIF <= 15MB, video <= 60MB), uploads to R2, and links it to the exercise's `videoLinks`.
+  - `attach_media_from_url(exercise_id, url)`: Downloads a media file from a public HTTPS URL, validates magic bytes and size caps (photos <= 8MB, GIF <= 15MB, video <= 60MB), uploads to R2, and links it to the exercise's `videoLinks`. Refuses non-https, credentials in the URL, localhost/private/link-local/`.local`/`.internal` hosts and IPv6 literals; redirects are followed by hand (max 3 hops) and every hop is re-checked. The body is read as a stream and cut off as soon as it passes the cap or its first bytes are not media (`global_fetch_strictly_public` is the runtime backstop).
   - `create_media_upload_link(exercise_id)`: Generates a temporary 15-minute single-use upload URL for the user to upload photos or videos from their phone camera.
   - `log_workout`: Accepts exercises by `id` directly from `search_exercises` or `add_exercise`, avoiding fallback IDs and correctly mapping equipment and muscle groups.
 

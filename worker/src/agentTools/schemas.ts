@@ -52,6 +52,13 @@ const superset = z
 const category = z.enum(['Strength', 'Cardio', 'Flexibility', 'Sports', 'Other']);
 const difficulty = z.enum(['Beginner', 'Intermediate', 'Advanced']);
 
+/** Media URLs end up in the app's <video>/<img> src: https only (no http:, javascript:, data:). */
+const httpsUrl = z
+  .string()
+  .url()
+  .max(1000)
+  .refine((u) => u.toLowerCase().startsWith('https://'), 'Media URL must be https.');
+
 const workoutFields = {
   name: z.string().trim().min(1).max(100).describe('Workout name shown in the app, e.g. "Push Day A".'),
   description: z.string().max(500).optional(),
@@ -301,7 +308,7 @@ export const addExerciseInput = z
     unit: unit.optional(),
     difficulty: difficulty.optional(),
     notes: z.string().max(500).optional(),
-    media_url: z.string().url().max(1000).optional().describe('Optional media URL (photo, gif, or video) for the exercise.'),
+    media_url: httpsUrl.optional().describe('Optional media URL (photo, gif, or video) for the exercise.'),
   })
   .strict();
 
@@ -324,7 +331,7 @@ export const updateExerciseInput = z
     equipment: z.string().trim().min(1).max(60).optional().describe('Equipment type.'),
     setupCues: z.array(z.string().trim().min(1).max(200)).max(10).optional().describe('Setup cues or instructions.'),
     notes: z.string().max(500).optional().describe('Notes.'),
-    media: z.string().url().max(1000).optional().describe('Media URL for the exercise.'),
+    media: httpsUrl.optional().describe('Media URL for the exercise.'),
   })
   .strict();
 

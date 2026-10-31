@@ -34,5 +34,3 @@ export async function verifyMedia(url: string, referer: string, fetchImpl: typeo
   if (Number.isFinite(size) && size > MAX_BYTES) return { ok: false, reason: 'too large' };
   return { ok: true, type };
 }
-
-export * from './media/index';

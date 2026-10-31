@@ -16,12 +16,10 @@ import {
   type CustomExerciseLike,
   type HistoryExerciseLike,
 } from './exerciseIndex';
-import {
-  isMediaSizeAllowed,
-  maxBytesForKind,
-  sniffMediaType,
-} from '../media/sniff';
+import { MediaLimitError, readCappedMedia } from '../media/limits';
+import { assertPublicHttpsUrl } from '../media/ssrf';
 import { generateMediaId } from '../media/storage';
+import { MAX_VIDEO_BYTES, type SniffedMedia } from '../media/types';
 import { createUploadToken } from '../media/uploadToken';
 import type { UpdateExerciseInput } from './shapes';
 import {
@@ -61,6 +59,9 @@ import {
 } from './shapes';
 
 const SAFE_ID = /^[A-Za-z0-9_-]{1,128}$/;
+
+/** Redirect hops attach_media_from_url will follow (each re-checked as public https). */
+const MAX_REDIRECTS = 3;
 
 export class DataError extends Error {
   constructor(
@@ -1177,78 +1178,67 @@ export class UserData {
     );
   }
 
-  async attachMediaFromUrl(exerciseId: string, url: string) {
+  async requireCustomExercise(exerciseId: string): Promise<void> {
     safeId(exerciseId, 'custom exercise');
-    if (!url.startsWith('https://')) {
-      throw new DataError('invalid-argument', 'URL must be https.');
-    }
-
-    let parsedUrl: URL;
-    try {
-      parsedUrl = new URL(url);
-    } catch {
-      throw new DataError('invalid-argument', 'Invalid URL.');
-    }
-    const host = parsedUrl.hostname.toLowerCase();
-    if (
-      host === 'localhost' ||
-      host === '127.0.0.1' ||
-      host === '::1' ||
-      host.startsWith('10.') ||
-      host.startsWith('192.168.') ||
-      host.startsWith('169.254.') ||
-      /^172\.(1[6-9]|2\d|3[01])\./.test(host)
-    ) {
-      throw new DataError('invalid-argument', 'Private network URLs are not allowed.');
-    }
-
     const doc = await this.fs.get(this.path('customExercises', exerciseId));
     if (!doc) {
       throw new DataError('not-found', `No custom exercise with id ${exerciseId}.`);
     }
+  }
 
+  async attachMediaFromUrl(exerciseId: string, url: string) {
+    safeId(exerciseId, 'custom exercise');
+    let target = this.checkPublicUrl(url);
+    await this.requireCustomExercise(exerciseId);
+
+    // Redirects are followed by hand so every hop is re-checked (https, public host).
     const fetchImpl = this.options.fetchImpl ?? fetch;
-    let res: Response;
-    try {
-      res = await fetchImpl(url, { redirect: 'follow', signal: AbortSignal.timeout(15000) });
-    } catch (err) {
-      throw new DataError('invalid-argument', `Failed to fetch media from URL: ${err instanceof Error ? err.message : String(err)}`);
+    let res: Response | undefined;
+    for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
+      try {
+        res = await fetchImpl(target.href, { redirect: 'manual', signal: AbortSignal.timeout(15000) });
+      } catch (err) {
+        throw new DataError('invalid-argument', `Failed to fetch media from URL: ${err instanceof Error ? err.message : String(err)}`);
+      }
+      if (res.status < 300 || res.status >= 400) break;
+      const location = res.headers.get('location');
+      await res.body?.cancel().catch(() => {});
+      if (!location) throw new DataError('invalid-argument', 'Redirect without a Location header.');
+      if (hop === MAX_REDIRECTS) throw new DataError('invalid-argument', 'Too many redirects.');
+      let next: string;
+      try {
+        next = new URL(location, target).href;
+      } catch {
+        throw new DataError('invalid-argument', 'Invalid redirect URL.');
+      }
+      target = this.checkPublicUrl(next);
     }
-
-    if (!res.ok) {
-      throw new DataError('invalid-argument', `Failed to fetch media: server returned HTTP ${res.status}.`);
-    }
-    if (res.url && !res.url.startsWith('https://')) {
-      throw new DataError('invalid-argument', 'Redirected to non-https URL.');
+    if (!res || !res.ok) {
+      await res?.body?.cancel().catch(() => {});
+      throw new DataError('invalid-argument', `Failed to fetch media: server returned HTTP ${res?.status}.`);
     }
 
     const contentLength = Number(res.headers.get('content-length'));
-    if (Number.isFinite(contentLength) && contentLength > 60 * 1024 * 1024) {
+    if (Number.isFinite(contentLength) && contentLength > MAX_VIDEO_BYTES) {
+      await res.body?.cancel().catch(() => {});
       throw new DataError('invalid-argument', 'Media file exceeds 60 MB limit.');
     }
 
-    const arrayBuffer = await res.arrayBuffer();
-    const bytes = new Uint8Array(arrayBuffer);
-    if (bytes.length === 0) {
-      throw new DataError('invalid-argument', 'Fetched file is empty.');
-    }
-    if (bytes.length > 60 * 1024 * 1024) {
-      throw new DataError('invalid-argument', 'Media file exceeds 60 MB limit.');
-    }
-
-    const sniffed = sniffMediaType(bytes);
-    if (!sniffed) {
-      throw new DataError(
-        'invalid-argument',
-        'Unsupported media type: file does not match photo (jpeg/png/webp/heic), gif, or video (mp4/webm/mov).',
-      );
-    }
-
-    if (!isMediaSizeAllowed(sniffed.kind, bytes.length)) {
-      throw new DataError(
-        'invalid-argument',
-        `File size (${bytes.length} bytes) exceeds limit for ${sniffed.kind} (${maxBytesForKind(sniffed.kind)} bytes).`,
-      );
+    let bytes: Uint8Array;
+    let sniffed: SniffedMedia;
+    try {
+      ({ bytes, sniffed } = await readCappedMedia(res.body));
+    } catch (err) {
+      if (err instanceof MediaLimitError) {
+        const message =
+          err.code === 'unsupported'
+            ? 'Unsupported media type: file does not match photo (jpeg/png/webp/heic), gif, or video (mp4/webm/mov).'
+            : err.code === 'too-large'
+              ? err.message
+              : 'Fetched file is empty.';
+        throw new DataError('invalid-argument', message);
+      }
+      throw new DataError('invalid-argument', `Failed to read media: ${err instanceof Error ? err.message : String(err)}`);
     }
 
     if (!this.options.r2) {
@@ -1269,12 +1259,16 @@ export class UserData {
     return { exerciseId, mediaUrl, kind: sniffed.kind, bytes: bytes.length };
   }
 
-  async createMediaUploadLink(exerciseId: string) {
-    safeId(exerciseId, 'custom exercise');
-    const doc = await this.fs.get(this.path('customExercises', exerciseId));
-    if (!doc) {
-      throw new DataError('not-found', `No custom exercise with id ${exerciseId}.`);
+  private checkPublicUrl(raw: string): URL {
+    try {
+      return assertPublicHttpsUrl(raw);
+    } catch (err) {
+      throw new DataError('invalid-argument', err instanceof Error ? err.message : 'Invalid URL.');
     }
+  }
+
+  async createMediaUploadLink(exerciseId: string) {
+    await this.requireCustomExercise(exerciseId);
 
     if (!this.options.kv) {
       throw new DataError('conflict', 'Upload token storage (KV) is not configured.');

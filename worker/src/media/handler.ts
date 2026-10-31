@@ -5,7 +5,8 @@ import { maxBytesForKind, type MediaErrorCode, type MediaErrorResponse } from '.
 import { mimeFromExt, sniffMediaType } from './sniff';
 import { assertMediaOwner, generateMediaId, validateMediaKey } from './storage';
 import { consumeUploadToken, getUploadToken } from './uploadToken';
-import { UserData } from '../data/userData';
+import { DataError, UserData } from '../data/userData';
+import { MAX_UPLOAD_REQUEST_BYTES, MediaLimitError, parseCappedFormData } from './limits';
 
 export function isMediaPath(pathname: string): boolean {
   return (
@@ -197,8 +198,11 @@ export async function handleMediaRequest(
 
     let formData: FormData;
     try {
-      formData = await request.formData();
-    } catch {
+      formData = await parseCappedFormData(request, MAX_UPLOAD_REQUEST_BYTES);
+    } catch (err) {
+      if (err instanceof MediaLimitError) {
+        return jsonError(413, 'payload-too-large', err.message, corsOrigin);
+      }
       return jsonError(400, 'invalid-argument', 'Failed to parse multipart form data.', corsOrigin);
     }
 
@@ -365,8 +369,11 @@ export async function handleMediaRequest(
 
       let formData: FormData;
       try {
-        formData = await request.formData();
-      } catch {
+        formData = await parseCappedFormData(request, MAX_UPLOAD_REQUEST_BYTES);
+      } catch (err) {
+        if (err instanceof MediaLimitError) {
+          return jsonError(413, 'payload-too-large', err.message);
+        }
         return jsonError(400, 'invalid-argument', 'Failed to parse form data.');
       }
 
@@ -399,6 +406,18 @@ export async function handleMediaRequest(
         return jsonError(500, 'internal', 'Media storage bucket is not configured.');
       }
 
+      // The exercise must still exist under the token's own uid before anything is stored.
+      const userData = new UserData(deps.firestore(env), payload.uid);
+      try {
+        await userData.requireCustomExercise(payload.exerciseId);
+      } catch (err) {
+        if (err instanceof DataError && err.code === 'not-found') {
+          return jsonError(404, 'not-found', 'That custom exercise no longer exists.');
+        }
+        console.error('Failed to check custom exercise for upload', err);
+        return jsonError(500, 'internal', 'Could not verify the custom exercise.');
+      }
+
       const id = generateMediaId();
       const key = `${payload.uid}/${id}.${sniffed.ext}`;
 
@@ -416,8 +435,6 @@ export async function handleMediaRequest(
 
       // Attach to custom exercise in Firestore
       try {
-        const firestore = deps.firestore(env);
-        const userData = new UserData(firestore, payload.uid);
         await userData.attachMediaToExercise(payload.exerciseId, mediaUrl);
       } catch (err) {
         console.error('Failed to attach media to custom exercise', err);
