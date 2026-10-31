@@ -320,6 +320,13 @@ export const searchExercisesInput = z
       .min(1)
       .max(100)
       .describe('Search query, e.g. "bench", "chest", "cable row", or machine name.'),
+    limit: z
+      .number()
+      .int()
+      .min(1)
+      .max(30)
+      .default(10)
+      .describe('Maximum number of results to return (1-30). Defaults to 10.'),
   })
   .strict();
 

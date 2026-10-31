@@ -7,6 +7,7 @@
  */
 import { z } from 'zod';
 import { DataError, DuplicateExerciseError, type UserData } from '../data/userData';
+import type { SearchExerciseResult } from '../data/exerciseIndex';
 import { MediaConfigError, StorageFullError, type MediaQuota } from '../media/quota';
 import {
   addExerciseInput,
@@ -168,7 +169,7 @@ export const agentTools: readonly AgentTool[] = [
     name: 'add_exercise',
     title: 'Add a custom exercise',
     description:
-      "Add an exercise to the user's custom exercise library, e.g. a machine from their gym: name, muscle groups, equipment, setup cues, media_url, and optional default sets/reps/weight. Refuses near-duplicates of library or custom exercises and returns the match. In the snapshot flow: read the photo -> search_exercises -> add_exercise if missing -> log_workout or plan -> offer create_media_upload_link to save the photo/clip.",
+      "Add an exercise to the user's custom exercise library, e.g. a machine from their gym: name, muscle groups, equipment, setup cues, media_url, and optional default sets/reps/weight. Refuses near-duplicates of library or custom exercises and returns the match {id, name, custom, muscleGroups, equipment}. In the snapshot flow: read the photo -> search_exercises -> add_exercise if missing -> log_workout or plan -> offer create_media_upload_link to save the photo/clip.",
     input: addExerciseInput,
     readOnly: false,
     run: (input, { data }) => data.addExercise(input),
@@ -177,10 +178,32 @@ export const agentTools: readonly AgentTool[] = [
     name: 'search_exercises',
     title: 'Search exercises',
     description:
-      'Search the exercise library and custom exercises by query (names, muscles, equipment). Returns matching exercise IDs, names, muscle groups, equipment, whether custom, and media URL if any. In the snapshot flow: read the photo -> search_exercises -> add_exercise if missing -> log_workout or plan -> offer create_media_upload_link to save the photo/clip.',
+      'Search the exercise library and custom exercises by query (names, muscles, equipment). Returns {results, total, returned, truncated} where total is the real count of matching exercises across the library and custom exercises, and results contains up to limit matches (default 10, max 30). In the snapshot flow: read the photo -> search_exercises -> add_exercise if missing -> log_workout or plan -> offer create_media_upload_link to save the photo/clip.',
     input: searchExercisesInput,
     readOnly: true,
-    run: (input, { data }) => data.searchExercises(input.query),
+    run: async (input, { data }) => {
+      const raw = (await data.searchExercises(input.query)) as any;
+      const inner = raw?.exercises ?? raw;
+      const all: SearchExerciseResult[] = Array.isArray(inner?.allMatches)
+        ? inner.allMatches
+        : Array.isArray(inner?.results)
+          ? inner.results
+          : Array.isArray(inner)
+            ? inner
+            : [];
+      const total = typeof inner?.total === 'number' ? inner.total : all.length;
+      const limit = input.limit ?? 10;
+      const results = all.slice(0, limit);
+      const returned = results.length;
+      const truncated = total > returned;
+      return {
+        results,
+        exercises: results,
+        total,
+        returned,
+        truncated,
+      };
+    },
   }),
   define({
     name: 'update_exercise',
@@ -241,7 +264,16 @@ export async function runAgentTool(name: string, rawInput: unknown, ctx: AgentTo
     return { ok: true, result: await tool.run(parsed.data, ctx) };
   } catch (err) {
     if (err instanceof DuplicateExerciseError) {
-      return { ok: false, error: err.message, match: err.match };
+      const rawMatch = (err.match ?? {}) as Record<string, unknown>;
+      const match = {
+        id: rawMatch.id,
+        name: rawMatch.name,
+        custom: rawMatch.custom ?? rawMatch.isCustom ?? false,
+        isCustom: rawMatch.isCustom ?? rawMatch.custom ?? false,
+        muscleGroups: rawMatch.muscleGroups ?? [],
+        equipment: rawMatch.equipment ?? 'Unknown',
+      };
+      return { ok: false, error: err.message, match };
     }
     if (err instanceof DataError) return { ok: false, error: err.message };
     // storage_full / bad media config: a plain message the model can relay.

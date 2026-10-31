@@ -357,109 +357,356 @@ export interface SearchExerciseResult {
   mediaUrl?: string;
 }
 
+export interface SearchExerciseIndexResult {
+  results: SearchExerciseResult[];
+  exercises: SearchExerciseResult[];
+  total: number;
+  returned: number;
+  truncated: boolean;
+  allMatches?: SearchExerciseResult[];
+}
+
+export function levenshteinDistance(a: string, b: string): number {
+  if (a === b) return 0;
+  if (!a.length) return b.length;
+  if (!b.length) return a.length;
+
+  const row = Array.from({ length: b.length + 1 }, (_, i) => i);
+  for (let i = 1; i <= a.length; i++) {
+    let prev = i;
+    for (let j = 1; j <= b.length; j++) {
+      const val = a[i - 1] === b[j - 1] ? row[j - 1] : Math.min(row[j - 1], prev, row[j]) + 1;
+      row[j - 1] = prev;
+      prev = val;
+    }
+    row[b.length] = prev;
+  }
+  return row[b.length];
+}
+
+function hasConsecutiveTokens(tokens: readonly string[], sub: readonly string[]): boolean {
+  if (sub.length === 0) return true;
+  if (tokens.length < sub.length) return false;
+  for (let i = 0; i <= tokens.length - sub.length; i++) {
+    let match = true;
+    for (let j = 0; j < sub.length; j++) {
+      if (tokens[i + j] !== sub[j]) {
+        match = false;
+        break;
+      }
+    }
+    if (match) return true;
+  }
+  return false;
+}
+
+function getEquipmentTier(equipment?: string, name?: string): number {
+  const eq = (equipment || '').toLowerCase();
+  const n = (name || '').toLowerCase();
+
+  // Tier 0: Most common plain variants: machine, barbell, dumbbell, cable
+  const isCommon =
+    (eq.includes('machine') && !eq.includes('smith')) ||
+    eq.includes('barbell') ||
+    eq.includes('dumbbell') ||
+    eq.includes('cable') ||
+    (n.startsWith('machine') && !n.startsWith('smith machine')) ||
+    n.startsWith('barbell') ||
+    n.startsWith('dumbbell') ||
+    n.startsWith('cable');
+
+  if (isCommon) return 0;
+
+  // Tier 1: Bodyweight
+  if (eq.includes('bodyweight') || n.includes('bodyweight')) return 1;
+
+  // Tier 2: Smith-machine, Plate, EZ
+  if (eq.includes('smith') || eq.includes('plate') || eq.includes('ez') || n.includes('smith')) return 2;
+
+  // Tier 3: Kettlebell
+  if (eq.includes('kettlebell') || n.includes('kettlebell')) return 3;
+
+  // Tier 4: Band
+  if (eq.includes('band') || n.includes('band')) return 4;
+
+  return 5;
+}
+
+function getEquipmentRank(equipment?: string, name?: string): number {
+  const eq = (equipment || '').toLowerCase();
+  const n = (name || '').toLowerCase();
+  for (let i = 0; i < EQUIPMENT_PRIORITY.length; i++) {
+    const item = EQUIPMENT_PRIORITY[i];
+    if (eq.includes(item) || n.includes(item)) {
+      return i;
+    }
+  }
+  return EQUIPMENT_PRIORITY.length;
+}
+
 export function searchExerciseIndex(
   query: string,
   customExercises: readonly (CustomExerciseLike & { videoLinks?: string[] })[] = [],
   library: readonly LibraryExercise[] = getCachedLibrary(),
-): SearchExerciseResult[] {
+  limit: number = 10,
+): SearchExerciseIndexResult {
   const trimmed = query.trim().toLowerCase();
-  if (!trimmed) return [];
+  if (!trimmed) {
+    return {
+      results: [],
+      exercises: [],
+      total: 0,
+      returned: 0,
+      truncated: false,
+      allMatches: [],
+    };
+  }
+
   const qTokens = exerciseTokens(trimmed);
+  const qKey = qTokens.join(' ');
+  const alias = ALIASES[qKey];
 
   interface ScoredCandidate {
     result: SearchExerciseResult;
-    score: number;
+    tier: number;
   }
+
   const scored: ScoredCandidate[] = [];
+  const seenIds = new Set<string>();
 
-  // 1. Custom exercises
-  for (const c of customExercises) {
-    const nameLower = c.name.toLowerCase();
+  const evaluateCandidate = (
+    c: {
+      id: string;
+      name: string;
+      muscleGroups?: string[];
+      muscleGroup?: string;
+      equipment?: string;
+      searchKeywords?: string[];
+      videoLinks?: string[];
+    },
+    isCustom: boolean,
+  ) => {
+    if (seenIds.has(c.id)) return;
+
+    const nameLower = c.name.toLowerCase().trim();
     const cTokens = exerciseTokens(c.name);
-    let score = 0;
+    const cKey = cTokens.join(' ');
 
-    if (nameLower === trimmed || (qTokens.length > 0 && cTokens.join(' ') === qTokens.join(' '))) {
-      score = 1100;
-    } else if (nameLower.startsWith(trimmed)) {
-      score = 850;
-    } else if (nameLower.includes(trimmed)) {
-      score = 650;
-    } else if (qTokens.length > 0 && qTokens.every((t) => cTokens.includes(t))) {
-      score = 550;
-    } else if (c.searchKeywords?.some((k) => k.toLowerCase().includes(trimmed) || (qTokens.length > 0 && qTokens.every((t) => exerciseTokens(k).includes(t))))) {
-      score = 350;
-    } else if (c.muscleGroups?.some((m) => m.toLowerCase().includes(trimmed)) || (c.muscleGroup && c.muscleGroup.toLowerCase().includes(trimmed))) {
-      score = 250;
-    } else if (c.equipment?.toLowerCase().includes(trimmed)) {
-      score = 200;
-    } else if (qTokens.length > 0 && qTokens.some((t) => cTokens.includes(t))) {
-      score = 120;
+    let tier = 0;
+
+    // 1. Exact name match
+    if (nameLower === trimmed || (qTokens.length > 0 && cKey === qKey)) {
+      tier = 1;
+    }
+    // 2. Name starts with the query
+    else if (
+      nameLower.startsWith(trimmed) ||
+      (qTokens.length > 0 &&
+        cTokens.length >= qTokens.length &&
+        cTokens.slice(0, qTokens.length).join(' ') === qKey)
+    ) {
+      tier = 2;
+    }
+    // 3. Name contains the whole phrase as consecutive words
+    else if (
+      nameLower.includes(trimmed) ||
+      (qTokens.length > 0 && hasConsecutiveTokens(cTokens, qTokens))
+    ) {
+      tier = 3;
+    }
+    // 4. All query words present (any order)
+    else if (qTokens.length > 0 && qTokens.every((q) => cTokens.includes(q))) {
+      tier = 4;
+    }
+    // 5. Alias or searchKeywords hit
+    else if (
+      (alias && (cKey === alias || exerciseTokens(alias).every((t) => cTokens.includes(t)))) ||
+      (ALIASES[cKey] && ALIASES[cKey] === qKey) ||
+      (c.searchKeywords &&
+        c.searchKeywords.some((k) => {
+          const kLower = k.toLowerCase().trim();
+          const kTokens = exerciseTokens(k);
+          const kKey = kTokens.join(' ');
+          return (
+            kLower === trimmed ||
+            (qTokens.length > 0 && kKey === qKey) ||
+            kLower.startsWith(trimmed) ||
+            kLower.includes(trimmed) ||
+            (qTokens.length > 0 && qTokens.every((q) => kTokens.includes(q)))
+          );
+        }))
+    ) {
+      tier = 5;
     }
 
-    if (score > 0) {
+    if (tier > 0) {
+      seenIds.add(c.id);
       const groups =
         c.muscleGroups && c.muscleGroups.length > 0
           ? c.muscleGroups
           : c.muscleGroup
             ? c.muscleGroup.split(',').map((s) => s.trim()).filter(Boolean)
-            : ['Custom'];
-      const mediaUrl = Array.isArray(c.videoLinks) && c.videoLinks.length > 0 ? c.videoLinks[0] : undefined;
+            : isCustom
+              ? ['Custom']
+              : [];
+      const mediaUrl =
+        Array.isArray(c.videoLinks) && c.videoLinks.length > 0 ? c.videoLinks[0] : undefined;
       scored.push({
-        score,
+        tier,
         result: {
           id: c.id,
           name: c.name,
           muscles: groups,
           muscleGroups: groups,
-          equipment: c.equipment || 'Custom',
-          custom: true,
-          isCustom: true,
+          equipment: c.equipment || (isCustom ? 'Custom' : 'Unknown'),
+          custom: isCustom,
+          isCustom,
           mediaUrl,
         },
       });
     }
-  }
+  };
 
-  // 2. Library exercises
+  for (const c of customExercises) {
+    evaluateCandidate(c, true);
+  }
   for (const lib of library) {
-    const nameLower = lib.name.toLowerCase();
-    const lTokens = exerciseTokens(lib.name);
-    let score = 0;
+    evaluateCandidate(lib, false);
+  }
 
-    if (nameLower === trimmed || (qTokens.length > 0 && lTokens.join(' ') === qTokens.join(' '))) {
-      score = 1000;
-    } else if (nameLower.startsWith(trimmed)) {
-      score = 800;
-    } else if (nameLower.includes(trimmed)) {
-      score = 600;
-    } else if (qTokens.length > 0 && qTokens.every((t) => lTokens.includes(t))) {
-      score = 500;
-    } else if (lib.searchKeywords?.some((k) => k.toLowerCase().includes(trimmed) || (qTokens.length > 0 && qTokens.every((t) => exerciseTokens(k).includes(t))))) {
-      score = 300;
-    } else if (lib.muscleGroups?.some((m) => m.toLowerCase().includes(trimmed))) {
-      score = 200;
-    } else if (lib.equipment?.toLowerCase().includes(trimmed)) {
-      score = 150;
-    } else if (qTokens.length > 0 && qTokens.some((t) => lTokens.includes(t))) {
-      score = 100;
+  scored.sort((a, b) => {
+    if (a.tier !== b.tier) return a.tier - b.tier;
+
+    // Most common plain variant: machine/barbell/dumbbell/cable before band/kettlebell
+    const eqA = getEquipmentTier(a.result.equipment, a.result.name);
+    const eqB = getEquipmentTier(b.result.equipment, b.result.name);
+    if (eqA !== eqB) return eqA - eqB;
+
+    // Shorter names first
+    if (a.result.name.length !== b.result.name.length) {
+      return a.result.name.length - b.result.name.length;
     }
 
-    if (score > 0) {
-      scored.push({
-        score,
-        result: {
-          id: lib.id,
-          name: lib.name,
-          muscles: lib.muscleGroups || [],
-          muscleGroups: lib.muscleGroups || [],
-          equipment: lib.equipment || 'Unknown',
-          custom: false,
-          isCustom: false,
-        },
-      });
+    // Equipment priority tiebreak
+    const rankA = getEquipmentRank(a.result.equipment, a.result.name);
+    const rankB = getEquipmentRank(b.result.equipment, b.result.name);
+    if (rankA !== rankB) return rankA - rankB;
+
+    // Custom before library on ties
+    if (a.result.custom !== b.result.custom) {
+      return a.result.custom ? -1 : 1;
+    }
+
+    return a.result.name.localeCompare(b.result.name);
+  });
+
+  // Typo-tolerant fuzzy matching only when nothing matches
+  if (scored.length === 0 && qTokens.length > 0) {
+    interface FuzzyCandidate {
+      result: SearchExerciseResult;
+      distance: number;
+    }
+    const fuzzyScored: FuzzyCandidate[] = [];
+
+    const evaluateFuzzy = (
+      c: {
+        id: string;
+        name: string;
+        muscleGroups?: string[];
+        muscleGroup?: string;
+        equipment?: string;
+        videoLinks?: string[];
+      },
+      isCustom: boolean,
+    ) => {
+      const cTokens = exerciseTokens(c.name);
+      if (cTokens.length === 0) return;
+
+      let allMatched = true;
+      let totalDist = 0;
+
+      for (const q of qTokens) {
+        const maxDist = q.length <= 4 ? 1 : 2;
+        let bestTokenDist = Infinity;
+        for (const ct of cTokens) {
+          const dist = levenshteinDistance(q, ct);
+          if (dist < bestTokenDist) {
+            bestTokenDist = dist;
+          }
+        }
+        if (bestTokenDist <= maxDist) {
+          totalDist += bestTokenDist;
+        } else {
+          allMatched = false;
+          break;
+        }
+      }
+
+      if (allMatched) {
+        const groups =
+          c.muscleGroups && c.muscleGroups.length > 0
+            ? c.muscleGroups
+            : c.muscleGroup
+              ? c.muscleGroup.split(',').map((s) => s.trim()).filter(Boolean)
+              : isCustom
+                ? ['Custom']
+                : [];
+        const mediaUrl =
+          Array.isArray(c.videoLinks) && c.videoLinks.length > 0 ? c.videoLinks[0] : undefined;
+        fuzzyScored.push({
+          distance: totalDist,
+          result: {
+            id: c.id,
+            name: c.name,
+            muscles: groups,
+            muscleGroups: groups,
+            equipment: c.equipment || (isCustom ? 'Custom' : 'Unknown'),
+            custom: isCustom,
+            isCustom,
+            mediaUrl,
+          },
+        });
+      }
+    };
+
+    for (const c of customExercises) {
+      evaluateFuzzy(c, true);
+    }
+    for (const lib of library) {
+      evaluateFuzzy(lib, false);
+    }
+
+    fuzzyScored.sort((a, b) => {
+      if (a.distance !== b.distance) return a.distance - b.distance;
+      const eqA = getEquipmentTier(a.result.equipment, a.result.name);
+      const eqB = getEquipmentTier(b.result.equipment, b.result.name);
+      if (eqA !== eqB) return eqA - eqB;
+      if (a.result.name.length !== b.result.name.length) {
+        return a.result.name.length - b.result.name.length;
+      }
+      if (a.result.custom !== b.result.custom) {
+        return a.result.custom ? -1 : 1;
+      }
+      return a.result.name.localeCompare(b.result.name);
+    });
+
+    for (const f of fuzzyScored) {
+      scored.push({ tier: 6, result: f.result });
     }
   }
 
-  scored.sort((a, b) => b.score - a.score || a.result.name.length - b.result.name.length);
-  return scored.slice(0, 30).map((s) => s.result);
+  const allMatches = scored.map((s) => s.result);
+  const total = allMatches.length;
+  const results = allMatches.slice(0, limit);
+  const returned = results.length;
+  const truncated = total > returned;
+
+  return {
+    results,
+    exercises: results,
+    total,
+    returned,
+    truncated,
+    allMatches,
+  };
 }
