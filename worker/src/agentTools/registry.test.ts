@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { FakeFirestore } from '../data/testing/fakeFirestore';
 import { UserData } from '../data/userData';
+import { fallbackExerciseId } from '../data/shapes';
 import { agentTools, runAgentTool } from './registry';
 
 const UID = 'ownerUid123';
@@ -36,10 +37,11 @@ const ok = async (name: string, input: unknown) => {
 const BENCH = { name: 'Bench Press', sets: 3, reps: 8, weight: 135 };
 
 describe('agent tool registry', () => {
-  it('has the ten tools with model-facing descriptions', () => {
+  it('has the thirteen tools with model-facing descriptions', () => {
     expect(agentTools.map((t) => t.name)).toEqual([
       'get_profile', 'update_profile', 'list_workouts', 'get_workout', 'create_workout',
-      'update_workout', 'list_plans', 'plan_workout', 'list_history', 'add_exercise',
+      'update_workout', 'list_plans', 'plan_workout', 'list_history', 'get_history_entry',
+      'log_workout', 'update_history_entry', 'add_exercise',
     ]);
     for (const t of agentTools) expect(t.description.length).toBeGreaterThan(40);
   });
@@ -53,6 +55,9 @@ describe('uid scoping', () => {
       ['create_workout', { uid: OTHER, workouts: [{ name: 'x', exercises: [BENCH] }] }],
       ['create_workout', { workouts: [{ name: 'x', exercises: [BENCH], userId: OTHER }] }],
       ['plan_workout', { dateKey: '2026-11-01', name: 'x', exercises: [BENCH], uid: OTHER }],
+      ['get_history_entry', { workoutId: 'wh1', uid: OTHER }],
+      ['log_workout', { date: '2026-10-25', uid: OTHER, exercises: [{ name: 'Bench', sets: [{ reps: 8 }] }] }],
+      ['update_history_entry', { workoutId: 'wh1', uid: OTHER }],
     ] as const) {
       const r = await run(tool, input);
       expect(r.ok, `${tool} ${JSON.stringify(input)}`).toBe(false);
@@ -64,6 +69,10 @@ describe('uid scoping', () => {
     for (const workoutId of ['../someoneElse456/savedWorkouts/theirWorkout', 'a/b', '..', '']) {
       const r = await run('get_workout', { workoutId });
       expect(r.ok).toBe(false);
+      const rHist = await run('get_history_entry', { workoutId });
+      expect(rHist.ok).toBe(false);
+      const rUp = await run('update_history_entry', { workoutId });
+      expect(rUp.ok).toBe(false);
     }
   });
 
@@ -283,5 +292,352 @@ describe('add_exercise', () => {
       isCustom: true,
       userId: UID,
     });
+  });
+});
+
+describe('log_workout', () => {
+  it('writes workout_history and exercise_history docs identical to the app, and updates stats/PRs', async () => {
+    const r = await ok('log_workout', {
+      date: '2026-10-25',
+      name: 'Push Day',
+      durationMinutes: 45,
+      exercises: [
+        {
+          name: 'Bench Press',
+          sets: [
+            { reps: 8, weight: 185 },
+            { reps: 8, weight: 185 },
+            { reps: 8, weight: 185 },
+          ],
+        },
+        {
+          name: 'Incline Dumbbell Press',
+          sets: [
+            { reps: 10, weight: 60 },
+            { reps: 10, weight: 60 },
+          ],
+        },
+      ],
+    });
+    expect(r.name).toBe('Push Day');
+    expect(r.durationMinutes).toBe(45);
+    expect(r.totalSets).toBe(5);
+    expect(r.totalReps).toBe(44);
+    expect(r.totalVolume).toBe(3 * (8 * 185) + 2 * (10 * 60));
+    const exercises = r.exercises as Record<string, unknown>[];
+    expect(exercises).toHaveLength(2);
+    expect(exercises[0]).toMatchObject({
+      exerciseName: 'Bench Press',
+      configuration: '3x8',
+      totalVolume: 4440,
+    });
+    expect((exercises[0].sets as unknown[])).toHaveLength(3);
+
+    const storedSummary = fs.read(['users', UID, 'workout_history', r.id as string])!;
+    expect(storedSummary).toMatchObject({
+      userId: UID,
+      name: 'Push Day',
+      workoutId: r.id,
+      duration: 45,
+      totalExercises: 2,
+      totalSets: 5,
+      totalReps: 44,
+      totalVolume: 5640,
+    });
+
+    const benchStats = fs.read(['users', UID, 'exercise_stats', fallbackExerciseId('Bench Press')])!;
+    expect(benchStats).toMatchObject({
+      exerciseName: 'Bench Press',
+      totalSessions: 1,
+      totalSets: 3,
+      totalReps: 24,
+      totalVolume: 4440,
+      maxWeight: 185,
+      maxReps: 8,
+      avgWeight: 185,
+      avgReps: 8,
+      personalRecords: {
+        maxWeight: { weight: 185 },
+        maxReps: { reps: 8 },
+        maxVolume: { volume: 4440 },
+      },
+    });
+
+    // Logging a second session sets new PRs
+    await ok('log_workout', {
+      date: '2026-10-28',
+      name: 'Heavy Push',
+      exercises: [
+        {
+          name: 'Bench Press',
+          sets: [{ reps: 5, weight: 205 }],
+        },
+      ],
+    });
+    const benchStats2 = fs.read(['users', UID, 'exercise_stats', fallbackExerciseId('Bench Press')])!;
+    expect(benchStats2).toMatchObject({
+      totalSessions: 2,
+      totalSets: 4,
+      totalReps: 29,
+      maxWeight: 205,
+      maxReps: 8,
+      personalRecords: {
+        maxWeight: { weight: 205 },
+      },
+    });
+  });
+
+  it('refuses future dates', async () => {
+    const r = await run('log_workout', {
+      date: '2026-10-31',
+      name: 'Future Push',
+      exercises: [{ name: 'Bench Press', sets: [{ reps: 5, weight: 205 }] }],
+    });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error).toMatch(/future/i);
+  });
+});
+
+describe('get_history_entry', () => {
+  it('reads one workout with all exercise sets and details by id', async () => {
+    const logged = await ok('log_workout', {
+      date: '2026-10-25',
+      name: 'Pull Day',
+      exercises: [
+        { name: 'Row', sets: [{ reps: 8, weight: 135 }] },
+      ],
+    });
+    const entry = await ok('get_history_entry', { workoutId: logged.id as string });
+    expect(entry).toMatchObject({
+      id: logged.id,
+      name: 'Pull Day',
+      totalExercises: 1,
+      totalSets: 1,
+      totalReps: 8,
+      totalVolume: 1080,
+    });
+    const exercises = entry.exercises as Record<string, unknown>[];
+    expect(exercises).toHaveLength(1);
+    expect(exercises[0].exerciseName).toBe('Row');
+    expect((exercises[0].sets as unknown[])).toHaveLength(1);
+  });
+
+  it('returns not-found for nonexistent or other user workout', async () => {
+    const r = await run('get_history_entry', { workoutId: 'nope' });
+    expect(r).toEqual({ ok: false, error: 'No workout history entry with id nope.' });
+  });
+});
+
+describe('update_history_entry', () => {
+  it('updates workout date/name, adds/removes/edits sets and exercises, and recomputes totals and stats', async () => {
+    const created = await ok('log_workout', {
+      date: '2026-10-25',
+      name: 'Original Workout',
+      exercises: [
+        {
+          name: 'Bench Press',
+          sets: [{ reps: 8, weight: 185 }, { reps: 8, weight: 185 }],
+        },
+        {
+          name: 'Tricep Pushdown',
+          sets: [{ reps: 12, weight: 50 }],
+        },
+      ],
+    });
+    const workoutId = created.id as string;
+    const initialExercises = created.exercises as { id: string; name: string }[];
+    const benchId = initialExercises[0].id;
+
+    // Update bench weight to 195, add a set to bench, remove Tricep Pushdown, add Overhead Extension
+    const updated = await ok('update_history_entry', {
+      workoutId,
+      name: 'Fixed Push',
+      exercises: [
+        {
+          id: benchId,
+          name: 'Bench Press',
+          sets: [
+            { reps: 8, weight: 195 },
+            { reps: 8, weight: 195 },
+            { reps: 8, weight: 195 },
+          ],
+        },
+        {
+          name: 'Overhead Extension',
+          sets: [{ reps: 10, weight: 45 }],
+        },
+      ],
+    });
+
+    expect(updated).toMatchObject({
+      name: 'Fixed Push',
+      totalExercises: 2,
+      totalSets: 4,
+      totalReps: 34,
+      totalVolume: 3 * (8 * 195) + 10 * 45,
+    });
+
+    // Check summary doc in Firestore
+    const summary = fs.read(['users', UID, 'workout_history', workoutId])!;
+    expect(summary).toMatchObject({
+      name: 'Fixed Push',
+      totalExercises: 2,
+      totalSets: 4,
+      totalReps: 34,
+      totalVolume: 5130,
+    });
+
+    // Bench stats recomputed
+    const benchStats = fs.read(['users', UID, 'exercise_stats', fallbackExerciseId('Bench Press')])!;
+    expect(benchStats).toMatchObject({
+      totalSessions: 1,
+      totalSets: 3,
+      totalReps: 24,
+      totalVolume: 4680,
+      maxWeight: 195,
+      personalRecords: {
+        maxWeight: { weight: 195 },
+      },
+    });
+
+    // Tricep Pushdown was removed, so its exercise_stats should be cleaned up
+    const tricepStats = fs.read(['users', UID, 'exercise_stats', fallbackExerciseId('Tricep Pushdown')]);
+    expect(tricepStats).toBeUndefined();
+  });
+
+  it('refuses cross-uid exercise ids and future dates', async () => {
+    fs.put(['users', OTHER, 'exercise_history', 'otherEx1'], {
+      exerciseName: 'Bench Press',
+      sets: [{ reps: 10, weight: 200 }],
+    });
+    const created = await ok('log_workout', {
+      date: '2026-10-25',
+      name: 'Legs',
+      exercises: [{ name: 'Squat', sets: [{ reps: 5, weight: 225 }] }],
+    });
+    const workoutId = created.id as string;
+
+    // Cross-uid id in exercises
+    const rCross = await run('update_history_entry', {
+      workoutId,
+      exercises: [{ id: 'otherEx1', name: 'Bench Press', sets: [{ reps: 8, weight: 185 }] }],
+    });
+    expect(rCross.ok).toBe(false);
+    if (!rCross.ok) expect(rCross.error).toMatch(/does not belong/i);
+
+    // Future date
+    const rFuture = await run('update_history_entry', {
+      workoutId,
+      date: '2026-10-31',
+    });
+    expect(rFuture.ok).toBe(false);
+    if (!rFuture.ok) expect(rFuture.error).toMatch(/future/i);
+  });
+});
+
+describe('list_history paging and date range', () => {
+  it('pages through 3 pages using cursor/nextPageToken and filters by date range', async () => {
+    // Seed 5 workouts on consecutive days
+    for (let i = 1; i <= 5; i++) {
+      fs.put(['users', UID, 'workout_history', `wh${i}`], {
+        name: `Day ${i}`,
+        startTime: new Date(`2026-10-0${i}T10:00:00Z`),
+        endTime: new Date(`2026-10-0${i}T11:00:00Z`),
+        duration: 60,
+        totalSets: 5,
+        totalReps: 50,
+        totalVolume: 5000,
+        exercisesSummary: [{ exerciseId: 'bench', exerciseName: 'Bench', sets: 5, reps: 50, volume: 5000 }],
+      });
+    }
+
+    // Page 1
+    const p1 = await ok('list_history', { pageSize: 2 });
+    expect((p1.items as { name: string }[]).map((w) => w.name)).toEqual(['Day 5', 'Day 4']);
+    expect(p1.nextPageToken).toBe('2');
+
+    // Page 2
+    const p2 = await ok('list_history', { pageSize: 2, pageToken: p1.nextPageToken });
+    expect((p2.items as { name: string }[]).map((w) => w.name)).toEqual(['Day 3', 'Day 2']);
+    expect(p2.nextPageToken).toBe('4');
+
+    // Page 3
+    const p3 = await ok('list_history', { pageSize: 2, cursor: p2.nextPageToken });
+    expect((p3.items as { name: string }[]).map((w) => w.name)).toEqual(['Day 1']);
+    expect(p3.nextPageToken).toBeUndefined();
+
+    // Date range: from Oct 2 to Oct 4
+    const ranged = await ok('list_history', { from: '2026-10-02', to: '2026-10-04' });
+    expect((ranged.items as { name: string }[]).map((w) => w.name)).toEqual(['Day 4', 'Day 3', 'Day 2']);
+  });
+});
+
+describe('list_workouts and get_workout superset count', () => {
+  it('counts 9 not 12 for a fixture like Pull Day Seal Row Oct 1', async () => {
+    fs.put(['users', UID, 'savedWorkouts', 'sw-seal-row'], {
+      name: 'Pull Day Seal Row Oct 1',
+      userId: UID,
+      parsedWorkout: {
+        _dataFormat: 'serialized_v1',
+        exercises: [
+          { name: 'Machine Plate Loaded Seal Row', sets: [{ reps: 8, weight: 160 }] },
+          { name: 'Lat Pulldown', sets: [{ reps: 10, weight: 140 }] },
+          { name: 'Face Pull', sets: [{ reps: 15, weight: 50 }] },
+          {
+            name: 'Barbell Curl + Overhead Tricep Extension',
+            isSuperset: true,
+            sets: [{ reps: 10, weight: 65 }],
+            supersetExercises: [
+              { name: 'Barbell Curl', sets: [{ reps: 10, weight: 65 }] },
+              { name: 'Overhead Tricep Extension', sets: [{ reps: 10, weight: 50 }] },
+            ],
+          },
+          {
+            name: 'Hammer Curl + Lateral Raise',
+            isSuperset: true,
+            sets: [{ reps: 12, weight: 30 }],
+            supersetExercises: [
+              { name: 'Hammer Curl', sets: [{ reps: 12, weight: 30 }] },
+              { name: 'Lateral Raise', sets: [{ reps: 12, weight: 20 }] },
+            ],
+          },
+          {
+            name: 'Shrug + Wrist Curl',
+            isSuperset: true,
+            sets: [{ reps: 15, weight: 80 }],
+            supersetExercises: [
+              { name: 'Shrug', sets: [{ reps: 15, weight: 80 }] },
+              { name: 'Wrist Curl', sets: [{ reps: 15, weight: 40 }] },
+            ],
+          },
+        ],
+        supersets_serialized: JSON.stringify([
+          [
+            { name: 'Barbell Curl', sets: [{ reps: 10, weight: 65 }] },
+            { name: 'Overhead Tricep Extension', sets: [{ reps: 10, weight: 50 }] },
+          ],
+          [
+            { name: 'Hammer Curl', sets: [{ reps: 12, weight: 30 }] },
+            { name: 'Lateral Raise', sets: [{ reps: 12, weight: 20 }] },
+          ],
+          [
+            { name: 'Shrug', sets: [{ reps: 15, weight: 80 }] },
+            { name: 'Wrist Curl', sets: [{ reps: 15, weight: 40 }] },
+          ],
+        ]),
+      },
+      updatedAt: NOW,
+    });
+
+    const list = await ok('list_workouts', {});
+    const items = list.items as { id: string; exerciseCount: number; exerciseNames: string[] }[];
+    const item = items.find((i) => i.id === 'sw-seal-row')!;
+    expect(item.exerciseCount).toBe(9);
+    expect(item.exerciseNames).toHaveLength(9);
+    expect(item.exerciseNames).not.toContain('Barbell Curl + Overhead Tricep Extension');
+
+    const workout = await ok('get_workout', { workoutId: 'sw-seal-row' });
+    expect((workout.exercises as unknown[])).toHaveLength(3);
+    expect((workout.supersets as unknown[])).toHaveLength(3);
   });
 });

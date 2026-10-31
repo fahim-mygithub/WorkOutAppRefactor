@@ -136,6 +136,79 @@ export const listHistoryInput = z
       .describe('workouts: finished sessions with totals. exercises: per-exercise logs with every set.'),
     pageSize,
     pageToken,
+    cursor: z
+      .string()
+      .regex(/^[A-Za-z0-9_-]{1,128}$/)
+      .optional()
+      .describe('Cursor (or nextPageToken) from previous call to page through history.'),
+    from: dateKey.optional().describe('First day to include, YYYY-MM-DD.'),
+    to: dateKey.optional().describe('Last day to include, YYYY-MM-DD.'),
+  })
+  .strict();
+
+export const performedSetInput = z
+  .object({
+    reps: z.number().int().min(1).max(200).describe('Reps completed in this set.'),
+    weight: z.number().min(0).max(2000).optional().describe('Weight lifted. 0 or omit for bodyweight.'),
+    unit: unit.optional(),
+    rpe: z.number().min(1).max(10).optional().describe('Rate of Perceived Exertion (1-10).'),
+    time: z.number().int().min(0).max(3600).optional().describe('Duration in seconds if timed.'),
+    rir: z.number().min(0).max(10).optional().describe('Reps in reserve.'),
+    completed: z.boolean().optional().describe('Defaults to true for logged workouts.'),
+    notes: z.string().max(500).optional(),
+  })
+  .strict();
+
+export const exerciseHistoryInput = z
+  .object({
+    name: z.string().trim().min(1).max(120).describe('Exercise name, e.g. "Barbell Bench Press" or "Chest Supported Row".'),
+    sets: z.array(performedSetInput).min(1).max(30).describe('Sets completed, in order.'),
+    notes: z.string().max(500).optional().describe('Notes for this exercise.'),
+    customTitle: z.string().trim().max(120).optional().describe('Optional custom variation display name.'),
+  })
+  .strict();
+
+export const logWorkoutInput = z
+  .object({
+    date: dateKey.describe('Date the workout took place, YYYY-MM-DD. Must be past or today, never future.'),
+    name: z.string().trim().min(1).max(100).optional().describe('Workout name, e.g. "Push Day" or "Upper Body Heavy". Defaults to "Workout".'),
+    durationMinutes: z.number().int().min(1).max(1440).optional().describe('Total workout duration in minutes if known.'),
+    notes: z.string().max(1000).optional().describe('Notes for the workout session.'),
+    exercises: z.array(exerciseHistoryInput).min(1).max(40).describe('Exercises performed, each with its completed sets.'),
+  })
+  .strict();
+
+export const getHistoryEntryInput = z
+  .object({
+    workoutId: docId('workout history').describe('The workout history entry id (from list_history or log_workout).'),
+  })
+  .strict();
+
+export const updateHistoryExerciseInput = z
+  .object({
+    id: docId('exercise history').optional().describe('The exercise history id if updating an existing exercise in this workout. Omit to add a new exercise.'),
+    name: z.string().trim().min(1).max(120).describe('Exercise name.'),
+    sets: z.array(performedSetInput).min(1).max(30).describe('Sets performed. Replaces existing sets for this exercise.'),
+    notes: z.string().max(500).optional(),
+    customTitle: z.string().trim().max(120).optional(),
+  })
+  .strict();
+
+export const updateHistoryEntryInput = z
+  .object({
+    workoutId: docId('workout history').describe('The workout history entry id to update.'),
+    date: dateKey.optional().describe('New workout date (YYYY-MM-DD, past or today).'),
+    name: z.string().trim().min(1).max(100).optional().describe('New workout name.'),
+    durationMinutes: z.number().int().min(1).max(1440).optional().describe('New duration in minutes.'),
+    notes: z.string().max(1000).optional().describe('New workout notes.'),
+    exercises: z
+      .array(updateHistoryExerciseInput)
+      .min(1)
+      .max(40)
+      .optional()
+      .describe(
+        'The updated list of exercises and sets for this workout. Call get_history_entry first to get current exercise IDs and sets. Exercises omitted from this list will be removed from the workout.',
+      ),
   })
   .strict();
 

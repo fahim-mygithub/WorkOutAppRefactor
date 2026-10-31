@@ -69,7 +69,7 @@ unchanged.
 - `src/agentTools/` — the tool registry (zod inputs, model-facing
   descriptions): `get_profile`, `update_profile`, `list_workouts`,
   `get_workout`, `create_workout` (one or many), `update_workout`,
-  `list_plans`, `plan_workout`, `list_history`, `add_exercise`.
+  `list_plans`, `plan_workout`, `list_history` (date range and paging), `get_history_entry`, `log_workout` (dictate past workouts with sets and PR updates), `update_history_entry`, `add_exercise`.
 - `src/mcp/` — the MCP server, the OAuth provider and the `/authorize` page
   (Google sign-in with the Firebase JS SDK; the ID token is checked with
   `verifyIdToken` and the email must be in `AI_ALLOWED_EMAILS`).

@@ -99,17 +99,44 @@ export class FakeFirestore {
     if (isQuery) {
       const q = body.structuredQuery;
       const collection = `${key}/${q.from[0].collectionId}/`;
-      const field: string[] = q.orderBy[0].field.fieldPath.split('.');
-      const dir = q.orderBy[0].direction === 'DESCENDING' ? -1 : 1;
-      const rows = [...this.docs.entries()]
-        .filter(([k]) => k.startsWith(collection) && !k.slice(collection.length).includes('/'))
-        .filter(([, d]) => getPath(d.fields, field) !== undefined)
-        .sort(([, a], [, b]) => {
-          const x = sortKey(getPath(a.fields, field));
-          const y = sortKey(getPath(b.fields, field));
-          return x < y ? -dir : x > y ? dir : 0;
-        })
-        .slice(q.offset ?? 0, (q.offset ?? 0) + q.limit);
+      let rows = [...this.docs.entries()]
+        .filter(([k]) => k.startsWith(collection) && !k.slice(collection.length).includes('/'));
+
+      if (q.where) {
+        const rawFilters = q.where.compositeFilter?.filters ?? (q.where.fieldFilter ? [q.where] : []);
+        for (const item of rawFilters) {
+          const ff = item.fieldFilter;
+          if (!ff) continue;
+          const filterField: string[] = ff.field.fieldPath.split('.');
+          const target = sortKey(ff.value);
+          rows = rows.filter(([, d]) => {
+            const v = getPath(d.fields, filterField);
+            if (v === undefined) return false;
+            const docVal = sortKey(v);
+            if (ff.op === 'EQUAL') return docVal === target;
+            if (ff.op === 'GREATER_THAN_OR_EQUAL') return docVal >= target;
+            if (ff.op === 'LESS_THAN_OR_EQUAL') return docVal <= target;
+            return true;
+          });
+        }
+      }
+
+      if (q.orderBy && q.orderBy.length > 0) {
+        const field: string[] = q.orderBy[0].field.fieldPath.split('.');
+        const dir = q.orderBy[0].direction === 'DESCENDING' ? -1 : 1;
+        rows = rows
+          .filter(([, d]) => getPath(d.fields, field) !== undefined)
+          .sort(([, a], [, b]) => {
+            const x = sortKey(getPath(a.fields, field));
+            const y = sortKey(getPath(b.fields, field));
+            return x < y ? -dir : x > y ? dir : 0;
+          });
+      }
+
+      const offset = q.offset ?? 0;
+      const limit = q.limit !== undefined ? q.limit : rows.length;
+      rows = rows.slice(offset, offset + limit);
+
       const readTime = this.tick();
       return ok(rows.length ? rows.map(([k, d]) => ({ document: this.asDoc(k, d), readTime })) : [{ readTime }]);
     }
@@ -150,6 +177,11 @@ export class FakeFirestore {
       const d = { fields, createTime: existing?.createTime ?? now, updateTime: now };
       this.docs.set(key, d);
       return ok(this.asDoc(key, d));
+    }
+
+    if (method === 'DELETE') {
+      this.docs.delete(key);
+      return ok({});
     }
 
     return err(400, 'INVALID_ARGUMENT', `unsupported ${method}`);

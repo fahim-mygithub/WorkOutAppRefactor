@@ -6,13 +6,20 @@
  */
 import { docId, FirestoreError, type FirestoreRest, type FsDocument } from './firestore';
 import { fromFields, toFields } from './firestoreValue';
+import type { QueryFilter } from './firestore';
 import {
   buildCustomExerciseDoc,
+  buildExerciseHistoryDoc,
   buildPlan,
   buildPlansDoc,
   buildProfileUpdate,
   buildSavedWorkoutDoc,
+  buildWorkoutHistoryDoc,
   buildWorkoutUpdate,
+  checkPersonalRecords,
+  computeExerciseStats,
+  fallbackExerciseId,
+  generateConfigurationString,
   mergePlan,
   readExerciseHistory,
   readPlans,
@@ -21,11 +28,16 @@ import {
   readWorkoutSummary,
   toParsedWorkout,
   toWorkoutExercises,
+  updateExerciseStatsDoc,
   type CustomExerciseInput,
+  type ExerciseHistoryInput,
   type ExerciseInput,
+  type LogWorkoutInput,
   type ParsedWorkout,
   type PlannedWorkout,
   type ProfilePatch,
+  type RawExerciseHistory,
+  type StoredPerformedSet,
   type WorkoutInput,
   type WorkoutPatch,
 } from './shapes';
@@ -209,19 +221,362 @@ export class UserData {
     throw new DataError('conflict', 'The schedule kept changing while saving; try again.');
   }
 
-  async listHistory(opts: { kind: 'workouts' | 'exercises'; pageSize: number; pageToken?: string }) {
-    const offset = offsetFrom(opts.pageToken);
+  async listHistory(opts: {
+    kind: 'workouts' | 'exercises';
+    pageSize: number;
+    pageToken?: string;
+    cursor?: string;
+    from?: string;
+    to?: string;
+  }) {
+    const token = opts.cursor ?? opts.pageToken;
+    const offset = offsetFrom(token);
     const workouts = opts.kind === 'workouts';
+    const dateField = workouts ? 'endTime' : 'workoutDate';
+    const filters: QueryFilter[] = [];
+    if (opts.from) {
+      filters.push({
+        field: dateField,
+        op: 'GREATER_THAN_OR_EQUAL',
+        value: { timestampValue: `${opts.from}T00:00:00.000Z` },
+      });
+    }
+    if (opts.to) {
+      filters.push({
+        field: dateField,
+        op: 'LESS_THAN_OR_EQUAL',
+        value: { timestampValue: `${opts.to}T23:59:59.999Z` },
+      });
+    }
+
     const docs = await this.fs.query(this.path(), workouts ? 'workout_history' : 'exercise_history', {
-      orderBy: workouts ? 'endTime' : 'workoutDate',
+      orderBy: dateField,
       direction: 'DESCENDING',
       limit: opts.pageSize,
       offset,
+      ...(filters.length ? { filters } : {}),
     });
     const items = docs.map((doc) =>
       workouts ? readWorkoutSummary(docId(doc), data(doc)) : readExerciseHistory(docId(doc), data(doc)),
     );
-    return { items, ...(docs.length === opts.pageSize ? { nextPageToken: String(offset + docs.length) } : {}) };
+    const hasMore = docs.length === opts.pageSize;
+    const nextToken = hasMore ? String(offset + docs.length) : undefined;
+    return {
+      items,
+      ...(nextToken ? { nextPageToken: nextToken, nextCursor: nextToken } : {}),
+    };
+  }
+
+  async getHistoryEntry(workoutId: string) {
+    const id = safeId(workoutId, 'workout history');
+    const doc = await this.fs.get(this.path('workout_history', id));
+    if (!doc) throw new DataError('not-found', `No workout history entry with id ${id}.`);
+    const summary = readWorkoutSummary(docId(doc), data(doc));
+    const linkedWorkoutId = (data(doc).workoutId as string) || id;
+
+    const exDocs = await this.fs.query(this.path(), 'exercise_history', {
+      filters: [{ field: 'workoutId', op: 'EQUAL', value: { stringValue: linkedWorkoutId } }],
+      orderBy: 'workoutDate',
+      direction: 'ASCENDING',
+    });
+
+    let allExDocs = exDocs;
+    if (linkedWorkoutId !== id) {
+      const extraDocs = await this.fs.query(this.path(), 'exercise_history', {
+        filters: [{ field: 'workoutId', op: 'EQUAL', value: { stringValue: id } }],
+        orderBy: 'workoutDate',
+        direction: 'ASCENDING',
+      });
+      const seen = new Set(allExDocs.map((d) => docId(d)));
+      for (const d of extraDocs) {
+        if (!seen.has(docId(d))) allExDocs.push(d);
+      }
+    }
+
+    const exercises = allExDocs.map((d) => {
+      const dData = data(d);
+      return {
+        id: docId(d),
+        exerciseId: String(dData.exerciseId ?? ''),
+        exerciseName: String(dData.exerciseName ?? ''),
+        configuration: String(dData.configuration ?? ''),
+        totalVolume: typeof dData.totalVolume === 'number' ? dData.totalVolume : 0,
+        sets: Array.isArray(dData.sets) ? (dData.sets as StoredPerformedSet[]) : [],
+        ...(dData.notes ? { notes: String(dData.notes) } : {}),
+        ...(dData.personalRecords ? { personalRecords: dData.personalRecords as Record<string, unknown> } : {}),
+      };
+    });
+
+    return {
+      ...summary,
+      exercises,
+    };
+  }
+
+  async logWorkout(input: LogWorkoutInput) {
+    const todayStr = this.now().toISOString().slice(0, 10);
+    if (input.date > todayStr) {
+      throw new DataError('invalid-argument', 'Cannot log a workout in the future.');
+    }
+    if (!input.exercises || input.exercises.length === 0) {
+      throw new DataError('invalid-argument', 'Workout must have at least one exercise.');
+    }
+    for (const e of input.exercises) {
+      if (!e.sets || e.sets.length === 0) {
+        throw new DataError('invalid-argument', `Exercise "${e.name}" must have at least one set.`);
+      }
+    }
+
+    const now = this.now();
+    const workoutDate = new Date(`${input.date}T12:00:00.000Z`);
+    const workoutName = input.name?.trim() || 'Workout';
+
+    // 1. Create the workout_history summary document first to obtain its auto id
+    const initialSummary = buildWorkoutHistoryDoc(this.uid, '', input, now);
+    const summaryDoc = await this.fs.create(this.path('workout_history'), toFields(initialSummary));
+    const workoutId = docId(summaryDoc);
+
+    // Update workoutId field on summary doc so it mirrors activeWorkout.id
+    await this.fs.patch(this.path('workout_history', workoutId), toFields({ workoutId }), { mask: ['workoutId'] });
+
+    // 2. Create an exercise_history document for each exercise and update exercise_stats
+    for (const e of input.exercises) {
+      const exerciseId = fallbackExerciseId(e.name);
+      const statsDoc = await this.fs.get(this.path('exercise_stats', exerciseId));
+      const currentStats = statsDoc ? data(statsDoc) : null;
+
+      const completedSets: StoredPerformedSet[] = e.sets
+        .filter((s) => s.completed !== false)
+        .map((s, idx) => ({
+          setNumber: idx + 1,
+          targetReps: s.reps,
+          actualReps: s.reps,
+          weight: s.weight ?? 0,
+          unit: s.unit ?? 'lbs',
+          completed: true,
+          ...(s.rpe !== undefined ? { rpe: s.rpe } : {}),
+          ...(s.time !== undefined ? { time: s.time } : {}),
+          ...(s.rir !== undefined ? { rir: s.rir } : {}),
+          ...(s.notes?.trim() ? { notes: s.notes.trim() } : {}),
+        }));
+
+      const totalVolume = completedSets.reduce((sum, s) => sum + s.weight * s.actualReps, 0);
+      const prs = checkPersonalRecords(currentStats, completedSets, totalVolume);
+
+      const exDocFields = buildExerciseHistoryDoc(this.uid, workoutId, workoutName, workoutDate, e, prs, now);
+      await this.fs.create(this.path('exercise_history'), toFields(exDocFields));
+
+      const nextStats = updateExerciseStatsDoc(
+        exerciseId,
+        e.name.trim(),
+        currentStats,
+        completedSets,
+        totalVolume,
+        prs,
+        workoutDate,
+      );
+      await this.fs.patch(this.path('exercise_stats', exerciseId), toFields(nextStats));
+    }
+
+    return this.getHistoryEntry(workoutId);
+  }
+
+  async updateHistoryEntry(input: {
+    workoutId: string;
+    date?: string;
+    name?: string;
+    durationMinutes?: number;
+    notes?: string;
+    exercises?: ExerciseHistoryInput[];
+  }) {
+    const workoutId = safeId(input.workoutId, 'workout history');
+    const workoutDoc = await this.fs.get(this.path('workout_history', workoutId));
+    if (!workoutDoc) throw new DataError('not-found', `No workout history entry with id ${workoutId}.`);
+    const currentWorkout = data(workoutDoc);
+
+    if (input.date) {
+      const todayStr = this.now().toISOString().slice(0, 10);
+      if (input.date > todayStr) {
+        throw new DataError('invalid-argument', 'Cannot log a workout in the future.');
+      }
+    }
+
+    const linkedWorkoutId = (currentWorkout.workoutId as string) || workoutId;
+    const existingDocs = await this.fs.query(this.path(), 'exercise_history', {
+      filters: [{ field: 'workoutId', op: 'EQUAL', value: { stringValue: linkedWorkoutId } }],
+    });
+    const existingById = new Map(existingDocs.map((d) => [docId(d), d]));
+
+    // Validate any exercise ids in input belong to this user's exercise_history
+    const affectedExerciseIds = new Set<string>();
+    if (input.exercises) {
+      for (const ex of input.exercises) {
+        if (ex.id) {
+          safeId(ex.id, 'exercise history');
+          const targetDoc = existingById.get(ex.id) ?? (await this.fs.get(this.path('exercise_history', ex.id)));
+          if (!targetDoc) {
+            throw new DataError('invalid-argument', `Exercise history id ${ex.id} does not belong to your account.`);
+          }
+        }
+      }
+    }
+
+    const now = this.now();
+    const workoutDate = input.date
+      ? new Date(`${input.date}T12:00:00.000Z`)
+      : new Date((currentWorkout.startTime as string | Date) || now);
+    const workoutName = input.name?.trim() ?? ((currentWorkout.name as string) || 'Workout');
+
+    if (input.exercises) {
+      const newExIds = new Set(input.exercises.map((e) => e.id).filter(Boolean));
+
+      // 1. Delete exercises not in input
+      for (const d of existingDocs) {
+        const id = docId(d);
+        if (!newExIds.has(id)) {
+          await this.fs.delete(this.path('exercise_history', id));
+          const exId = data(d).exerciseId as string;
+          if (exId) affectedExerciseIds.add(exId);
+        }
+      }
+
+      // 2. Update existing or add new exercises
+      for (const ex of input.exercises) {
+        const exerciseId = fallbackExerciseId(ex.name);
+        affectedExerciseIds.add(exerciseId);
+
+        const completedSets: StoredPerformedSet[] = ex.sets
+          .filter((s) => s.completed !== false)
+          .map((s, idx) => ({
+            setNumber: idx + 1,
+            targetReps: s.reps,
+            actualReps: s.reps,
+            weight: s.weight ?? 0,
+            unit: s.unit ?? 'lbs',
+            completed: true,
+            ...(s.rpe !== undefined ? { rpe: s.rpe } : {}),
+            ...(s.time !== undefined ? { time: s.time } : {}),
+            ...(s.rir !== undefined ? { rir: s.rir } : {}),
+            ...(s.notes?.trim() ? { notes: s.notes.trim() } : {}),
+          }));
+
+        const configuration = generateConfigurationString(completedSets);
+        const totalVolume = completedSets.reduce((sum, s) => sum + s.weight * s.actualReps, 0);
+
+        if (ex.id && existingById.has(ex.id)) {
+          const prevExId = data(existingById.get(ex.id)!).exerciseId as string;
+          if (prevExId) affectedExerciseIds.add(prevExId);
+
+          const fields: Record<string, unknown> = {
+            exerciseId,
+            exerciseName: ex.name.trim(),
+            sets: completedSets,
+            configuration,
+            totalVolume,
+            workoutDate,
+            workoutName,
+            updatedAt: now,
+            ...(ex.notes?.trim() !== undefined ? { notes: ex.notes.trim() } : {}),
+          };
+          const mask = ['exerciseId', 'exerciseName', 'sets', 'configuration', 'totalVolume', 'workoutDate', 'workoutName', 'updatedAt'];
+          if (ex.notes !== undefined) mask.push('notes');
+          await this.fs.patch(this.path('exercise_history', ex.id), toFields(fields), { mask });
+        } else {
+          const newDoc = buildExerciseHistoryDoc(this.uid, workoutId, workoutName, workoutDate, ex, {}, now);
+          await this.fs.create(this.path('exercise_history'), toFields(newDoc));
+        }
+      }
+    } else if (input.date || input.name) {
+      for (const d of existingDocs) {
+        const id = docId(d);
+        const exId = data(d).exerciseId as string;
+        if (exId) affectedExerciseIds.add(exId);
+        const patchFields: Record<string, unknown> = { updatedAt: now };
+        const mask = ['updatedAt'];
+        if (input.date) {
+          patchFields.workoutDate = workoutDate;
+          mask.push('workoutDate');
+        }
+        if (input.name) {
+          patchFields.workoutName = workoutName;
+          mask.push('workoutName');
+        }
+        await this.fs.patch(this.path('exercise_history', id), toFields(patchFields), { mask });
+      }
+    }
+
+    // Recompute workout summary totals
+    const finalExDocs = await this.fs.query(this.path(), 'exercise_history', {
+      filters: [{ field: 'workoutId', op: 'EQUAL', value: { stringValue: linkedWorkoutId } }],
+    });
+    let totalSets = 0;
+    let totalReps = 0;
+    let totalVolume = 0;
+
+    const exercisesSummary = finalExDocs.map((d) => {
+      const dData = data(d);
+      const setsArr = Array.isArray(dData.sets) ? (dData.sets as StoredPerformedSet[]) : [];
+      const sets = setsArr.length;
+      const reps = setsArr.reduce((sum, s) => sum + (s.actualReps || 0), 0);
+      const volume = typeof dData.totalVolume === 'number' ? dData.totalVolume : 0;
+      totalSets += sets;
+      totalReps += reps;
+      totalVolume += volume;
+      return {
+        exerciseId: String(dData.exerciseId ?? ''),
+        exerciseName: String(dData.exerciseName ?? ''),
+        sets,
+        reps,
+        volume,
+      };
+    });
+
+    const duration = input.durationMinutes !== undefined
+      ? input.durationMinutes
+      : (typeof currentWorkout.duration === 'number' ? currentWorkout.duration : 0);
+    const startDate = workoutDate;
+    const endDate = duration > 0 ? new Date(startDate.getTime() + duration * 60000) : startDate;
+
+    const summaryPatch: Record<string, unknown> = {
+      name: workoutName,
+      startTime: startDate,
+      endTime: endDate,
+      duration,
+      totalExercises: exercisesSummary.length,
+      totalSets,
+      totalReps,
+      totalVolume,
+      exercisesSummary,
+      updatedAt: now,
+      ...(input.notes !== undefined ? { notes: input.notes.trim() } : {}),
+    };
+    const summaryMask = ['name', 'startTime', 'endTime', 'duration', 'totalExercises', 'totalSets', 'totalReps', 'totalVolume', 'exercisesSummary', 'updatedAt'];
+    if (input.notes !== undefined) summaryMask.push('notes');
+    await this.fs.patch(this.path('workout_history', workoutId), toFields(summaryPatch), { mask: summaryMask });
+
+    // Recompute stats and PRs for all affected exercises
+    for (const exId of affectedExerciseIds) {
+      const exHistories = await this.fs.query(this.path(), 'exercise_history', {
+        filters: [{ field: 'exerciseId', op: 'EQUAL', value: { stringValue: exId } }],
+      });
+      if (exHistories.length === 0) {
+        await this.fs.delete(this.path('exercise_stats', exId));
+      } else {
+        const rawHistories: RawExerciseHistory[] = exHistories.map((d) => {
+          const dData = data(d);
+          return {
+            workoutDate: new Date(dData.workoutDate as string | Date),
+            sets: (Array.isArray(dData.sets) ? dData.sets : []) as Array<{ actualReps: number; weight: number }>,
+            totalVolume: typeof dData.totalVolume === 'number' ? dData.totalVolume : 0,
+          };
+        });
+        const exName = String(data(exHistories[0]).exerciseName ?? '');
+        const computedStats = computeExerciseStats(exId, exName, rawHistories);
+        await this.fs.patch(this.path('exercise_stats', exId), toFields(computedStats));
+      }
+    }
+
+    return this.getHistoryEntry(workoutId);
   }
 
   async addExercise(input: CustomExerciseInput) {
