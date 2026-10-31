@@ -26,6 +26,12 @@ vi.mock('../../ai/appServices', () => ({
     deleteWorkout: vi.fn(),
     saveProfile: vi.fn(),
     listSavedWorkouts: vi.fn(),
+    history: {
+      log: vi.fn(),
+      undoLog: vi.fn(),
+      edit: vi.fn(),
+      undoEdit: vi.fn(),
+    },
   },
 }));
 
@@ -384,7 +390,7 @@ describe('AskAiHost — build, plan and profile tools', () => {
     expect(svc.saveWorkout).not.toHaveBeenCalled();
     await u.click(apply);
     await waitFor(() => expect(svc.saveWorkout).toHaveBeenCalledWith('u1', expect.objectContaining({ name: 'Push' })));
-    await u.click(await screen.findByRole('button', { name: 'Undo' }));
+    await u.click((await screen.findAllByRole('button', { name: 'Undo' }))[0]);
     await waitFor(() => expect(svc.deleteWorkout).toHaveBeenCalledWith('u1', 'new1'));
   });
 
@@ -398,7 +404,7 @@ describe('AskAiHost — build, plan and profile tools', () => {
     const u = await send('plan push');
     await u.click(await screen.findByRole('button', { name: 'Apply' }));
     await waitFor(() => expect(store.getState().plannedWorkouts.plans).toHaveLength(1));
-    await u.click(await screen.findByRole('button', { name: 'Undo' }));
+    await u.click((await screen.findAllByRole('button', { name: 'Undo' }))[0]);
     await waitFor(() => expect(store.getState().plannedWorkouts.plans).toHaveLength(0));
   });
 
@@ -413,5 +419,307 @@ describe('AskAiHost — build, plan and profile tools', () => {
     await u.click(await screen.findByRole('button', { name: 'Apply' }));
     expect(await screen.findByTestId('ai-error')).toHaveTextContent("Couldn't save");
     expect(screen.getByRole('button', { name: 'Apply' })).toBeEnabled();
+  });
+  it("Undo remains clickable after a second message is sent and after the toast timeout, and still calls the history undo", async () => {
+    let toastTimeoutFn: (() => void) | undefined;
+    const origSetTimeout = globalThis.setTimeout;
+    vi.spyOn(globalThis, 'setTimeout').mockImplementation((fn: any, ms: any) => {
+      if (ms === 8000) {
+        toastTimeoutFn = fn;
+        return 9999 as any;
+      }
+      return origSetTimeout(fn, ms);
+    });
+
+    const historyLog = vi.fn().mockResolvedValue({ workoutId: "w-ai-1", exerciseIds: ["ex-ai-1"] });
+    const historyUndoLog = vi.fn().mockResolvedValue(undefined);
+    svc.history = {
+      log: historyLog,
+      undoLog: historyUndoLog,
+      edit: vi.fn(),
+      undoEdit: vi.fn(),
+    };
+    vi.spyOn(aiClient, "chat")
+      .mockResolvedValueOnce({
+        reply: "Logged it for you.",
+        source: "backend",
+        toolCalls: [{
+          id: "call-log-1",
+          name: "logPastWorkout",
+          input: {
+            date: "2026-10-30",
+            name: "Chest Session",
+            exercises: [{ name: "Barbell Bench Press", sets: [{ reps: 5, weight: 135 }] }],
+          },
+        }],
+      })
+      .mockResolvedValueOnce({
+        reply: "Second turn response.",
+        source: "backend",
+        toolCalls: [],
+      });
+
+    const store = signedInStore();
+    renderHost(store, "/build");
+    const u = await send("log yesterday bench 5 at 135");
+
+    // 1. Proposal card rendered with Apply button
+    const applyBtn = await screen.findByRole("button", { name: "Apply" });
+    await u.click(applyBtn);
+
+    // Verify log was called
+    await waitFor(() => expect(historyLog).toHaveBeenCalledTimes(1));
+
+    // 2. User sends a second chat message
+    await u.type(screen.getByLabelText("Message"), "what should I do next?");
+    await u.click(screen.getByRole("button", { name: "Send" }));
+    expect(await screen.findByText("Second turn response.")).toBeInTheDocument();
+
+    // 3. Fast-forward past the toast timeout (8 seconds)
+    expect(toastTimeoutFn).toBeDefined();
+    act(() => {
+      toastTimeoutFn?.();
+    });
+
+    // Verify the toast is gone
+    await waitFor(() => expect(screen.queryByTestId("undo-toast")).not.toBeInTheDocument());
+
+    // 4. The Undo button on the card remains clickable!
+    const cardUndo = screen.getByRole("button", { name: /undo/i });
+    expect(cardUndo).toBeInTheDocument();
+    await u.click(cardUndo);
+
+    // 5. It still calls the history undo!
+    await waitFor(() => expect(historyUndoLog).toHaveBeenCalledWith("w-ai-1", ["ex-ai-1"]));
+  });
+
+  it('restores applied decision and keeps session undo entry when undo fails', async () => {
+    const historyLog = vi.fn().mockResolvedValue({ workoutId: 'w-ai-2', exerciseIds: ['ex-ai-2'] });
+    const historyUndoLog = vi.fn().mockRejectedValueOnce(new Error('undo network error')).mockResolvedValueOnce(undefined);
+    svc.history = {
+      log: historyLog,
+      undoLog: historyUndoLog,
+      edit: vi.fn(),
+      undoEdit: vi.fn(),
+    };
+    vi.spyOn(aiClient, 'chat').mockResolvedValue({
+      reply: 'Logged it.',
+      source: 'backend',
+      toolCalls: [{
+        id: 'call-log-fail',
+        name: 'logPastWorkout',
+        input: {
+          date: '2026-10-30',
+          name: 'Push',
+          exercises: [{ name: 'Barbell Bench Press', sets: [{ reps: 5, weight: 135 }] }],
+        },
+      }],
+    });
+
+    const store = signedInStore();
+    renderHost(store, '/build');
+    const u = await send('log bench');
+
+    await u.click(await screen.findByRole('button', { name: 'Apply' }));
+    await waitFor(() => expect(historyLog).toHaveBeenCalledTimes(1));
+
+    // First undo attempt fails
+    const undos = await screen.findAllByRole('button', { name: 'Undo' });
+    await u.click(undos[0]);
+
+    // Error displayed, decision restored to applied, Undo button still present
+    expect(await screen.findByText("Couldn't undo — try again.")).toBeInTheDocument();
+    expect(await screen.findByText('Applied')).toBeInTheDocument();
+    const undosAfter = await screen.findAllByRole('button', { name: 'Undo' });
+    expect(undosAfter.length).toBeGreaterThan(0);
+
+    // Second undo attempt succeeds
+    await u.click(undosAfter[0]);
+    await waitFor(() => expect(historyUndoLog).toHaveBeenCalledTimes(2));
+    expect(await screen.findByText('Undone')).toBeInTheDocument();
+  });
+
+  it("a failed take-back from the toast's Undo is reported to the card like the card's own Undo", async () => {
+    const historyLog = vi.fn().mockResolvedValue({ workoutId: 'w-ai-3', exerciseIds: ['ex-ai-3'] });
+    const historyUndoLog = vi.fn().mockRejectedValueOnce(new Error('undo network error')).mockResolvedValueOnce(undefined);
+    svc.history = { log: historyLog, undoLog: historyUndoLog, edit: vi.fn(), undoEdit: vi.fn() };
+    vi.spyOn(aiClient, 'chat').mockResolvedValue({
+      reply: 'Logged it.',
+      source: 'backend',
+      toolCalls: [{
+        id: 'call-log-toast-fail',
+        name: 'logPastWorkout',
+        input: {
+          date: '2026-10-30',
+          name: 'Push',
+          exercises: [{ name: 'Barbell Bench Press', sets: [{ reps: 5, weight: 135 }] }],
+        },
+      }],
+    });
+
+    const store = signedInStore();
+    renderHost(store, '/build');
+    const u = await send('log bench');
+    await u.click(await screen.findByRole('button', { name: 'Apply' }));
+    await waitFor(() => expect(historyLog).toHaveBeenCalledTimes(1));
+
+    // First take-back, from the toast, fails: the card must say Applied again with its Undo.
+    const toast = await screen.findByTestId('undo-toast');
+    await u.click(within(toast).getByRole('button', { name: 'Undo' }));
+    await waitFor(() => expect(historyUndoLog).toHaveBeenCalledTimes(1));
+    expect(await screen.findByText('Applied')).toBeInTheDocument();
+    expect(screen.queryByText('Undone')).not.toBeInTheDocument();
+
+    // And it can be undone again (toast re-queued or the card's Undo).
+    const again = await screen.findAllByRole('button', { name: 'Undo' });
+    await u.click(again[0]);
+    await waitFor(() => expect(historyUndoLog).toHaveBeenCalledTimes(2));
+    expect(await screen.findByText('Undone')).toBeInTheDocument();
+  });
+
+  it('logging a workout and then editing it replaces the log Undo with the edit Undo on the same workout', async () => {
+    const historyLog = vi.fn().mockResolvedValue({ workoutId: 'w-ai-10', exerciseIds: ['ex-ai-10'] });
+    const historyEdit = vi.fn().mockResolvedValue({ prior: { name: 'Push', date: '2026-10-30', exercises: [] } });
+    const historyUndoEdit = vi.fn().mockResolvedValue(undefined);
+    const historyUndoLog = vi.fn().mockResolvedValue(undefined);
+    svc.history = {
+      log: historyLog,
+      undoLog: historyUndoLog,
+      edit: historyEdit,
+      undoEdit: historyUndoEdit,
+    };
+
+    // First turn: log workout
+    vi.spyOn(aiClient, 'chat')
+      .mockResolvedValueOnce({
+        reply: 'Logged Push workout.',
+        source: 'backend',
+        toolCalls: [{
+          id: 'call-log-1',
+          name: 'logPastWorkout',
+          input: {
+            date: '2026-10-30',
+            name: 'Push',
+            exercises: [{ name: 'Barbell Bench Press', sets: [{ reps: 5, weight: 135 }] }],
+          },
+        }],
+      })
+      // Second turn: edit that same workout
+      .mockResolvedValueOnce({
+        reply: 'Updated weight to 145.',
+        source: 'backend',
+        toolCalls: [{
+          id: 'call-edit-1',
+          name: 'editPastWorkout',
+          input: {
+            workoutId: 'w-ai-10',
+            name: 'Push',
+            exercises: [{ name: 'Barbell Bench Press', sets: [{ reps: 5, weight: 145 }] }],
+          },
+        }],
+      });
+
+    const store = signedInStore();
+    renderHost(store, '/build');
+    const u = await send('log bench 135');
+
+    // Apply the log proposal
+    const applyButtons = await screen.findAllByRole('button', { name: 'Apply' });
+    await u.click(applyButtons[0]);
+    await waitFor(() => expect(historyLog).toHaveBeenCalledTimes(1));
+
+    // Check the proposal cards
+    let cards = await screen.findAllByTestId('apply-reject-card');
+    expect(cards).toHaveLength(1);
+    expect(within(cards[0]).getByRole('button', { name: 'Undo' })).toBeInTheDocument();
+
+    // Send second message to trigger edit on the same workout
+    await u.type(screen.getByLabelText('Message'), 'change weight to 145');
+    await u.click(screen.getByRole('button', { name: 'Send' }));
+
+    // Apply the edit proposal
+    cards = await screen.findAllByTestId('apply-reject-card');
+    expect(cards).toHaveLength(2);
+    const editApplyBtn = within(cards[1]).getByRole('button', { name: 'Apply' });
+    await u.click(editApplyBtn);
+    await waitFor(() => expect(historyEdit).toHaveBeenCalledTimes(1));
+
+    // The 'a later Apply on the same record replaces the Undo' rule:
+    // The first card (log) no longer has an Undo button!
+    expect(within(cards[0]).queryByRole('button', { name: 'Undo' })).not.toBeInTheDocument();
+    // The second card (edit) DOES have an Undo button!
+    const editUndoBtn = within(cards[1]).getByRole('button', { name: 'Undo' });
+    expect(editUndoBtn).toBeInTheDocument();
+
+    // Clicking Undo on the edit card undoes the edit, NOT the log!
+    await u.click(editUndoBtn);
+    await waitFor(() => expect(historyUndoEdit).toHaveBeenCalledWith('w-ai-10', expect.anything()));
+    expect(historyUndoLog).not.toHaveBeenCalled();
+  });
+
+  it('plans on different records do not cancel each others Undo', async () => {
+    svc.history = {
+      log: vi.fn(),
+      undoLog: vi.fn(),
+      edit: vi.fn(),
+      undoEdit: vi.fn(),
+    };
+
+    // First turn: plan workout for date 2026-11-01
+    vi.spyOn(aiClient, 'chat')
+      .mockResolvedValueOnce({
+        reply: 'Planned workout 1.',
+        source: 'backend',
+        toolCalls: [{
+          id: 'call-plan-1',
+          name: 'planWorkout',
+          input: {
+            dateKey: '2026-11-01',
+            name: 'Push Day',
+            exercises: [{ name: 'Barbell Bench Press', sets: 3, reps: 5 }],
+          },
+        }],
+      })
+      // Second turn: plan workout for date 2026-11-02 (different record/date)
+      .mockResolvedValueOnce({
+        reply: 'Planned workout 2.',
+        source: 'backend',
+        toolCalls: [{
+          id: 'call-plan-2',
+          name: 'planWorkout',
+          input: {
+            dateKey: '2026-11-02',
+            name: 'Pull Day',
+            exercises: [{ name: 'Barbell Row', sets: 3, reps: 8 }],
+          },
+        }],
+      });
+
+    const store = signedInStore();
+    renderHost(store, '/build');
+    const u = await send('plan push on nov 1');
+
+    // Apply the first plan
+    const apply1 = await screen.findByRole('button', { name: 'Apply' });
+    await u.click(apply1);
+
+    // First card has Undo
+    let cards = await screen.findAllByTestId('apply-reject-card');
+    expect(cards).toHaveLength(1);
+    expect(within(cards[0]).getByRole('button', { name: 'Undo' })).toBeInTheDocument();
+
+    // Send second plan message
+    await u.type(screen.getByLabelText('Message'), 'plan pull on nov 2');
+    await u.click(screen.getByRole('button', { name: 'Send' }));
+
+    // Apply the second plan
+    cards = await screen.findAllByTestId('apply-reject-card');
+    expect(cards).toHaveLength(2);
+    const apply2 = within(cards[1]).getByRole('button', { name: 'Apply' });
+    await u.click(apply2);
+
+    // Both cards still have their Undo buttons! (No over-invalidation across different records)
+    expect(within(cards[0]).getByRole('button', { name: 'Undo' })).toBeInTheDocument();
+    expect(within(cards[1]).getByRole('button', { name: 'Undo' })).toBeInTheDocument();
   });
 });

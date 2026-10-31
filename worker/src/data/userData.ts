@@ -7,7 +7,7 @@
 import { docId, FirestoreError, type FirestoreRest, type FsDocument } from './firestore';
 import { fromFields, toFields } from './firestoreValue';
 import type { QueryFilter } from './firestore';
-import { resolveExercise, type CustomExerciseLike } from './exerciseIndex';
+import { resolveExercise, type CustomExerciseLike, type HistoryExerciseLike } from './exerciseIndex';
 import {
   buildCustomExerciseDoc,
   buildExerciseHistoryDoc,
@@ -363,6 +363,44 @@ export class UserData {
     };
   }
 
+  async loadHistoryExercises(): Promise<HistoryExerciseLike[]> {
+    const [historyDocs, statsDocs] = await Promise.all([
+      this.fs.query(this.path(), 'exercise_history', {}),
+      this.fs.query(this.path(), 'exercise_stats', {}),
+    ]);
+
+    const result: HistoryExerciseLike[] = [];
+
+    for (const doc of historyDocs) {
+      const d = data(doc);
+      const exerciseId = (d.exerciseId as string) || docId(doc);
+      const exerciseName = (d.exerciseName as string) || '';
+      if (!exerciseId || !exerciseName) continue;
+      result.push({
+        exerciseId,
+        exerciseName,
+        workoutDate: d.workoutDate ? new Date(d.workoutDate as string | Date) : undefined,
+        muscleGroups: Array.isArray(d.muscleGroups) ? (d.muscleGroups as string[]) : undefined,
+        equipment: d.equipment ? String(d.equipment) : undefined,
+      });
+    }
+
+    for (const doc of statsDocs) {
+      const d = data(doc);
+      const exerciseId = (d.exerciseId as string) || docId(doc);
+      const exerciseName = (d.exerciseName as string) || '';
+      if (!exerciseId || !exerciseName) continue;
+      const dateVal = d.lastPerformed || d.updatedAt || d.firstPerformed;
+      result.push({
+        exerciseId,
+        exerciseName,
+        workoutDate: dateVal ? new Date(dateVal as string | Date) : undefined,
+      });
+    }
+
+    return result;
+  }
+
   async logWorkout(input: LogWorkoutInput) {
     if (isFutureDate(input.date, this.now(), input.tz, input.utcOffset)) {
       throw new DataError('invalid-argument', 'Cannot log a workout in the future.');
@@ -380,10 +418,15 @@ export class UserData {
       }
     }
 
-    // Resolve exercise names against custom exercises and the app library
-    const customDocs = await this.fs.query(this.path(), 'customExercises', {});
+    // Resolve exercise names against user's history/stats, custom exercises and the app library
+    const [historyExercises, customDocs] = await Promise.all([
+      this.loadHistoryExercises(),
+      this.fs.query(this.path(), 'customExercises', {}),
+    ]);
     const customExercises = parseCustomExercises(customDocs);
-    const resolvedExercises = input.exercises.map((e) => resolveExercise(e.name, customExercises));
+    const resolvedExercises = input.exercises.map((e) =>
+      resolveExercise(e.name, customExercises, undefined, historyExercises),
+    );
 
     const now = this.now();
     const workoutDate = new Date(`${input.date}T12:00:00.000Z`);
@@ -498,12 +541,15 @@ export class UserData {
     }
 
     const preparedExercises: PreparedExercise[] = [];
-    const customDocs = await this.fs.query(this.path(), 'customExercises', {});
+    const [historyExercises, customDocs] = await Promise.all([
+      this.loadHistoryExercises(),
+      this.fs.query(this.path(), 'customExercises', {}),
+    ]);
     const customExercises = parseCustomExercises(customDocs);
 
     if (input.exercises && input.exercises.length > 0) {
       for (const ex of input.exercises) {
-        const resolved = resolveExercise(ex.name, customExercises);
+        const resolved = resolveExercise(ex.name, customExercises, undefined, historyExercises);
         if (ex.id) {
           safeId(ex.id, 'exercise history');
           if (!existingById.has(ex.id)) {

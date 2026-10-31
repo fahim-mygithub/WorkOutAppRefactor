@@ -24,6 +24,14 @@ export interface CustomExerciseLike {
   searchKeywords?: string[];
 }
 
+export interface HistoryExerciseLike {
+  exerciseId: string;
+  exerciseName: string;
+  workoutDate?: Date | string;
+  muscleGroups?: string[];
+  equipment?: string;
+}
+
 export interface ResolvedExercise {
   id: string;
   name: string;
@@ -31,7 +39,7 @@ export interface ResolvedExercise {
   muscleGroups: string[];
   equipment: string;
   isFallback: boolean;
-  matchedBy: 'custom' | 'library' | 'fallback';
+  matchedBy: 'history' | 'custom' | 'library' | 'fallback';
 }
 
 const ABBREVIATIONS: Record<string, string> = {
@@ -161,6 +169,51 @@ function matchCustomExercise(name: string, customList: readonly CustomExerciseLi
   return null;
 }
 
+
+function toTimestamp(d?: Date | string | number | null): number {
+  if (!d) return 0;
+  if (d instanceof Date) return d.getTime();
+  const t = new Date(d).getTime();
+  return isNaN(t) ? 0 : t;
+}
+
+/**
+ * Match a name against the user's own history/stats. EXACT normalised name or
+ * alias only: a subset/partial match would let "Bench Press" inherit the id and
+ * stats of "Incline Barbell Bench Press" (a different exercise). Most recent wins.
+ */
+export function matchHistoryExercise(
+  name: string,
+  historyList: readonly HistoryExerciseLike[],
+): HistoryExerciseLike | null {
+  const query = exerciseTokens(name);
+  if (query.length === 0 || historyList.length === 0) return null;
+  const key = query.join(' ');
+  const alias = ALIASES[key];
+
+  const candidates: HistoryExerciseLike[] = [];
+  for (const h of historyList) {
+    if (!h.exerciseName) continue;
+    const hKey = exerciseTokens(h.exerciseName).join(' ');
+    if (
+      hKey === key ||
+      (alias !== undefined && hKey === alias) ||
+      (ALIASES[hKey] !== undefined && ALIASES[hKey] === key)
+    ) {
+      candidates.push(h);
+    }
+  }
+  if (candidates.length === 0) return null;
+
+  candidates.sort((a, b) => {
+    const timeA = toTimestamp(a.workoutDate);
+    const timeB = toTimestamp(b.workoutDate);
+    if (timeB !== timeA) return timeB - timeA;
+    return (b.muscleGroups?.length ?? 0) - (a.muscleGroups?.length ?? 0);
+  });
+  return candidates[0];
+}
+
 let memoryLibrary: LibraryExercise[] | null = null;
 
 export function getCachedLibrary(): LibraryExercise[] {
@@ -195,10 +248,57 @@ export function resolveExercise(
   name: string,
   customExercises?: readonly CustomExerciseLike[],
   library: readonly LibraryExercise[] = getCachedLibrary(),
+  historyExercises?: readonly HistoryExerciseLike[],
 ): ResolvedExercise {
   const trimmed = name.trim();
 
-  // 1. Check custom exercises first
+  // 1. Check user's history / stats first (most recent wins)
+  if (historyExercises && historyExercises.length > 0) {
+    let historyMatch = matchHistoryExercise(trimmed, historyExercises);
+    // Also try the library-resolved and custom-resolved canonical names against history
+    // (same exact-only matcher, so a variant in history never stands in for the base exercise).
+    if (!historyMatch) {
+      const libCandidate = matchExerciseInList(trimmed, library);
+      if (libCandidate) {
+        historyMatch = matchHistoryExercise(libCandidate.name, historyExercises);
+      }
+    }
+    if (!historyMatch && customExercises && customExercises.length > 0) {
+      const customCandidate = matchCustomExercise(trimmed, customExercises);
+      if (customCandidate) {
+        historyMatch = matchHistoryExercise(customCandidate.name, historyExercises);
+      }
+    }
+    if (historyMatch) {
+      const libMatch = matchExerciseInList(trimmed, library);
+      const rawGroups = historyMatch.muscleGroups?.filter(Boolean);
+      const hasGoodGroups =
+        rawGroups &&
+        rawGroups.length > 0 &&
+        !(rawGroups.length === 1 && rawGroups[0].toLowerCase() === 'unknown');
+      const muscleGroups = hasGoodGroups
+        ? rawGroups!
+        : libMatch?.muscleGroups && libMatch.muscleGroups.length > 0
+          ? libMatch.muscleGroups
+          : ['Unknown'];
+      const equipment =
+        historyMatch.equipment && historyMatch.equipment.toLowerCase() !== 'unknown'
+          ? historyMatch.equipment
+          : libMatch?.equipment || 'Unknown';
+
+      return {
+        id: historyMatch.exerciseId,
+        name: trimmed,
+        matchedName: historyMatch.exerciseName,
+        muscleGroups,
+        equipment,
+        isFallback: historyMatch.exerciseId.startsWith('fallback-'),
+        matchedBy: 'history',
+      };
+    }
+  }
+
+  // 2. Check custom exercises
   if (customExercises && customExercises.length > 0) {
     const customMatch = matchCustomExercise(trimmed, customExercises);
     if (customMatch) {
@@ -220,7 +320,7 @@ export function resolveExercise(
     }
   }
 
-  // 2. Check library
+  // 3. Check library
   const libMatch = matchExerciseInList(trimmed, library);
   if (libMatch) {
     return {
@@ -234,7 +334,7 @@ export function resolveExercise(
     };
   }
 
-  // 3. Fallback id
+  // 4. Fallback id
   return {
     id: fallbackExerciseId(trimmed),
     name: trimmed,

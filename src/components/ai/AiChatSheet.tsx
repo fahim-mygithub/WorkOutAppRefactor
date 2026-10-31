@@ -114,6 +114,14 @@ export interface AiChatSheetProps {
   ) => string | void | Promise<string | void>;
   /** Called when the user rejects a mutation proposal. */
   onRejectProposal?: (proposal: AiToolProposal) => void;
+  /** Called when the user undos an applied mutation. */
+  onUndoProposal?: (proposal: AiToolProposal) => void | Promise<void>;
+  /** Check if a proposal can currently be undone. */
+  isProposalUndoable?: (proposalId: string) => boolean;
+  /** Controlled decisions by proposal id. */
+  decisions?: Record<string, ApplyRejectDecision>;
+  /** Callback when a proposal decision changes. */
+  onDecisionChange?: (proposalId: string, decision: ApplyRejectDecision) => void;
   /**
    * Called when the deterministic fallback parses freeform text into sets.
    * This is the working path when the AI backend is absent.
@@ -178,6 +186,10 @@ export function AiChatSheet({
   available,
   onApplyProposal,
   onRejectProposal,
+  onUndoProposal,
+  isProposalUndoable,
+  decisions: propsDecisions,
+  onDecisionChange,
   onFallbackParse,
   renderVisualization,
   initialMessage,
@@ -192,9 +204,10 @@ export function AiChatSheet({
   const [pending, setPending] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   // Tracks Apply/Reject decisions by proposal id so cards lock after a choice.
-  const [decisions, setDecisions] = React.useState<
+  const [internalDecisions, setInternalDecisions] = React.useState<
     Record<string, ApplyRejectDecision>
   >({});
+  const decisions = propsDecisions ?? internalDecisions;
   // Proposals whose Apply is still running (locks their card).
   const [applying, setApplying] = React.useState<Record<string, boolean>>({});
   // The photo waiting to go with the next message, and whether one is being read.
@@ -223,10 +236,11 @@ export function AiChatSheet({
         return;
       }
       setError(null);
-      setDecisions((d) => ({ ...d, [proposal.id]: 'applied' }));
+      setInternalDecisions((d) => ({ ...d, [proposal.id]: 'applied' }));
+      onDecisionChange?.(proposal.id, 'applied');
       void client?.applyToolCall?.(proposal);
     },
-    [client, onApplyProposal],
+    [client, onApplyProposal, onDecisionChange],
   );
 
   const handlePhoto = React.useCallback(
@@ -255,10 +269,26 @@ export function AiChatSheet({
 
   const handleReject = React.useCallback(
     (proposal: AiToolProposal) => {
-      setDecisions((d) => ({ ...d, [proposal.id]: 'rejected' }));
+      setInternalDecisions((d) => ({ ...d, [proposal.id]: 'rejected' }));
+      onDecisionChange?.(proposal.id, 'rejected');
       onRejectProposal?.(proposal);
     },
-    [onRejectProposal],
+    [onRejectProposal, onDecisionChange],
+  );
+
+  const handleUndo = React.useCallback(
+    async (proposal: AiToolProposal) => {
+      setInternalDecisions((d) => ({ ...d, [proposal.id]: 'undone' }));
+      onDecisionChange?.(proposal.id, 'undone');
+      try {
+        await onUndoProposal?.(proposal);
+      } catch {
+        setInternalDecisions((d) => ({ ...d, [proposal.id]: 'applied' }));
+        onDecisionChange?.(proposal.id, 'applied');
+        setError("Couldn't undo — try again.");
+      }
+    },
+    [onUndoProposal, onDecisionChange],
   );
 
   const sendToBackend = React.useCallback(
@@ -450,6 +480,8 @@ export function AiChatSheet({
                   decision={decisions[proposal.id] ?? null}
                   onApply={(p) => void handleApply(p)}
                   onReject={handleReject}
+                  onUndo={onUndoProposal ? (p) => void handleUndo(p) : undefined}
+                  canUndo={isProposalUndoable ? isProposalUndoable(proposal.id) : undefined}
                   disabled={applying[proposal.id] ?? false}
                 />
               ))}

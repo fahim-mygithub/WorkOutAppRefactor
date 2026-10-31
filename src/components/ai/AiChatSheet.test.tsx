@@ -416,4 +416,56 @@ describe('AiChatSheet — async Apply', () => {
     expect(document.body.querySelectorAll('li')).toHaveLength(2);
     expect(document.body.querySelector('table')).not.toBeNull();
   });
+  it('wires onUndoProposal and renders Undo button on applied proposal card', async () => {
+    const user = userEvent.setup();
+    const onUndoProposal = vi.fn();
+    render(
+      <AiChatSheet
+        open
+        onOpenChange={() => {}}
+        client={makeClient(turn)}
+        onApplyProposal={vi.fn()}
+        onUndoProposal={onUndoProposal}
+      />,
+    );
+    await user.type(await screen.findByLabelText('Message'), 'make me a push day');
+    await user.click(screen.getByRole('button', { name: 'Send' }));
+    await user.click(await screen.findByRole('button', { name: 'Apply' }));
+    expect(await screen.findByText('Applied')).toBeInTheDocument();
+
+    const undoBtn = screen.getByRole('button', { name: 'Undo' });
+    expect(undoBtn).toBeInTheDocument();
+    await user.click(undoBtn);
+    expect(onUndoProposal).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'p1' }),
+    );
+    expect(await screen.findByText('Undone')).toBeInTheDocument();
+  });
+
+  it('restores applied decision and keeps Undo button when onUndoProposal rejects', async () => {
+    const user = userEvent.setup();
+    const onUndoProposal = vi.fn().mockRejectedValue(new Error('network error'));
+    render(
+      <AiChatSheet
+        open
+        onOpenChange={() => {}}
+        client={makeClient(turn)}
+        onApplyProposal={vi.fn()}
+        onUndoProposal={onUndoProposal}
+      />,
+    );
+    await user.type(await screen.findByLabelText('Message'), 'make me a push day');
+    await user.click(screen.getByRole('button', { name: 'Send' }));
+    await user.click(await screen.findByRole('button', { name: 'Apply' }));
+    expect(await screen.findByText('Applied')).toBeInTheDocument();
+
+    const undoBtn = screen.getByRole('button', { name: 'Undo' });
+    await user.click(undoBtn);
+    expect(onUndoProposal).toHaveBeenCalled();
+
+    // On failure: error shown, card decision restored to 'applied', Undo button remains
+    expect(await screen.findByText("Couldn't undo — try again.")).toBeInTheDocument();
+    expect(await screen.findByText('Applied')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Undo' })).toBeInTheDocument();
+  });
 });

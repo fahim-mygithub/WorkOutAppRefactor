@@ -28,7 +28,7 @@ import type { AiToolProposal } from '@/ai/types';
 
 export type { AiToolProposal };
 
-export type ApplyRejectDecision = 'applied' | 'rejected';
+export type ApplyRejectDecision = 'applied' | 'rejected' | 'undone';
 
 export interface ApplyRejectCardProps {
   proposal: AiToolProposal;
@@ -36,6 +36,10 @@ export interface ApplyRejectCardProps {
   onApply: (proposal: AiToolProposal) => void;
   /** Invoked when the user declines the mutation. */
   onReject: (proposal: AiToolProposal) => void;
+  /** Invoked when the user undos an applied mutation. */
+  onUndo?: (proposal: AiToolProposal) => void;
+  /** Whether the card can be undone. Defaults to true if onUndo is provided. */
+  canUndo?: boolean;
   /**
    * Controlled decision. When set, the card renders in its resolved state and
    * the buttons are disabled. When omitted, the card tracks its own decision
@@ -60,7 +64,7 @@ export const ApplyRejectCard = React.forwardRef<
   ApplyRejectCardProps
 >(
   (
-    { proposal, onApply, onReject, decision, disabled = false, className },
+    { proposal, onApply, onReject, onUndo, canUndo, decision, disabled = false, className },
     ref,
   ) => {
     const isControlled = decision !== undefined;
@@ -80,6 +84,12 @@ export const ApplyRejectCard = React.forwardRef<
       if (!isControlled) setInternalDecision('rejected');
       onReject(proposal);
     }, [isControlled, isResolved, disabled, onReject, proposal]);
+
+    const handleUndo = React.useCallback(() => {
+      if (disabled || !onUndo) return;
+      if (!isControlled) setInternalDecision('undone');
+      onUndo(proposal);
+    }, [isControlled, disabled, onUndo, proposal]);
 
     return (
       <fmotion.div
@@ -110,15 +120,26 @@ export const ApplyRejectCard = React.forwardRef<
           </CardBody>
           <CardFooter className="p-5 pt-4">
             {isResolved ? (
-              <p
-                className={cn(
-                  'text-body-sm font-semibold',
-                  resolved === 'applied' ? 'text-accent-2' : 'text-ink-muted',
-                )}
-                role="status"
-              >
-                {resolved === 'applied' ? 'Applied' : 'Rejected'}
-              </p>
+              <div className="flex items-center gap-3">
+                <p
+                  className={cn(
+                    'text-body-sm font-semibold',
+                    resolved === 'applied' ? 'text-accent-2' : 'text-ink-muted',
+                  )}
+                  role="status"
+                >
+                  {resolved === 'applied' ? 'Applied' : resolved === 'undone' ? 'Undone' : 'Rejected'}
+                </p>
+                {resolved === 'applied' && canUndo !== false && onUndo ? (
+                  <Button
+                    variant="ghost"
+                    onClick={handleUndo}
+                    disabled={disabled}
+                  >
+                    Undo
+                  </Button>
+                ) : null}
+              </div>
             ) : (
               <>
                 <Button

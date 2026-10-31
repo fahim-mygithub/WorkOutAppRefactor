@@ -38,6 +38,7 @@ import type { AiErrorCode, AiToolCall } from '../../ai/types';
 import { useExerciseLibrary } from '../workout/useExerciseLibrary';
 import { AiChatSheet, type AiChatClient } from './AiChatSheet';
 import { UndoToast } from './UndoToast';
+import { type ApplyRejectDecision } from './ApplyRejectCard';
 
 const FRIENDLY: Partial<Record<AiErrorCode, string>> = {
   limit: 'AI limit reached for today.',
@@ -50,12 +51,89 @@ const GENERIC = 'Something went wrong — try again.';
 
 interface QueuedUndo {
   id: string;
+  /** Distinct per showing, so a toast queued again after a failed take-back is
+   *  not mistaken for the one still animating out (which ignores clicks). */
+  key?: string;
   message: string;
   undo: () => void;
 }
 
 const touchesSavedWorkouts = (effects: readonly AiEffect[] | undefined): boolean =>
   (effects ?? []).some((e) => e.type.endsWith('SavedWorkout'));
+
+interface ActiveUndo {
+  proposalId: string;
+  recordKeys: string[];
+  undo: () => Promise<void>;
+  message: string;
+}
+
+function getPlanRecordKeys(plan: { effects?: AiEffect[]; apply: UnknownAction[]; summary?: string }): string[] {
+  const keys: string[] = [];
+  for (const e of plan.effects ?? []) {
+    switch (e.type) {
+      case 'editPastWorkout':
+      case 'undoEditPastWorkout':
+        keys.push(`pastWorkout:${e.workoutId}`);
+        break;
+      case 'updateSavedWorkout':
+      case 'deleteSavedWorkout':
+        keys.push(`savedWorkout:${e.id}`);
+        break;
+      case 'removeCustomExercise':
+        keys.push(`customExercise:${e.id}`);
+        break;
+      case 'updateProfile':
+        keys.push('profile');
+        break;
+      case 'logPastWorkout':
+        keys.push(`pastWorkout:${e.workout.date}:${e.workout.name}`);
+        break;
+      case 'createSavedWorkout':
+        keys.push(`savedWorkout:${e.workout.name}`);
+        break;
+      case 'addCustomExercise':
+        keys.push(`customExercise:${e.exercise.name}`);
+        break;
+    }
+  }
+  for (const a of plan.apply) {
+    const payload = (a as any).payload;
+    if (!payload) continue;
+    switch (a.type) {
+      case 'plannedWorkouts/planAdded':
+        if (payload.id) keys.push(`plan:${payload.id}`);
+        if (payload.dateKey) keys.push(`planDate:${payload.dateKey}`);
+        break;
+      case 'plannedWorkouts/planRemoved':
+        if (typeof payload === 'string') keys.push(`plan:${payload}`);
+        break;
+      case 'trackedLifts/liftUpdated':
+        if (payload.id) keys.push(`lift:${payload.id}`);
+        break;
+      case 'trackedLifts/liftRemoved':
+        if (typeof payload === 'string') keys.push(`lift:${payload}`);
+        break;
+      case 'trackedLifts/liftAdded':
+        if (payload.lift?.id) keys.push(`lift:${payload.lift.id}`);
+        if (payload.lift?.name) keys.push(`liftName:${payload.lift.name.toLowerCase()}`);
+        break;
+      case 'workout/replaceExerciseMovement':
+      case 'workout/setsPatched':
+        if (payload.exerciseId) keys.push(`activeExercise:${payload.exerciseId}`);
+        break;
+      case 'customExercises/customExerciseAdded':
+        if (payload.id) keys.push(`customExercise:${payload.id}`);
+        if (payload.name) keys.push(`customExercise:${payload.name}`);
+        break;
+      case 'user/updateProfile':
+      case 'user/setPreferences':
+        keys.push('profile');
+        break;
+    }
+  }
+  return keys;
+}
 
 export function AskAiHost() {
   const dispatch = useAppDispatch();
@@ -87,9 +165,51 @@ export function AskAiHost() {
     if (!open) {
       pendingCalls.current.clear();
       savedWorkouts.current = null;
+      commitSessionUndos(new Map());
+      setDecisions({});
     }
   }, [open]);
   const [undos, setUndos] = React.useState<QueuedUndo[]>([]);
+  const [sessionUndos, setSessionUndos] = React.useState<Map<string, ActiveUndo>>(new Map());
+  // Mirror of sessionUndos that handlers can read synchronously, so state
+  // updaters stay pure (no setState inside another updater).
+  const sessionUndosRef = React.useRef<Map<string, ActiveUndo>>(new Map());
+  const requeues = React.useRef(0);
+  const [decisions, setDecisions] = React.useState<Record<string, ApplyRejectDecision>>({});
+
+  function commitSessionUndos(next: Map<string, ActiveUndo>) {
+    sessionUndosRef.current = next;
+    setSessionUndos(next);
+  }
+
+  // Takes one applied proposal back, from the card's Undo or the toast's Undo
+  // (same path, so a failure is reported the same way): the card flips to
+  // "undone" at once; if the take-back fails it goes back to "applied", its
+  // Undo is restored and the toast is queued again. Rethrows for the caller.
+  async function undoActive(proposalId: string, active: ActiveUndo): Promise<void> {
+    const without = new Map(sessionUndosRef.current);
+    without.delete(proposalId);
+    commitSessionUndos(without);
+    setUndos((q) => q.filter((u) => u.id !== proposalId));
+    setDecisions((d) => ({ ...d, [proposalId]: 'undone' }));
+    try {
+      await active.undo();
+    } catch (err) {
+      commitSessionUndos(new Map(sessionUndosRef.current).set(proposalId, active));
+      setUndos((q) => [
+        ...q,
+        { id: proposalId, key: `${proposalId}:retry${++requeues.current}`, message: active.message, undo: toastUndo(proposalId, active) },
+      ]);
+      setDecisions((d) => ({ ...d, [proposalId]: 'applied' }));
+      throw err;
+    }
+  }
+
+  function toastUndo(proposalId: string, active: ActiveUndo): () => void {
+    return () => {
+      undoActive(proposalId, active).catch((e) => console.error('AI undo failed', e));
+    };
+  }
 
   const planNow = React.useCallback((call: AiToolCall) => {
     const now = store.getState();
@@ -167,7 +287,7 @@ export function AskAiHost() {
     <AnimatePresence mode="wait">
       {current ? (
         <UndoToast
-          key={current.id}
+          key={current.key ?? current.id}
           message={current.message}
           onUndo={current.undo}
           onDone={() => setUndos((q) => q.filter((u) => u.id !== current.id))}
@@ -236,22 +356,62 @@ export function AskAiHost() {
           }
           const savedChanged = touchesSavedWorkouts(plan.effects);
           if (savedChanged) savedWorkouts.current = null;
+          const recordKeys = getPlanRecordKeys(plan);
+          const inverses = (undo as any)?.inverses as AiEffect[] | undefined;
+          if (inverses) {
+            for (const inv of inverses) {
+              if (inv.type === 'undoLogPastWorkout' && inv.workoutId) {
+                recordKeys.push(`pastWorkout:${inv.workoutId}`);
+              }
+              if (inv.type === 'deleteSavedWorkout' && inv.id) {
+                recordKeys.push(`savedWorkout:${inv.id}`);
+              }
+              if (inv.type === 'removeCustomExercise' && inv.id) {
+                recordKeys.push(`customExercise:${inv.id}`);
+              }
+            }
+          }
+          setDecisions((d) => ({ ...d, [proposal.id]: 'applied' }));
           if (undo) {
             const takeBack = undo;
-            setUndos((q) => [...q, {
-              id: plan.id,
+            const activeUndoFn = async () => {
+              await takeBack();
+              if (savedChanged) savedWorkouts.current = null;
+            };
+            const entry: ActiveUndo = {
+              proposalId: proposal.id,
+              recordKeys,
+              undo: activeUndoFn,
               message: plan.summary,
-              undo: () => {
-                takeBack()
-                  .then(() => {
-                    if (savedChanged) savedWorkouts.current = null;
-                  })
-                  .catch((e) => console.error('AI undo failed', e));
-              },
-            }]);
+            };
+            const next = new Map(sessionUndosRef.current);
+            const replacedIds = new Set<string>();
+            for (const [id, prior] of sessionUndosRef.current) {
+              if (prior.recordKeys.some((k) => recordKeys.includes(k))) {
+                next.delete(id);
+                replacedIds.add(id);
+              }
+            }
+            next.set(proposal.id, entry);
+            commitSessionUndos(next);
+            setUndos((q) => [
+              ...(replacedIds.size > 0 ? q.filter((u) => !replacedIds.has(u.id)) : q),
+              { id: proposal.id, message: plan.summary, undo: toastUndo(proposal.id, entry) },
+            ]);
           }
         }}
-        onRejectProposal={(proposal) => pendingCalls.current.delete(proposal.id)}
+        onUndoProposal={async (proposal) => {
+          const active = sessionUndosRef.current.get(proposal.id);
+          if (!active) return;
+          await undoActive(proposal.id, active);
+        }}
+        isProposalUndoable={(proposalId) => sessionUndos.has(proposalId)}
+        decisions={decisions}
+        onDecisionChange={(id, dec) => setDecisions((d) => ({ ...d, [id]: dec }))}
+        onRejectProposal={(proposal) => {
+          pendingCalls.current.delete(proposal.id);
+          setDecisions((d) => ({ ...d, [proposal.id]: 'rejected' }));
+        }}
         overlay={open ? toast : undefined}
       />
       {open ? null : toast}
