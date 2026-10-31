@@ -4,13 +4,18 @@
  * The Anthropic client is passed in so the router owns the key and tests can
  * inject a fake.
  *
- *   chat:     tool-use; tool calls are validated and returned, never applied here.
+ *   chat:     tool-use; server-side read tools run automatically for the verified
+ *             uid in a loop (cap 6 rounds); mutation tool calls are validated and
+ *             returned to the client.
  *   readLift: a described lift -> one tracked-lift entry (FAST_MODEL, forced
  *             submitLift tool so the shape is fixed)
  *
  * Both put the system prompt behind cache_control so the prefix is cached.
  */
 import Anthropic from '@anthropic-ai/sdk';
+import { chatReadTools, executeChatRead, isReadTool, type ChatReadContext } from './chatReads';
+import type { FirestoreRest } from './data/firestore';
+import type { UserData } from './data/userData';
 import { AiError } from './errors';
 import { FAST_MODEL, SMART_MODEL } from './models';
 import { CHAT_SYSTEM_PROMPT, READ_LIFT_SYSTEM_PROMPT } from './prompts';
@@ -26,6 +31,9 @@ import { buildToolDefs, toToolDef, toolValidators, type ToolName } from './tools
 
 /** Largest serialized chat context accepted (characters). */
 const MAX_CONTEXT_CHARS = 40_000;
+
+/** Maximum read-tool loop iterations per chat turn. */
+const MAX_TOOL_ROUNDS = 6;
 
 export function makeClient(apiKey: string): Anthropic {
   return new Anthropic({ apiKey });
@@ -103,6 +111,12 @@ export interface ChatResult {
   stopReason: string | null;
 }
 
+export interface ChatOptions {
+  uid?: string;
+  userData?: UserData;
+  firestore?: FirestoreRest;
+}
+
 /** Throws invalid-argument when the serialized context is over the cap. The
  *  router calls this before counting the request against the daily limit. */
 export function assertContextSize(context: ChatContext | undefined): void {
@@ -123,6 +137,7 @@ export async function handleChat(
   client: Anthropic,
   messages: ChatMessage[],
   context: ChatContext | undefined,
+  options?: ChatOptions,
 ): Promise<ChatResult> {
   // A photo goes before its text, as the API recommends.
   const apiMessages: Anthropic.MessageParam[] = messages.map((m) => ({
@@ -136,47 +151,101 @@ export async function handleChat(
     apiMessages.unshift({ role: 'user', content: preamble });
   }
 
-  const response = await client.messages.create({
-    model: SMART_MODEL,
-    max_tokens: 4096,
-    system: [
-      {
-        type: 'text',
-        text: CHAT_SYSTEM_PROMPT,
-        cache_control: { type: 'ephemeral' },
-      },
-    ],
-    tools: buildToolDefs(),
-    messages: apiMessages,
-  });
+  const allTools = [...buildToolDefs(), ...chatReadTools];
+  const readCtx: ChatReadContext = {
+    uid: options?.uid,
+    data: options?.userData,
+    fs: options?.firestore,
+  };
+
+  let rounds = 0;
+  let finalResponse: Anthropic.Message | null = null;
+
+  while (rounds < MAX_TOOL_ROUNDS) {
+    rounds++;
+    const response = await client.messages.create({
+      model: SMART_MODEL,
+      max_tokens: 4096,
+      system: [
+        {
+          type: 'text',
+          text: CHAT_SYSTEM_PROMPT,
+          cache_control: { type: 'ephemeral' },
+        },
+      ],
+      tools: allTools,
+      messages: apiMessages,
+    });
+
+    finalResponse = response;
+
+    const toolUseBlocks = response.content.filter((b): b is Anthropic.ToolUseBlock => b.type === 'tool_use');
+    const readToolBlocks = toolUseBlocks.filter((b) => isReadTool(b.name));
+
+    // If no read tools were called or we've reached the round cap, stop looping.
+    if (readToolBlocks.length === 0 || rounds >= MAX_TOOL_ROUNDS) {
+      break;
+    }
+
+    // Append assistant turn with its tool calls
+    apiMessages.push({ role: 'assistant', content: response.content });
+
+    // Execute read tools and feed results back
+    const toolResults: Anthropic.ToolResultBlockParam[] = [];
+    for (const block of toolUseBlocks) {
+      if (isReadTool(block.name)) {
+        let result: unknown;
+        try {
+          const res = await executeChatRead(block.name, withoutNulls(block.input) ?? block.input, readCtx);
+          result = res.ok ? res.result : { error: res.error };
+        } catch (err) {
+          result = { error: err instanceof Error ? err.message : String(err) };
+        }
+        toolResults.push({
+          type: 'tool_result',
+          tool_use_id: block.id,
+          content: JSON.stringify(result),
+        });
+      } else {
+        // Non-read tool in the same turn: acknowledge
+        toolResults.push({
+          type: 'tool_result',
+          tool_use_id: block.id,
+          content: JSON.stringify({ status: 'proposal_queued' }),
+        });
+      }
+    }
+
+    apiMessages.push({ role: 'user', content: toolResults });
+  }
 
   const textParts: string[] = [];
   const toolCalls: ChatToolCall[] = [];
 
-  for (const block of response.content) {
-    if (block.type === 'text') {
-      textParts.push(block.text);
-    } else if (block.type === 'tool_use') {
-      const name = block.name as ToolName;
-      const validator = toolValidators[name];
-      if (!validator) {
-        console.warn('model emitted unknown tool', name);
-        continue;
+  if (finalResponse) {
+    for (const block of finalResponse.content) {
+      if (block.type === 'text') {
+        textParts.push(block.text);
+      } else if (block.type === 'tool_use' && !isReadTool(block.name)) {
+        const name = block.name as ToolName;
+        const validator = toolValidators[name];
+        if (!validator) {
+          console.warn('model emitted unknown tool', name);
+          continue;
+        }
+        const parsed = validator.safeParse(withoutNulls(block.input) ?? block.input);
+        if (!parsed.success) {
+          console.warn('tool input failed validation; dropping call', name, JSON.stringify(parsed.error.issues));
+          continue;
+        }
+        toolCalls.push({ id: block.id, name, input: parsed.data });
       }
-      // Nulls mean "not given" (e.g. `weight: null`), not a bad call; then drop
-      // malformed calls rather than forward them to the client.
-      const parsed = validator.safeParse(withoutNulls(block.input) ?? block.input);
-      if (!parsed.success) {
-        console.warn('tool input failed validation; dropping call', name, JSON.stringify(parsed.error.issues));
-        continue;
-      }
-      toolCalls.push({ id: block.id, name, input: parsed.data });
     }
   }
 
   return {
     text: textParts.join('\n').trim(),
     toolCalls,
-    stopReason: response.stop_reason,
+    stopReason: finalResponse?.stop_reason ?? null,
   };
 }

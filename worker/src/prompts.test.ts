@@ -25,6 +25,28 @@ describe('CHAT_SYSTEM_PROMPT', () => {
   });
 });
 
+describe('CHAT_SYSTEM_PROMPT history and past workouts', () => {
+  it('tells the model it can read the whole history using read tools', () => {
+    expect(CHAT_SYSTEM_PROMPT).toContain('list_history');
+    expect(CHAT_SYSTEM_PROMPT).toContain('get_history_entry');
+    expect(CHAT_SYSTEM_PROMPT).toContain('list_workouts');
+    expect(CHAT_SYSTEM_PROMPT).toContain('get_workout');
+  });
+
+  it('instructs checking actual history and counts before answering', () => {
+    expect(CHAT_SYSTEM_PROMPT).toContain(
+      'ALWAYS check history and verify actual counts with tools before answering rather than guessing or assuming.',
+    );
+  });
+
+  it('explains dictating and editing past workouts with logPastWorkout and editPastWorkout', () => {
+    expect(CHAT_SYSTEM_PROMPT).toContain('logPastWorkout');
+    expect(CHAT_SYSTEM_PROMPT).toContain('editPastWorkout');
+    expect(CHAT_SYSTEM_PROMPT).toContain('Ask for missing dates or weights rather than guessing.');
+    expect(CHAT_SYSTEM_PROMPT).toContain('Both logPastWorkout and editPastWorkout ask the lifter first.');
+  });
+});
+
 describe('CHAT_SYSTEM_PROMPT build and plan tools', () => {
   it('names every new tool and says they ask first', () => {
     for (const tool of ['createWorkout', 'updateWorkout', 'planWorkout', 'updateProfile', 'addExercise']) {

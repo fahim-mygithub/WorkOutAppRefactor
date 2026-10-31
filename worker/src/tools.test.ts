@@ -5,8 +5,9 @@ import { buildToolDefs, toolValidators } from './tools';
 describe('tool catalog', () => {
   it('exposes exactly the applied tools', () => {
     expect(buildToolDefs().map((t) => t.name).sort()).toEqual([
-      'addExercise', 'addTrackedLift', 'adjustSet', 'createWorkout', 'logSet', 'planWorkout',
-      'removeTrackedLift', 'swapExercise', 'updateBenchmark', 'updateProfile', 'updateWorkout',
+      'addExercise', 'addTrackedLift', 'adjustSet', 'createWorkout', 'editPastWorkout',
+      'logPastWorkout', 'logSet', 'planWorkout', 'removeTrackedLift', 'swapExercise',
+      'updateBenchmark', 'updateProfile', 'updateWorkout',
     ]);
   });
   it('validates adjustSet', () => {
@@ -67,6 +68,37 @@ describe('workout tools', () => {
     expect(item.type).toBe('object');
     expect(item.required).toEqual(expect.arrayContaining(['name', 'exercises']));
     expect((item.properties.exercises.items as { required: string[] }).required).toEqual(expect.arrayContaining(['name', 'sets', 'reps']));
+  });
+});
+
+describe('past workout tools', () => {
+  it('validates logPastWorkout requires valid date and at least one exercise with sets', () => {
+    const valid = {
+      date: '2026-10-25',
+      name: 'Push Day',
+      exercises: [{ name: 'Bench Press', sets: [{ reps: 8, weight: 185, unit: 'lbs' }] }],
+    };
+    expect(toolValidators.logPastWorkout.safeParse(valid).success).toBe(true);
+    expect(toolValidators.logPastWorkout.safeParse({ ...valid, date: 'yesterday' }).success).toBe(false);
+    expect(toolValidators.logPastWorkout.safeParse({ ...valid, exercises: [] }).success).toBe(false);
+    expect(
+      toolValidators.logPastWorkout.safeParse({
+        ...valid,
+        exercises: [{ name: 'Bench Press', sets: [] }],
+      }).success,
+    ).toBe(false);
+  });
+
+  it('validates editPastWorkout requires workoutId and optional updates', () => {
+    expect(toolValidators.editPastWorkout.safeParse({ workoutId: 'w1', name: 'Updated Push' }).success).toBe(true);
+    expect(toolValidators.editPastWorkout.safeParse({ name: 'No ID' }).success).toBe(false);
+    expect(
+      toolValidators.editPastWorkout.safeParse({
+        workoutId: 'w1',
+        date: '2026-10-26',
+        exercises: [{ name: 'Squat', sets: [{ reps: 5, weight: 225 }] }],
+      }).success,
+    ).toBe(true);
   });
 });
 

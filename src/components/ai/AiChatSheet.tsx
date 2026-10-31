@@ -48,6 +48,7 @@ import { compressImage, ImageTooLargeError } from '@/ai/image';
 import { WorkoutParser } from '@/parser/workoutParser';
 import type { ParsedWorkout } from '@/parser/types';
 import { cn } from '@/lib/utils';
+import { Markdown } from '@/ai/markdown';
 
 // ---------------------------------------------------------------------------
 // AI client boundary (the Worker transport contract).
@@ -408,11 +409,11 @@ export function AiChatSheet({
                   className={cn(
                     'text-body text-ink',
                     msg.role === 'user'
-                      ? 'ml-auto w-fit max-w-[85%] rounded-2xl rounded-br-md bg-surface-raised px-4 py-2.5'
-                      : 'max-w-[92%] whitespace-pre-wrap',
+                      ? 'ml-auto w-fit max-w-[85%] rounded-2xl rounded-br-md bg-surface-raised px-4 py-2.5 whitespace-pre-wrap'
+                      : 'max-w-[92%]',
                   )}
                 >
-                  {msg.text}
+                  {msg.role === 'user' ? msg.text : <Markdown text={msg.text} />}
                 </div>
               ) : null}
 

@@ -9,8 +9,9 @@
  * 'lb' | 'kg'. Everything here (checks, summaries) uses 'lb' | 'kg'.
  *
  * The build / plan / profile tools (createWorkout, updateWorkout, planWorkout,
- * updateProfile, addExercise) are confirm-tier with Undo: their saves outside
- * the store travel as `effects` (see effects.ts), run only on Apply.
+ * updateProfile, addExercise, logPastWorkout, editPastWorkout) are confirm-tier
+ * with Undo: their saves outside the store travel as `effects` (see effects.ts),
+ * run only on Apply.
  */
 import type { UnknownAction } from '@reduxjs/toolkit';
 import type { ActiveWorkout, Exercise, WorkoutExercise, WorkoutSet } from '../types/exercise';
@@ -27,7 +28,14 @@ import { checkProposedLoad } from '../lib/aiLoadCheck';
 import { formatLoad, formatTarget } from '../lib/trackedLifts';
 import { fromFlatLift, type FlatLift } from './liftFields';
 import { swapAlternatives, usesCommonEquipment } from './alternatives';
-import type { AiEffect, SavedWorkoutDraft } from './effects';
+import type {
+  AiEffect,
+  PastWorkoutDraft,
+  PastWorkoutExercise,
+  PastWorkoutSet,
+  PastWorkoutUpdate,
+  SavedWorkoutDraft,
+} from './effects';
 import { workoutText } from './workoutText';
 import type { AiAssistantTurn, AiToolCall } from './types';
 
@@ -671,6 +679,143 @@ export function planToolCall(call: AiToolCall, ctx: PlanContext): ToolPlan {
             notes: `Default: ${sets}×${reps}`,
           },
         }],
+      };
+    }
+
+    case 'logPastWorkout': {
+      const date = str(i.date);
+      if (!date || !isDateKey(date)) return reject('That date is not valid.');
+      const name = str(i.name) || 'Workout';
+      const rawExercises = Array.isArray(i.exercises) ? i.exercises : [];
+      if (rawExercises.length === 0) return reject('No exercises to log.');
+      if (rawExercises.length > 20) return reject('At most 20 exercises at once.');
+
+      const exercises: PastWorkoutExercise[] = [];
+      for (const item of rawExercises) {
+        const ex = (item && typeof item === 'object' ? item : {}) as Record<string, unknown>;
+        const exName = str(ex.name);
+        if (!exName) return reject('An exercise has no name.');
+        const rawSets = Array.isArray(ex.sets) ? ex.sets : [];
+        if (rawSets.length === 0) return reject(`Exercise "${exName}" has no sets.`);
+        if (rawSets.length > 20) return reject(`Exercise "${exName}" has too many sets.`);
+
+        const sets: PastWorkoutSet[] = [];
+        for (const setItem of rawSets) {
+          const s = (setItem && typeof setItem === 'object' ? setItem : {}) as Record<string, unknown>;
+          const reps = index(s.reps);
+          if (!reps || reps <= 0) return reject(`Exercise "${exName}" has an invalid rep count.`);
+          const weight = num(s.weight);
+          const unit = s.unit === 'kg' ? 'kg' : 'lbs';
+          const rpe = num(s.rpe);
+          sets.push({
+            reps,
+            ...(weight !== undefined ? { weight } : {}),
+            unit,
+            ...(rpe !== undefined ? { rpe } : {}),
+          });
+        }
+        exercises.push({
+          name: exName,
+          sets,
+          ...(str(ex.notes) ? { notes: str(ex.notes) } : {}),
+        });
+      }
+
+      const durationMinutes = index(i.durationMinutes);
+      const notes = str(i.notes);
+      const draft: PastWorkoutDraft = {
+        date,
+        name,
+        exercises,
+        ...(durationMinutes ? { durationMinutes } : {}),
+        ...(notes ? { notes } : {}),
+      };
+
+      const dayStr = dateKeyToDate(date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+      const exSummaries = exercises.map((e) => {
+        const setDetails = e.sets.map((s) => `${s.reps}${s.weight ? `@${s.weight}${s.unit ?? 'lbs'}` : ''}`).join(', ');
+        return `${e.name} (${setDetails})`;
+      });
+
+      return {
+        kind: 'confirm', id,
+        summary: `Log past workout "${name}" on ${dayStr} (${plural(exercises.length, 'exercise')})`,
+        detail: [notes, exSummaries.join('; ')].filter(Boolean).join(' — '),
+        apply: [],
+        effects: [{ type: 'logPastWorkout', workout: draft }],
+      };
+    }
+
+    case 'editPastWorkout': {
+      const workoutId = str(i.workoutId);
+      if (!workoutId) return reject('Missing workout id to edit.');
+      const name = str(i.name);
+      const date = i.date !== undefined ? str(i.date) : undefined;
+      if (i.date !== undefined && (!date || !isDateKey(date))) return reject('That date is not valid.');
+      const durationMinutes = i.durationMinutes !== undefined ? index(i.durationMinutes) : undefined;
+      const notes = i.notes !== undefined ? str(i.notes) : undefined;
+
+      let exercises: PastWorkoutExercise[] | undefined;
+      if (i.exercises !== undefined) {
+        const rawExercises = Array.isArray(i.exercises) ? i.exercises : [];
+        exercises = [];
+        for (const item of rawExercises) {
+          const ex = (item && typeof item === 'object' ? item : {}) as Record<string, unknown>;
+          const exName = str(ex.name);
+          if (!exName) return reject('An exercise has no name.');
+          const rawSets = Array.isArray(ex.sets) ? ex.sets : [];
+          if (rawSets.length === 0) return reject(`Exercise "${exName}" has no sets.`);
+
+          const sets: PastWorkoutSet[] = [];
+          for (const setItem of rawSets) {
+            const s = (setItem && typeof setItem === 'object' ? setItem : {}) as Record<string, unknown>;
+            const reps = index(s.reps);
+            if (!reps || reps <= 0) return reject(`Exercise "${exName}" has an invalid rep count.`);
+            const weight = num(s.weight);
+            const unit = s.unit === 'kg' ? 'kg' : 'lbs';
+            const rpe = num(s.rpe);
+            sets.push({
+              reps,
+              ...(weight !== undefined ? { weight } : {}),
+              unit,
+              ...(rpe !== undefined ? { rpe } : {}),
+            });
+          }
+          exercises.push({
+            ...(str(ex.id) ? { id: str(ex.id) } : {}),
+            name: exName,
+            sets,
+            ...(str(ex.notes) ? { notes: str(ex.notes) } : {}),
+          });
+        }
+      }
+
+      if (!name && !date && durationMinutes === undefined && notes === undefined && !exercises) {
+        return reject('Nothing to change.');
+      }
+
+      const update: PastWorkoutUpdate = {
+        ...(name ? { name } : {}),
+        ...(date ? { date } : {}),
+        ...(durationMinutes !== undefined ? { durationMinutes } : {}),
+        ...(notes !== undefined ? { notes } : {}),
+        ...(exercises ? { exercises } : {}),
+      };
+
+      const prior: PastWorkoutUpdate = {};
+      const changes: string[] = [];
+      if (name) changes.push(`rename to "${name}"`);
+      if (date) changes.push(`date to ${date}`);
+      if (exercises) changes.push(`${exercises.length} exercises updated`);
+
+      return {
+        kind: 'confirm', id,
+        summary: `Edit past workout: ${changes.join(', ')}`,
+        detail: exercises
+          ? exercises.map((e) => `${e.name} (${e.sets.map((s) => `${s.reps}${s.weight ? `@${s.weight}` : ''}`).join(', ')})`).join('; ')
+          : undefined,
+        apply: [],
+        effects: [{ type: 'editPastWorkout', workoutId, update, prior }],
       };
     }
 

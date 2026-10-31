@@ -3,7 +3,8 @@
  *
  * A confirm plan carries store actions (`apply`, with `undo` when it can be
  * taken back) and, for the build / plan / profile tools, `effects`: saves
- * outside the store (saved workouts, custom exercises, the profile document).
+ * outside the store (saved workouts, custom exercises, the profile document,
+ * and workout history).
  * Effects are plain data so a late Apply can compare them with what the card
  * showed; running one returns its inverse, which is what Undo runs.
  */
@@ -27,13 +28,46 @@ export interface ProfileChanges {
   preferences?: Partial<UserPreferences>;
 }
 
+export interface PastWorkoutSet {
+  reps: number;
+  weight?: number;
+  unit?: 'lbs' | 'kg';
+  rpe?: number;
+}
+
+export interface PastWorkoutExercise {
+  id?: string;
+  name: string;
+  sets: PastWorkoutSet[];
+  notes?: string;
+}
+
+export interface PastWorkoutDraft {
+  name: string;
+  date: string;
+  durationMinutes?: number;
+  notes?: string;
+  exercises: PastWorkoutExercise[];
+}
+
+export interface PastWorkoutUpdate {
+  name?: string;
+  date?: string;
+  durationMinutes?: number;
+  notes?: string;
+  exercises?: PastWorkoutExercise[];
+}
+
 export type AiEffect =
   | { type: 'createSavedWorkout'; workout: SavedWorkoutDraft }
   | { type: 'updateSavedWorkout'; id: string; workout: SavedWorkoutDraft; prior: SavedWorkoutDraft }
   | { type: 'deleteSavedWorkout'; id: string }
   | { type: 'addCustomExercise'; exercise: SaveCustomExerciseData }
   | { type: 'removeCustomExercise'; id: string }
-  | { type: 'updateProfile'; changes: ProfileChanges };
+  | { type: 'updateProfile'; changes: ProfileChanges }
+  | { type: 'logPastWorkout'; workout: PastWorkoutDraft }
+  | { type: 'deletePastWorkout'; workoutId: string; exerciseIds?: string[] }
+  | { type: 'editPastWorkout'; workoutId: string; update: PastWorkoutUpdate; prior: PastWorkoutUpdate };
 
 /** The app's save paths, injected so tests run without Firestore. */
 export interface EffectServices {
@@ -43,6 +77,10 @@ export interface EffectServices {
   deleteWorkout: (userId: string, id: string) => Promise<void>;
   /** Writes the display name and/or the WHOLE preferences object. */
   saveProfile: (userId: string, changes: { displayName?: string; preferences?: UserPreferences }) => Promise<void>;
+  /** Saves a dictated past workout; resolves with its summary id and exercise history ids. */
+  savePastWorkout?: (userId: string, workout: PastWorkoutDraft) => Promise<{ workoutId: string; exerciseIds: string[] }>;
+  deletePastWorkout?: (userId: string, workoutId: string, exerciseIds?: string[]) => Promise<void>;
+  updatePastWorkout?: (userId: string, workoutId: string, update: PastWorkoutUpdate) => Promise<void>;
 }
 
 export interface EffectDeps {
@@ -97,6 +135,21 @@ async function runEffect(effect: AiEffect, deps: EffectDeps, userId: string): Pr
         throw err;
       }
       return { type: 'updateProfile', changes: prior };
+    }
+    case 'logPastWorkout': {
+      if (!services.savePastWorkout) throw new Error('savePastWorkout not supported');
+      const { workoutId, exerciseIds } = await services.savePastWorkout(userId, effect.workout);
+      return { type: 'deletePastWorkout', workoutId, exerciseIds };
+    }
+    case 'deletePastWorkout': {
+      if (!services.deletePastWorkout) throw new Error('deletePastWorkout not supported');
+      await services.deletePastWorkout(userId, effect.workoutId, effect.exerciseIds);
+      return null;
+    }
+    case 'editPastWorkout': {
+      if (!services.updatePastWorkout) throw new Error('updatePastWorkout not supported');
+      await services.updatePastWorkout(userId, effect.workoutId, effect.update);
+      return { type: 'editPastWorkout', workoutId: effect.workoutId, update: effect.prior, prior: effect.update };
     }
   }
 }

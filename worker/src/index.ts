@@ -11,6 +11,9 @@ import { isAllowed, takeDailySlot, verifyIdToken } from './access';
 import { assertContextSize, handleChat, handleReadLift, makeClient } from './handlers';
 import { findExercise } from './findExercise';
 import { readMachine } from './readMachine';
+import { createFirestoreRest, type FirestoreRest } from './data/firestore';
+import { parseServiceAccount, serviceAccountTokenSource } from './data/googleAuth';
+import { UserData } from './data/userData';
 
 /** Largest request body accepted (characters): 50 chat turns plus one photo
  *  (the schema caps the photo itself). */
@@ -34,10 +37,16 @@ export interface Env {
   AI_ALLOWED_EMAILS: string;
   AI_DAILY_LIMIT: string;
   AI_USAGE: KVNamespace;
+  FIREBASE_SERVICE_ACCOUNT?: string;
 }
 
 type ActionName = AiRequest['action'];
-type Handler = (data: AiRequest, client: Anthropic, env: Env) => Promise<unknown>;
+type Handler = (
+  data: AiRequest,
+  client: Anthropic,
+  env: Env,
+  user?: { uid: string; email?: string },
+) => Promise<unknown>;
 
 export interface Deps {
   verify: (token: string, projectId: string) => Promise<{ uid: string; email?: string }>;
@@ -47,9 +56,26 @@ export interface Deps {
 
 /** The real action handlers, keyed by `action`. */
 export const defaultActions: Deps['actions'] = {
-  chat: (d, c) => {
+  chat: (d, c, env, user) => {
     const req = d as Extract<AiRequest, { action: 'chat' }>;
-    return handleChat(c, req.messages, req.context);
+    let firestore: FirestoreRest | undefined;
+    let userData: UserData | undefined;
+    if (env.FIREBASE_SERVICE_ACCOUNT && env.FIREBASE_PROJECT_ID && user?.uid) {
+      try {
+        firestore = createFirestoreRest(
+          env.FIREBASE_PROJECT_ID,
+          serviceAccountTokenSource(parseServiceAccount(env.FIREBASE_SERVICE_ACCOUNT)),
+        );
+        userData = new UserData(firestore, user.uid);
+      } catch (err) {
+        console.warn('Firebase service account initialization failed', err);
+      }
+    }
+    return handleChat(c, req.messages, req.context, {
+      uid: user?.uid,
+      firestore,
+      userData,
+    });
   },
   readLift: (d, c) =>
     handleReadLift(c, (d as Extract<AiRequest, { action: 'readLift' }>).text).then((result) => ({ result })),
@@ -112,7 +138,7 @@ export async function handleRequest(request: Request, env: Env, deps: Deps = def
     }
     const handler = deps.actions[parsed.data.action];
     if (!handler) throw new AiError('invalid-argument', 'Unknown action.');
-    const result = await handler(parsed.data, makeClient(env.ANTHROPIC_API_KEY), env);
+    const result = await handler(parsed.data, makeClient(env.ANTHROPIC_API_KEY), env, user);
     return json({ action: parsed.data.action, ...(result as object) }, 200, cors);
   } catch (err) {
     if (!(err instanceof AiError)) {

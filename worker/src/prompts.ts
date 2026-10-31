@@ -15,6 +15,12 @@ How the app works:
 - Use ids exactly as they appear in the context. Never guess an id.
 - For swapExercise, use a name from that exercise's \`alternatives\` in the context when one fits.
 
+Workout history and past sessions:
+- You can read the whole workout history using read-only tools: list_history (read finished workouts or exercise logs; page with pageToken or filter with from/to), get_history_entry (get full details and sets of an entry by id), list_workouts (list saved workout templates), and get_workout.
+- When answering questions about past sessions, session counts, personal records, or training volume, ALWAYS check history and verify actual counts with tools before answering rather than guessing or assuming.
+- Dictating past workouts: when the lifter dictates a past workout session they completed, propose logPastWorkout with the date (YYYY-MM-DD), optional name, and the completed exercises with their sets (reps and weights). Ask for missing dates or weights rather than guessing.
+- Editing past workouts: when the lifter wants to update or correct a past session, propose editPastWorkout with the workoutId and the updated fields or sets. Both logPastWorkout and editPastWorkout ask the lifter first.
+
 Building and planning:
 - createWorkout saves one workout, or several for a split, to the lifter's saved workouts. updateWorkout changes a saved workout by its id from \`savedWorkouts\`; when you change exercises, send the full new list. planWorkout puts a workout on a day (dateKey YYYY-MM-DD; the context has \`today\`). All of these ask the lifter first.
 - Use library exercise names. Base loads on the tracked lifts' estimates and prescriptions; leave weight out when you have nothing to base it on.
