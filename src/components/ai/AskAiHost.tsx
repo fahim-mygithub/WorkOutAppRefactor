@@ -336,7 +336,33 @@ export function AskAiHost() {
           });
           setUndos((q) => q.filter((u) => u.id !== proposal.id));
           setDecisions((d) => ({ ...d, [proposal.id]: 'undone' }));
-          await active.undo();
+          try {
+            await active.undo();
+          } catch (err) {
+            setSessionUndos((prev) => new Map(prev).set(proposal.id, active));
+            setUndos((q) => [
+              ...q,
+              {
+                id: proposal.id,
+                message: active.message,
+                undo: () => {
+                  active
+                    .undo()
+                    .then(() => {
+                      setDecisions((d) => ({ ...d, [proposal.id]: 'undone' }));
+                      setSessionUndos((prev) => {
+                        const next = new Map(prev);
+                        next.delete(proposal.id);
+                        return next;
+                      });
+                    })
+                    .catch((e) => console.error('AI undo failed', e));
+                },
+              },
+            ]);
+            setDecisions((d) => ({ ...d, [proposal.id]: 'applied' }));
+            throw err;
+          }
         }}
         isProposalUndoable={(proposalId) => sessionUndos.has(proposalId)}
         decisions={decisions}

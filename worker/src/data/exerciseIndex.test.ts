@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { resolveExercise } from './exerciseIndex';
+import { resolveExercise, matchExerciseInList, getCachedLibrary } from './exerciseIndex';
 import { fallbackExerciseId } from './shapes';
+import { matchExercise } from '../../../src/lib/exerciseMatch';
 
 describe('exerciseIndex', () => {
   it('resolves library exercises by exact name, alias, and keywords', () => {
@@ -8,6 +9,7 @@ describe('exerciseIndex', () => {
     expect(bench.isFallback).toBe(false);
     expect(bench.matchedBy).toBe('library');
     expect(bench.id).toBe('exercise-1335');
+    expect(bench.matchedName).toBe('Barbell Bench Press');
     expect(bench.equipment).toBe('Barbell');
 
     const squat = resolveExercise('Squat');
@@ -20,6 +22,49 @@ describe('exerciseIndex', () => {
 
     const tricepPushdown = resolveExercise('Tricep Pushdown');
     expect(tricepPushdown.isFallback).toBe(false);
+  });
+
+  it('agrees with the app matcher across library exercises and gym shorthand', () => {
+    const library = getCachedLibrary();
+    const testCases = [
+      'bench press',
+      'Bench Press',
+      'Barbell Bench Press',
+      'larsen bench press',
+      'incline bench press',
+      'db incline bench press',
+      'Squats',
+      'front squat',
+      'barbell row',
+      'lat pulldown',
+      'dips',
+      'db curl',
+      'ohp',
+      'heavy barbell bench press',
+      'unmatched unknown workout move',
+    ];
+
+    for (const name of testCases) {
+      const appMatch = matchExercise(name, library as any);
+      const wrkMatch = matchExerciseInList(name, library);
+
+      if (appMatch) {
+        expect(wrkMatch).not.toBeNull();
+        expect(wrkMatch!.id).toBe(appMatch.id);
+        expect(wrkMatch!.name).toBe(appMatch.name);
+
+        const resolved = resolveExercise(name);
+        expect(resolved.id).toBe(appMatch.id);
+        expect(resolved.matchedName).toBe(appMatch.name);
+        expect(resolved.isFallback).toBe(false);
+      } else {
+        expect(wrkMatch).toBeNull();
+        const resolved = resolveExercise(name);
+        expect(resolved.id).toBe(fallbackExerciseId(name));
+        expect(resolved.matchedName).toBe(name.trim());
+        expect(resolved.isFallback).toBe(true);
+      }
+    }
   });
 
   it('resolves custom exercises with priority over library', () => {

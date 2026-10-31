@@ -492,4 +492,50 @@ describe('AskAiHost — build, plan and profile tools', () => {
     // 5. It still calls the history undo!
     await waitFor(() => expect(historyUndoLog).toHaveBeenCalledWith("w-ai-1", ["ex-ai-1"]));
   });
+
+  it('restores applied decision and keeps session undo entry when undo fails', async () => {
+    const historyLog = vi.fn().mockResolvedValue({ workoutId: 'w-ai-2', exerciseIds: ['ex-ai-2'] });
+    const historyUndoLog = vi.fn().mockRejectedValueOnce(new Error('undo network error')).mockResolvedValueOnce(undefined);
+    svc.history = {
+      log: historyLog,
+      undoLog: historyUndoLog,
+      edit: vi.fn(),
+      undoEdit: vi.fn(),
+    };
+    vi.spyOn(aiClient, 'chat').mockResolvedValue({
+      reply: 'Logged it.',
+      source: 'backend',
+      toolCalls: [{
+        id: 'call-log-fail',
+        name: 'logPastWorkout',
+        input: {
+          date: '2026-10-30',
+          name: 'Push',
+          exercises: [{ name: 'Barbell Bench Press', sets: [{ reps: 5, weight: 135 }] }],
+        },
+      }],
+    });
+
+    const store = signedInStore();
+    renderHost(store, '/build');
+    const u = await send('log bench');
+
+    await u.click(await screen.findByRole('button', { name: 'Apply' }));
+    await waitFor(() => expect(historyLog).toHaveBeenCalledTimes(1));
+
+    // First undo attempt fails
+    const undos = await screen.findAllByRole('button', { name: 'Undo' });
+    await u.click(undos[0]);
+
+    // Error displayed, decision restored to applied, Undo button still present
+    expect(await screen.findByText("Couldn't undo — try again.")).toBeInTheDocument();
+    expect(await screen.findByText('Applied')).toBeInTheDocument();
+    const undosAfter = await screen.findAllByRole('button', { name: 'Undo' });
+    expect(undosAfter.length).toBeGreaterThan(0);
+
+    // Second undo attempt succeeds
+    await u.click(undosAfter[0]);
+    await waitFor(() => expect(historyUndoLog).toHaveBeenCalledTimes(2));
+    expect(await screen.findByText('Undone')).toBeInTheDocument();
+  });
 });

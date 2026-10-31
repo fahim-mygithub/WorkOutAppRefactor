@@ -441,4 +441,31 @@ describe('AiChatSheet — async Apply', () => {
     );
     expect(await screen.findByText('Undone')).toBeInTheDocument();
   });
+
+  it('restores applied decision and keeps Undo button when onUndoProposal rejects', async () => {
+    const user = userEvent.setup();
+    const onUndoProposal = vi.fn().mockRejectedValue(new Error('network error'));
+    render(
+      <AiChatSheet
+        open
+        onOpenChange={() => {}}
+        client={makeClient(turn)}
+        onApplyProposal={vi.fn()}
+        onUndoProposal={onUndoProposal}
+      />,
+    );
+    await user.type(await screen.findByLabelText('Message'), 'make me a push day');
+    await user.click(screen.getByRole('button', { name: 'Send' }));
+    await user.click(await screen.findByRole('button', { name: 'Apply' }));
+    expect(await screen.findByText('Applied')).toBeInTheDocument();
+
+    const undoBtn = screen.getByRole('button', { name: 'Undo' });
+    await user.click(undoBtn);
+    expect(onUndoProposal).toHaveBeenCalled();
+
+    // On failure: error shown, card decision restored to 'applied', Undo button remains
+    expect(await screen.findByText("Couldn't undo — try again.")).toBeInTheDocument();
+    expect(await screen.findByText('Applied')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Undo' })).toBeInTheDocument();
+  });
 });

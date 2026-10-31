@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { FakeFirestore } from './data/testing/fakeFirestore';
 import { UserData } from './data/userData';
 import { resolveExercise } from './data/exerciseIndex';
+import { fallbackExerciseId } from './data/shapes';
 import { runAgentTool } from './agentTools/registry';
 import { runHistoryAction } from './historyActions';
 import { defaultActions, handleRequest, type Deps, type Env } from './index';
@@ -280,13 +281,42 @@ describe('history log / undoLog', () => {
   });
 
   it('a library exercise with no history matches what the app would store', async () => {
+    // When an exercise with no prior history is logged via gym shorthand ("bench press"),
+    // it resolves to the library exercise ("Barbell Bench Press", exercise-1335) matching the
+    // app's findExerciseInDatabase / matchExercise derivation:
+    // 1. exerciseId is the library id ('exercise-1335')
+    // 2. equipment and muscleGroups are taken from the library ('Barbell', ['Chest', 'Triceps']), NOT 'Unknown'
+    // 3. stats are initialized under the library id
+    // 4. unmatched exercises with no history fall back to generateFallbackExerciseId (fallback-<hash>) with Unknown
     const logged = await okRun('log', {
       date: '2026-10-30',
-      name: 'Leg Day',
-      exercises: [{ name: 'Barbell Bench Press', sets: [{ reps: 5, weight: 135 }] }],
+      name: 'Chest Day',
+      exercises: [
+        { name: 'bench press', sets: [{ reps: 5, weight: 135 }] },
+        { name: 'Zorblax Thruster 9000', sets: [{ reps: 8, weight: 50 }] },
+      ],
     });
-    const doc = fs.read([...user(UID), 'exercise_history', (logged.exerciseIds as string[])[0]])!;
-    expect(doc.exerciseId).toBe('exercise-1335');
+    const [benchId, fallbackExDocId] = logged.exerciseIds as string[];
+
+    // Library exercise derivation
+    const benchDoc = fs.read([...user(UID), 'exercise_history', benchId])!;
+    expect(benchDoc.exerciseId).toBe('exercise-1335');
+    expect(benchDoc.equipment).toBe('Barbell');
+    expect(benchDoc.muscleGroups).toEqual(['Barbell', 'Chest', 'Mid and Lower Chest']);
+
+    const benchStats = fs.read([...user(UID), 'exercise_stats', 'exercise-1335'])!;
+    expect(benchStats).toBeDefined();
+    expect(benchStats.totalSessions).toBe(1);
+
+    // Unmatched exercise derivation (matches app's generateFallbackExerciseId)
+    const fallbackDoc = fs.read([...user(UID), 'exercise_history', fallbackExDocId])!;
+    expect(fallbackDoc.exerciseId).toBe(fallbackExerciseId('Zorblax Thruster 9000'));
+    expect(fallbackDoc.equipment).toBe('Unknown');
+    expect(fallbackDoc.muscleGroups).toEqual(['Unknown']);
+
+    const fallbackStats = fs.read([...user(UID), 'exercise_stats', fallbackDoc.exerciseId as string])!;
+    expect(fallbackStats).toBeDefined();
+    expect(fallbackStats.totalSessions).toBe(1);
   });
 
   it('refuses a future date', async () => {

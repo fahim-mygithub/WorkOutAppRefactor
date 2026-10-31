@@ -283,6 +283,8 @@ export function AiChatSheet({
       try {
         await onUndoProposal?.(proposal);
       } catch {
+        setInternalDecisions((d) => ({ ...d, [proposal.id]: 'applied' }));
+        onDecisionChange?.(proposal.id, 'applied');
         setError("Couldn't undo — try again.");
       }
     },
