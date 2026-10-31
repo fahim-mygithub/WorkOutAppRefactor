@@ -469,3 +469,128 @@ describe('AiChatSheet — async Apply', () => {
     expect(screen.getByRole('button', { name: 'Undo' })).toBeInTheDocument();
   });
 });
+
+describe('AiChatSheet — outcome notes for the model', () => {
+  const turn: AiAssistantTurn = {
+    text: 'Logged it.',
+    proposals: [{ id: 'p1', tool: 'logPastWorkout', summary: 'Log Push day' }],
+  };
+
+  async function sendAndGetProposal(client: AiChatClient) {
+    const user = userEvent.setup();
+    render(
+      <AiChatSheet
+        open
+        onOpenChange={() => {}}
+        client={client}
+        onApplyProposal={vi.fn()}
+        onUndoProposal={vi.fn()}
+        onRejectProposal={vi.fn()}
+      />,
+    );
+    await user.type(await screen.findByLabelText('Message'), 'log push');
+    await user.click(screen.getByRole('button', { name: 'Send' }));
+    await screen.findByText('Logged it.');
+    return user;
+  }
+
+  function lastUserText(client: AiChatClient, call: number): string {
+    const sent = (client.sendMessage as ReturnType<typeof vi.fn>).mock.calls[call][0] as {
+      messages: { role: string; text: string }[];
+    };
+    const users = sent.messages.filter((m) => m.role === 'user');
+    return users[users.length - 1].text;
+  }
+
+  it('tells the next request that a proposal was applied, without rendering it', async () => {
+    const client = makeClient(turn);
+    const user = await sendAndGetProposal(client);
+    await user.click(screen.getByRole('button', { name: 'Apply' }));
+    await screen.findByText('Applied');
+
+    await user.type(screen.getByLabelText('Message'), 'and now?');
+    await user.click(screen.getByRole('button', { name: 'Send' }));
+    await waitFor(() => expect(client.sendMessage).toHaveBeenCalledTimes(2));
+
+    expect(lastUserText(client, 1)).toContain('Log Push day (logPastWorkout): applied at');
+    expect(lastUserText(client, 1)).toMatch(/and now\?$/);
+    // Visible transcript keeps only what the user and assistant wrote.
+    expect(screen.queryByText(/App note/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/applied at/)).not.toBeInTheDocument();
+  });
+
+  it('sends undone after an undo, and the note is sent once', async () => {
+    const client = makeClient(turn);
+    const user = await sendAndGetProposal(client);
+    await user.click(screen.getByRole('button', { name: 'Apply' }));
+    await screen.findByText('Applied');
+    await user.click(screen.getByRole('button', { name: 'Undo' }));
+    await screen.findByText('Undone');
+
+    await user.type(screen.getByLabelText('Message'), 'again?');
+    await user.click(screen.getByRole('button', { name: 'Send' }));
+    await waitFor(() => expect(client.sendMessage).toHaveBeenCalledTimes(2));
+    expect(lastUserText(client, 1)).toContain('undone, the data was removed');
+
+    await user.type(screen.getByLabelText('Message'), 'third');
+    await user.click(screen.getByRole('button', { name: 'Send' }));
+    await waitFor(() => expect(client.sendMessage).toHaveBeenCalledTimes(3));
+    expect(lastUserText(client, 2)).not.toContain('App note');
+  });
+
+  it('tells the next request about a rejected proposal', async () => {
+    const client = makeClient(turn);
+    const user = await sendAndGetProposal(client);
+    await user.click(screen.getByRole('button', { name: 'Reject' }));
+
+    await user.type(screen.getByLabelText('Message'), 'ok');
+    await user.click(screen.getByRole('button', { name: 'Send' }));
+    await waitFor(() => expect(client.sendMessage).toHaveBeenCalledTimes(2));
+    expect(lastUserText(client, 1)).toContain('Log Push day (logPastWorkout): rejected.');
+  });
+
+  it('tells the next request when an undo failed, with the reason', async () => {
+    const client = makeClient(turn);
+    const user = userEvent.setup();
+    render(
+      <AiChatSheet
+        open
+        onOpenChange={() => {}}
+        client={client}
+        onApplyProposal={vi.fn()}
+        onUndoProposal={vi.fn().mockRejectedValue(new Error('disk full'))}
+      />,
+    );
+    await user.type(await screen.findByLabelText('Message'), 'log push');
+    await user.click(screen.getByRole('button', { name: 'Send' }));
+    await user.click(await screen.findByRole('button', { name: 'Apply' }));
+    await screen.findByText('Applied');
+    await user.click(screen.getByRole('button', { name: 'Undo' }));
+    await screen.findByText("Couldn't undo — try again.");
+
+    await user.type(screen.getByLabelText('Message'), 'retry?');
+    await user.click(screen.getByRole('button', { name: 'Send' }));
+    await waitFor(() => expect(client.sendMessage).toHaveBeenCalledTimes(2));
+    expect(lastUserText(client, 1)).toContain('undo failed: disk full');
+  });
+
+  it('keeps the note when the request fails, so the next one still carries it', async () => {
+    const sendMessage = vi
+      .fn()
+      .mockResolvedValueOnce(turn)
+      .mockRejectedValueOnce(new Error('offline'))
+      .mockResolvedValueOnce({ text: 'ok' });
+    const client: AiChatClient = { sendMessage };
+    const user = await sendAndGetProposal(client);
+    await user.click(screen.getByRole('button', { name: 'Reject' }));
+
+    await user.type(screen.getByLabelText('Message'), 'first');
+    await user.click(screen.getByRole('button', { name: 'Send' }));
+    await screen.findByText('offline');
+
+    await user.type(screen.getByLabelText('Message'), 'second');
+    await user.click(screen.getByRole('button', { name: 'Send' }));
+    await waitFor(() => expect(sendMessage).toHaveBeenCalledTimes(3));
+    expect(lastUserText(client, 2)).toContain('rejected.');
+  });
+});

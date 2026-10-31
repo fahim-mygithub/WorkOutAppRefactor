@@ -45,6 +45,7 @@ import type {
   AiVisualization,
 } from '@/ai/types';
 import { compressImage, ImageTooLargeError } from '@/ai/image';
+import { attachNotes, capNotes, formatNote, type ProposalOutcome } from '@/ai/chatNotes';
 import { WorkoutParser } from '@/parser/workoutParser';
 import type { ParsedWorkout } from '@/parser/types';
 import { cn } from '@/lib/utils';
@@ -214,6 +215,19 @@ export function AiChatSheet({
   const [attached, setAttached] = React.useState<AiImage | null>(null);
   const [readingPhoto, setReadingPhoto] = React.useState(false);
   const photoInputRef = React.useRef<HTMLInputElement>(null);
+  // Outcomes of proposal cards not yet sent to the model. Sent as a note in the
+  // next request, then cleared; never rendered.
+  const pendingNotes = React.useRef<string[]>([]);
+
+  const recordOutcome = React.useCallback(
+    (proposal: AiToolProposal, outcome: ProposalOutcome) => {
+      pendingNotes.current = capNotes([
+        ...pendingNotes.current,
+        formatNote(proposal, outcome),
+      ]);
+    },
+    [],
+  );
 
   const parserRef = React.useRef<WorkoutParser | null>(null);
   if (parserRef.current === null) {
@@ -238,9 +252,10 @@ export function AiChatSheet({
       setError(null);
       setInternalDecisions((d) => ({ ...d, [proposal.id]: 'applied' }));
       onDecisionChange?.(proposal.id, 'applied');
+      recordOutcome(proposal, { kind: 'applied', at: new Date() });
       void client?.applyToolCall?.(proposal);
     },
-    [client, onApplyProposal, onDecisionChange],
+    [client, onApplyProposal, onDecisionChange, recordOutcome],
   );
 
   const handlePhoto = React.useCallback(
@@ -271,9 +286,10 @@ export function AiChatSheet({
     (proposal: AiToolProposal) => {
       setInternalDecisions((d) => ({ ...d, [proposal.id]: 'rejected' }));
       onDecisionChange?.(proposal.id, 'rejected');
+      recordOutcome(proposal, { kind: 'rejected' });
       onRejectProposal?.(proposal);
     },
-    [onRejectProposal, onDecisionChange],
+    [onRejectProposal, onDecisionChange, recordOutcome],
   );
 
   const handleUndo = React.useCallback(
@@ -282,13 +298,18 @@ export function AiChatSheet({
       onDecisionChange?.(proposal.id, 'undone');
       try {
         await onUndoProposal?.(proposal);
-      } catch {
+        recordOutcome(proposal, { kind: 'undone' });
+      } catch (err) {
         setInternalDecisions((d) => ({ ...d, [proposal.id]: 'applied' }));
         onDecisionChange?.(proposal.id, 'applied');
+        recordOutcome(proposal, {
+          kind: 'undo-failed',
+          reason: err instanceof Error && err.message ? err.message : 'unknown error',
+        });
         setError("Couldn't undo — try again.");
       }
     },
-    [onUndoProposal, onDecisionChange],
+    [onUndoProposal, onDecisionChange, recordOutcome],
   );
 
   const sendToBackend = React.useCallback(
@@ -307,9 +328,19 @@ export function AiChatSheet({
       setPending(true);
       setError(null);
       try {
-        const turn = await client.sendMessage({
-          messages: toBackendHistory(history),
-        });
+        // Taken now, so a note recorded while this request is in flight waits
+        // for the next one. Put back if the request fails, so it isn't lost.
+        const sentNotes = pendingNotes.current;
+        pendingNotes.current = [];
+        let turn: AiAssistantTurn;
+        try {
+          turn = await client.sendMessage({
+            messages: attachNotes(toBackendHistory(history), sentNotes),
+          });
+        } catch (err) {
+          pendingNotes.current = capNotes([...sentNotes, ...pendingNotes.current]);
+          throw err;
+        }
         setMessages((prev) => [
           ...prev,
           {
