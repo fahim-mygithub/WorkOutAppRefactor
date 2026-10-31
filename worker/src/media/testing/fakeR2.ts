@@ -204,6 +204,24 @@ export function fakeR2(): R2Bucket & { store: Map<string, StoredR2Object> } {
       const arr = Array.isArray(keys) ? keys : [keys];
       for (const k of arr) store.delete(k);
     },
+
+    /** Sorted, paginated like R2: `cursor` is the last key of the previous page. */
+    async list(options?: R2ListOptions): Promise<R2Objects> {
+      const limit = options?.limit ?? 1000;
+      const keys = [...store.keys()]
+        .filter((k) => k.startsWith(options?.prefix ?? ''))
+        .sort()
+        .filter((k) => !options?.cursor || k > options.cursor);
+      const page = keys.slice(0, limit);
+      const truncated = keys.length > page.length;
+      const objects = page.map((key) => {
+        const s = store.get(key)!;
+        return { key, size: s.data.length, etag: s.etag, uploaded: s.uploaded } as R2Object;
+      });
+      return (truncated
+        ? { objects, delimitedPrefixes: [], truncated: true, cursor: page[page.length - 1] }
+        : { objects, delimitedPrefixes: [], truncated: false }) as R2Objects;
+    },
   };
 
   return Object.assign(bucket as R2Bucket, { store });

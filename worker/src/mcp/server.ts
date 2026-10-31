@@ -8,6 +8,7 @@ import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/
 import { CfWorkerJsonSchemaValidator } from '@modelcontextprotocol/sdk/validation/cfworker';
 import { agentTools, runAgentTool } from '../agentTools/registry';
 import type { UserData } from '../data/userData';
+import type { MediaQuota } from '../media/quota';
 
 export const SERVER_INFO = { name: 'workout-app', version: '1.0.0' };
 
@@ -16,7 +17,7 @@ const INSTRUCTIONS =
   'Read before you write: list or get a workout before updating it. Writes show up in the app the next time it loads. ' +
   'Weights are in the unit the user uses (get_profile shows weightUnit). Dates are YYYY-MM-DD in the user\'s local calendar.';
 
-export function buildMcpServer(data: UserData): McpServer {
+export function buildMcpServer(data: UserData, mediaQuota?: MediaQuota): McpServer {
   const server = new McpServer(SERVER_INFO, {
     instructions: INSTRUCTIONS,
     // Workers forbid eval/new Function, which the default (Ajv) validator uses.
@@ -37,7 +38,7 @@ export function buildMcpServer(data: UserData): McpServer {
         },
       },
       async (args: unknown) => {
-        const r = await runAgentTool(tool.name, args, { data });
+        const r = await runAgentTool(tool.name, args, { data, mediaQuota });
         return r.ok
           ? { content: [{ type: 'text' as const, text: JSON.stringify(r.result, null, 2) }] }
           : { content: [{ type: 'text' as const, text: r.error }], isError: true };
@@ -47,8 +48,8 @@ export function buildMcpServer(data: UserData): McpServer {
   return server;
 }
 
-export async function handleMcpRequest(request: Request, data: UserData): Promise<Response> {
-  const server = buildMcpServer(data);
+export async function handleMcpRequest(request: Request, data: UserData, mediaQuota?: MediaQuota): Promise<Response> {
+  const server = buildMcpServer(data, mediaQuota);
   const transport = new WebStandardStreamableHTTPServerTransport({
     sessionIdGenerator: undefined,
     enableJsonResponse: true,

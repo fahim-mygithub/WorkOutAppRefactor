@@ -155,6 +155,24 @@ Custom exercise photos, GIFs, and videos are stored in Cloudflare R2 under bucke
   4. Log or plan the workout with `log_workout` or `plan_workout`, referencing the exercise by its ID.
   5. Call `create_media_upload_link` to give the user a link to upload the photo/video to the exercise.
 
+#### Media storage limits (never reach R2's 10 GB free tier)
+
+Cloudflare R2 has no hard cap, so the Worker enforces one (`src/media/quota.ts`). Every write path (`POST /media`, `POST /upload/<token>`, `attach_media_from_url`) is checked **before** anything is written:
+
+| Limit | Var in `wrangler.toml` | Default |
+| --- | --- | --- |
+| Whole bucket | `MEDIA_MAX_BYTES` | 8 GiB (8,589,934,592) |
+| Per user | `MEDIA_USER_MAX_BYTES` | 1 GiB (1,073,741,824) |
+| Writes per month | `MEDIA_MAX_WRITES_PER_MONTH` | 100,000 (free tier: 1M Class A ops) |
+
+- **Refusal:** a write that would pass a limit returns `507` `{"error":{"code":"storage_full","message":"..."}}` and stores nothing. The connector tools `create_media_upload_link` and `attach_media_from_url` return the same `storage_full: ...` message to the model instead of a link or an attachment. An upload link is not used up by a refusal.
+- **Counters:** KV (`AI_USAGE`) keys `media_quota:total`, `media_quota:user:<uid>`, `media_quota:ops` (per UTC month) and `media_quota:reconciled`. A write is *reserve -> put -> confirm*: the incoming bytes are reserved before the put (so two writes that fit one at a time but not together cannot both pass), confirmed with the object's real size from R2 (not the claimed `Content-Length`), and released if the put fails. Deleting through `deleteWithQuota` decrements by the real size. Uploads whose Firestore attach fails are deleted again.
+- **Races:** KV has no atomic update. Reservations are serialized inside one Worker isolate, but two isolates can still overshoot by a few uploads. That is why the default ceiling is 8 GiB and not 10: at least 2 GiB of headroom stays under the free tier (a single upload is <= 60 MB).
+- **Self-heal:** a daily cron (`[triggers] crons = ["17 3 * * *"]`, UTC) lists the whole bucket, recomputes the total and per-user bytes, rewrites the counters (and drops in-flight reservations) and stores `lastReconciled`. If the listing fails at any point the old counters are kept. It does not change the monthly write counter. Trigger it by hand with `npx wrangler dev --test-scheduled` then `curl "http://localhost:8787/cdn-cgi/handler/scheduled?cron=17+3+*+*+*"`.
+- **Visibility:** `GET /media/usage` (`Authorization: Bearer <Firebase ID token>`, allow-listed email) returns `{usedBytes, limitBytes, userUsedBytes, userLimitBytes}` plus `monthlyWrites`, `monthlyWriteLimit` and `lastReconciled`.
+- **Raising or lowering a limit:** change the var in `wrangler.toml` and `npx wrangler deploy`. `MEDIA_MAX_BYTES` above 9 GiB (or `MEDIA_MAX_WRITES_PER_MONTH` above 1,000,000) is refused: the Worker rejects every media write with a 500 naming the var until it is lowered. Non-numeric values fall back to the defaults. The per-user limit is capped at the global one.
+- **Also set a Cloudflare budget alert** (dashboard -> Billing -> Notifications -> usage-based billing alert, e.g. at a few dollars): the Worker's limits only protect what goes through the Worker; the alert is the independent backstop if anything else writes to the bucket.
+
 ### Add it to Claude
 
 - **claude.ai / Claude app:** Settings → Connectors → *Add custom connector* →
