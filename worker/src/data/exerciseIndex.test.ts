@@ -237,4 +237,74 @@ describe('searchExerciseIndex', () => {
     expect(gibberish.results).toHaveLength(0);
     expect(gibberish.truncated).toBe(false);
   });
+
+  it('finds Machine Pec Fly for gym slang pec deck', () => {
+    const res = searchExerciseIndex('pec deck');
+    expect(res.results.length).toBeGreaterThan(0);
+    expect(res.results[0].name).toContain('Pec Fly');
+    expect(res.results[0].name.startsWith('Machine')).toBe(true);
+  });
+
+  it('ranks own-word results before synonym-only results', () => {
+    const res = searchExerciseIndex('leg curl');
+    expect(res.results.length).toBeGreaterThan(0);
+
+    let seenSynonymOnly = false;
+    for (const r of res.results) {
+      const lower = r.name.toLowerCase();
+      const isOwnWordMatch = lower.includes('leg') && lower.includes('curl');
+      if (!isOwnWordMatch) {
+        seenSynonymOnly = true;
+      } else {
+        expect(seenSynonymOnly, `own-word match "${r.name}" should rank before synonym-only results`).toBe(false);
+      }
+    }
+  });
+
+  it('returns 0 results for unknown queries', () => {
+    const res = searchExerciseIndex('completelyunknownfakesportmove12345');
+    expect(res.total).toBe(0);
+    expect(res.results).toEqual([]);
+  });
+
+  it('resolves various gym slang queries via synonyms', () => {
+    // pec dec / chest fly machine / butterfly machine
+    for (const q of ['pec dec', 'chest fly machine', 'butterfly machine']) {
+      const res = searchExerciseIndex(q);
+      expect(res.results.length).toBeGreaterThan(0);
+      expect(res.results[0].name).toContain('Pec Fly');
+      expect(res.results[0].name.startsWith('Machine')).toBe(true);
+    }
+
+    // shoulder press
+    const spRes = searchExerciseIndex('shoulder press');
+    expect(spRes.results.length).toBeGreaterThan(0);
+    expect(spRes.results[0].name).toContain('Overhead Press');
+
+    // skull crusher spellings: own-word matches rank before synonym-only
+    const scRes = searchExerciseIndex('skull crusher');
+    expect(scRes.results.length).toBeGreaterThan(0);
+    expect(scRes.results[0].name).toBe('Kettlebell Skull Crusher');
+    const scNames = scRes.results.map((r) => r.name);
+    expect(scNames).toContain('Barbell Skullcrusher');
+    expect(scNames).toContain('Landmine Lying Tricep Extension');
+
+    // tbar row / pullup / chinup
+    const tbarRes = searchExerciseIndex('tbar row');
+    expect(tbarRes.results.length).toBeGreaterThan(0);
+    expect(tbarRes.results[0].name).toContain('T Bar Row');
+
+    const pullupRes = searchExerciseIndex('pullup');
+    expect(pullupRes.results.length).toBeGreaterThan(0);
+    expect(pullupRes.results.some((r) => r.name.includes('Pull Up') || r.name.includes('Pullup'))).toBe(true);
+
+    const chinupRes = searchExerciseIndex('chinup');
+    expect(chinupRes.results.length).toBeGreaterThan(0);
+    expect(chinupRes.results[0].name).toContain('Chin Up');
+
+    // smith
+    const smithRes = searchExerciseIndex('smith');
+    expect(smithRes.results.length).toBeGreaterThan(0);
+    expect(smithRes.results[0].name.startsWith('Smith Machine')).toBe(true);
+  });
 });

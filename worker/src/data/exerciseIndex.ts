@@ -6,6 +6,7 @@
  */
 import bundledExercises from './exerciseLibrary.json';
 import { fallbackExerciseId } from './shapes';
+import { getSynonymPhrases } from './exerciseSynonyms';
 
 export interface LibraryExercise {
   id: string;
@@ -572,6 +573,112 @@ export function searchExerciseIndex(
   }
   for (const lib of library) {
     evaluateCandidate(lib, false);
+  }
+
+  const synonymPhrases = getSynonymPhrases(trimmed);
+  if (synonymPhrases.length > 0) {
+    const evaluateSynonymCandidate = (
+      c: {
+        id: string;
+        name: string;
+        muscleGroups?: string[];
+        muscleGroup?: string;
+        equipment?: string;
+        searchKeywords?: string[];
+        videoLinks?: string[];
+      },
+      isCustom: boolean,
+    ) => {
+      if (seenIds.has(c.id)) return;
+
+      const nameLower = c.name.toLowerCase().trim();
+      const cTokens = exerciseTokens(c.name);
+      const cKey = cTokens.join(' ');
+
+      let bestSynTier = Infinity;
+
+      for (const syn of synonymPhrases) {
+        const sTrimmed = syn.toLowerCase().trim();
+        const sTokens = exerciseTokens(sTrimmed);
+        const sKey = sTokens.join(' ');
+        const sAlias = ALIASES[sKey];
+
+        let tier = 0;
+        if (nameLower === sTrimmed || (sTokens.length > 0 && cKey === sKey)) {
+          tier = 1;
+        } else if (
+          nameLower.startsWith(sTrimmed) ||
+          (sTokens.length > 0 &&
+            cTokens.length >= sTokens.length &&
+            cTokens.slice(0, sTokens.length).join(' ') === sKey)
+        ) {
+          tier = 2;
+        } else if (
+          nameLower.includes(sTrimmed) ||
+          (sTokens.length > 0 && hasConsecutiveTokens(cTokens, sTokens))
+        ) {
+          tier = 3;
+        } else if (sTokens.length > 0 && sTokens.every((q) => cTokens.includes(q))) {
+          tier = 4;
+        } else if (
+          (sAlias && (cKey === sAlias || exerciseTokens(sAlias).every((t) => cTokens.includes(t)))) ||
+          (ALIASES[cKey] && ALIASES[cKey] === sKey) ||
+          (c.searchKeywords &&
+            c.searchKeywords.some((k) => {
+              const kLower = k.toLowerCase().trim();
+              const kTokens = exerciseTokens(k);
+              const kKey = kTokens.join(' ');
+              return (
+                kLower === sTrimmed ||
+                (sTokens.length > 0 && kKey === sKey) ||
+                kLower.startsWith(sTrimmed) ||
+                kLower.includes(sTrimmed) ||
+                (sTokens.length > 0 && sTokens.every((q) => kTokens.includes(q)))
+              );
+            }))
+        ) {
+          tier = 5;
+        }
+
+        if (tier > 0 && tier < bestSynTier) {
+          bestSynTier = tier;
+        }
+      }
+
+      if (bestSynTier !== Infinity) {
+        seenIds.add(c.id);
+        const groups =
+          c.muscleGroups && c.muscleGroups.length > 0
+            ? c.muscleGroups
+            : c.muscleGroup
+              ? c.muscleGroup.split(',').map((s) => s.trim()).filter(Boolean)
+              : isCustom
+                ? ['Custom']
+                : [];
+        const mediaUrl =
+          Array.isArray(c.videoLinks) && c.videoLinks.length > 0 ? c.videoLinks[0] : undefined;
+        scored.push({
+          tier: 10 + bestSynTier,
+          result: {
+            id: c.id,
+            name: c.name,
+            muscles: groups,
+            muscleGroups: groups,
+            equipment: c.equipment || (isCustom ? 'Custom' : 'Unknown'),
+            custom: isCustom,
+            isCustom,
+            mediaUrl,
+          },
+        });
+      }
+    };
+
+    for (const c of customExercises) {
+      evaluateSynonymCandidate(c, true);
+    }
+    for (const lib of library) {
+      evaluateSynonymCandidate(lib, false);
+    }
   }
 
   scored.sort((a, b) => {
