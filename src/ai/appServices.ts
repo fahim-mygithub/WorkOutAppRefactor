@@ -1,3 +1,6 @@
+import { findExerciseInDatabase, createFallbackExercise, generateFallbackExerciseId } from '../utils/workoutConversion';
+import type { Exercise } from '../types/exercise';
+import type { ExerciseHistory, WorkoutSummary } from '../types/exerciseHistory';
 /**
  * The app's real save paths behind `EffectServices` (effects.ts), plus the
  * saved-workout list the chat context reads. Kept in one module so tests mock
@@ -59,11 +62,13 @@ export const appServices: EffectServices & {
       workoutText: w.workoutText ?? '',
       parsedWorkout: w.parsedWorkout,
     })),
-  savePastWorkout: async (userId, w) => {
+  savePastWorkout: async (userId, w, library) => {
     const startTime = new Date(w.date.includes('T') ? w.date : `${w.date}T10:00:00.000Z`);
     const duration = w.durationMinutes ?? Math.max(15, w.exercises.reduce((n, e) => n + e.sets.length * 2, 0));
     const endTime = new Date(startTime.getTime() + duration * 60 * 1000);
-    const workoutId = `past-${Date.now()}`;
+    const dateStamp = startTime.toISOString().slice(0, 10).replace(/-/g, '');
+    const fallbackHash = generateFallbackExerciseId(w.name + startTime.toISOString());
+    const workoutId = `past-${dateStamp}-${fallbackHash}`;
 
     const activeWorkout: ActiveWorkout = {
       id: workoutId,
@@ -73,62 +78,28 @@ export const appServices: EffectServices & {
       isActive: false,
       currentExerciseIndex: 0,
       currentSetIndex: 0,
-      exercises: w.exercises.map((e, ei) => ({
-        id: `we-${ei}`,
-        exercise: {
-          id: e.id || `lib-${ei}`,
-          name: e.name,
-          muscleGroup: 'Unknown',
-          muscleGroups: ['Unknown'],
-          equipment: 'Unknown',
-          videoLinks: [],
-          instructions: [],
-          difficulty: 'Intermediate',
-          force: null,
-          grips: null,
-          mechanic: null,
-          searchKeywords: [e.name.toLowerCase()],
-          createdAt: startTime.toISOString(),
-          updatedAt: startTime.toISOString(),
-        },
-        sets: e.sets.map((s, si) => ({
-          id: `s-${ei}-${si}`,
-          reps: s.reps,
-          weight: s.weight,
-          unit: s.unit ?? 'lbs',
-          completed: true,
-          rpe: s.rpe,
-        })),
-        notes: e.notes,
-      })),
+      exercises: w.exercises.map((e, ei) => {
+        const dbExercise = library ? findExerciseInDatabase(e.name, library) : null;
+        const exercise = dbExercise ?? createFallbackExercise(e.name, ei);
+        return {
+          id: `we-${ei}-${startTime.getTime()}`,
+          exercise,
+          sets: e.sets.map((s, si) => ({
+            id: `s-${ei}-${si}-${startTime.getTime()}`,
+            reps: s.reps,
+            weight: s.weight ?? 0,
+            unit: s.unit ?? 'lbs',
+            completed: true,
+            rpe: s.rpe,
+          })),
+          notes: e.notes,
+        };
+      }),
     };
 
-    const exerciseIds: string[] = [];
-    for (const ex of activeWorkout.exercises) {
-      const exId = await ExerciseHistoryService.saveExercisePerformance(userId, {
-        exerciseId: ex.exercise.id,
-        exerciseName: ex.exercise.name,
-        workoutId,
-        workoutName: w.name,
-        workoutDate: startTime.toISOString(),
-        sets: ex.sets.map((s, si) => ({
-          setNumber: si + 1,
-          targetReps: s.reps,
-          actualReps: s.reps,
-          weight: s.weight ?? 0,
-          unit: s.unit ?? 'lbs',
-          completed: true,
-          rpe: s.rpe,
-          notes: '',
-        })),
-        muscleGroups: ex.exercise.muscleGroups,
-        equipment: ex.exercise.equipment,
-        notes: ex.notes,
-      });
-      exerciseIds.push(exId);
-    }
-
-    const summaryId = await ExerciseHistoryService.saveWorkoutSummary(userId, activeWorkout, endTime);
+    const res = await WorkoutStorageService.saveCompletedWorkout(userId, activeWorkout, undefined, endTime);
+    const summaryId = typeof res === 'string' ? res : res.workoutId;
+    const exerciseIds = typeof res === 'object' && res && 'exerciseIds' in res ? res.exerciseIds : [];
     return { workoutId: summaryId, exerciseIds };
   },
   deletePastWorkout: async (userId, workoutId, exerciseIds) => {
@@ -152,26 +123,60 @@ export const appServices: EffectServices & {
     await ExerciseHistoryService.updateWorkoutHistory(userId, workoutId, updateData);
 
     if (update.exercises?.length) {
+      let existingExercises: ExerciseHistory[] | null = null;
       for (const ex of update.exercises) {
-        if (ex.id) {
-          await ExerciseHistoryService.updateExerciseHistory(userId, ex.id, {
+        let exId = ex.id;
+        if (!exId) {
+          if (!existingExercises) {
+            existingExercises = await ExerciseHistoryService.getExerciseHistoryByWorkoutId(userId, workoutId);
+          }
+          const matched = existingExercises.find(
+            (e) => e.exerciseName.toLowerCase() === ex.name.toLowerCase(),
+          );
+          if (matched) {
+            exId = matched.id;
+          }
+        }
+
+        const sets = ex.sets.map((s, si) => ({
+          setNumber: si + 1,
+          targetReps: s.reps,
+          actualReps: s.reps,
+          weight: s.weight ?? 0,
+          unit: s.unit ?? 'lbs',
+          completed: true,
+          rpe: s.rpe,
+          notes: '',
+        }));
+
+        if (exId) {
+          await ExerciseHistoryService.updateExerciseHistory(userId, exId, {
             exerciseName: ex.name,
-            sets: ex.sets.map((s, si) => ({
-              setNumber: si + 1,
-              targetReps: s.reps,
-              actualReps: s.reps,
-              weight: s.weight ?? 0,
-              unit: s.unit ?? 'lbs',
-              completed: true,
-              rpe: s.rpe,
-              notes: '',
-            })),
+            sets,
             notes: ex.notes,
             workoutName: update.name,
             workoutDate: update.date,
           });
+        } else {
+          await ExerciseHistoryService.saveExercisePerformance(userId, {
+            exerciseId: generateFallbackExerciseId(ex.name),
+            exerciseName: ex.name,
+            workoutId,
+            workoutName: update.name,
+            workoutDate: update.date,
+            sets,
+            muscleGroups: [],
+            equipment: '',
+            notes: ex.notes,
+          });
         }
       }
     }
+  },
+  getPastWorkout: async (userId, workoutId) => {
+    const summary = await ExerciseHistoryService.getWorkoutSummaryById(userId, workoutId);
+    if (!summary) return null;
+    const exercises = await ExerciseHistoryService.getExerciseHistoryByWorkoutId(userId, workoutId);
+    return { summary, exercises };
   },
 };

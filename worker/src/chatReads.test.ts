@@ -136,11 +136,12 @@ describe('chatReads', () => {
     const res = await executeChatRead('get_history_entry', { id: 'w1' }, { uid: UID, data, fs: fs.client() });
     expect(res.ok).toBe(true);
     const result = res.result as {
-      workout: { name: string };
-      exercises: { exerciseName: string; sets: { actualReps: number; weight: number }[] }[];
+      name: string;
+      exercises: { id: string; exerciseName: string; sets: { actualReps: number; weight: number }[] }[];
     };
-    expect(result.workout.name).toBe('Leg Day');
+    expect(result.name).toBe('Leg Day');
     expect(result.exercises).toHaveLength(1);
+    expect(result.exercises[0].id).toBe('e1');
     expect(result.exercises[0].exerciseName).toBe('Barbell Squat');
     expect(result.exercises[0].sets).toHaveLength(3);
     expect(result.exercises[0].sets[0].weight).toBe(225);

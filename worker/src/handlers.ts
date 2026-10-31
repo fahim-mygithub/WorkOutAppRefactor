@@ -160,6 +160,27 @@ export async function handleChat(
 
   let rounds = 0;
   let finalResponse: Anthropic.Message | null = null;
+  const toolCalls: ChatToolCall[] = [];
+  const seenToolCallIds = new Set<string>();
+
+  function recordToolCall(block: Anthropic.ToolUseBlock) {
+    if (seenToolCallIds.has(block.id)) return;
+    seenToolCallIds.add(block.id);
+    const name = block.name as ToolName;
+    const validator = toolValidators[name];
+    if (!validator) {
+      console.warn('model emitted unknown tool', name);
+      return;
+    }
+    const parsed = validator.safeParse(withoutNulls(block.input) ?? block.input);
+    if (!parsed.success) {
+      console.warn('tool input failed validation; dropping call', name, JSON.stringify(parsed.error.issues));
+      return;
+    }
+    toolCalls.push({ id: block.id, name, input: parsed.data });
+  }
+
+  let hitRoundCap = false;
 
   while (rounds < MAX_TOOL_ROUNDS) {
     rounds++;
@@ -181,9 +202,21 @@ export async function handleChat(
 
     const toolUseBlocks = response.content.filter((b): b is Anthropic.ToolUseBlock => b.type === 'tool_use');
     const readToolBlocks = toolUseBlocks.filter((b) => isReadTool(b.name));
+    const writeToolBlocks = toolUseBlocks.filter((b) => !isReadTool(b.name));
 
-    // If no read tools were called or we've reached the round cap, stop looping.
-    if (readToolBlocks.length === 0 || rounds >= MAX_TOOL_ROUNDS) {
+    // Record any write proposals emitted in this round
+    for (const block of writeToolBlocks) {
+      recordToolCall(block);
+    }
+
+    // If no read tools were called, stop looping.
+    if (readToolBlocks.length === 0) {
+      break;
+    }
+
+    // If reached max rounds with remaining read calls, record round cap and stop.
+    if (rounds >= MAX_TOOL_ROUNDS) {
+      hitRoundCap = true;
       break;
     }
 
@@ -220,31 +253,23 @@ export async function handleChat(
   }
 
   const textParts: string[] = [];
-  const toolCalls: ChatToolCall[] = [];
 
   if (finalResponse) {
     for (const block of finalResponse.content) {
       if (block.type === 'text') {
         textParts.push(block.text);
-      } else if (block.type === 'tool_use' && !isReadTool(block.name)) {
-        const name = block.name as ToolName;
-        const validator = toolValidators[name];
-        if (!validator) {
-          console.warn('model emitted unknown tool', name);
-          continue;
-        }
-        const parsed = validator.safeParse(withoutNulls(block.input) ?? block.input);
-        if (!parsed.success) {
-          console.warn('tool input failed validation; dropping call', name, JSON.stringify(parsed.error.issues));
-          continue;
-        }
-        toolCalls.push({ id: block.id, name, input: parsed.data });
       }
     }
   }
 
+  let text = textParts.join('\n').trim();
+  if (hitRoundCap) {
+    const capMsg = 'I reached the tool limit while reading your history. Please let me know if you would like me to narrow down the search.';
+    text = text ? `${text}\n\n${capMsg}` : capMsg;
+  }
+
   return {
-    text: textParts.join('\n').trim(),
+    text,
     toolCalls,
     stopReason: finalResponse?.stop_reason ?? null,
   };

@@ -9,7 +9,8 @@ import { CustomExerciseService, type CustomExercise } from '../services/customEx
 import type { AppDispatch, RootState } from '../store';
 import type { Exercise } from '../types/exercise';
 import { planToolCall, sameEffects, sameIntent, type PlanContext, type ToolPlan } from './applyTool';
-import { applyPlan, type EffectServices, type SavedWorkoutDraft, type PastWorkoutDraft } from './effects';
+import { applyPlan, type EffectServices, type SavedWorkoutDraft, type PastWorkoutDraft, type PastWorkoutUpdate } from './effects';
+import type { WorkoutSummary, ExerciseHistory } from '../types/exerciseHistory';
 import type { AiToolCall } from './types';
 
 const library = [
@@ -76,9 +77,60 @@ function fakeServices() {
     deletePastWorkout: vi.fn(async (_uid: string, id: string, _exerciseIds?: string[]) => {
       past.delete(id);
     }),
-    updatePastWorkout: vi.fn(async (_uid: string, id: string, w: Partial<PastWorkoutDraft>) => {
+    updatePastWorkout: vi.fn(async (_uid: string, id: string, w: PastWorkoutUpdate) => {
       const cur = past.get(id);
-      if (cur) past.set(id, { ...cur, ...w });
+      if (cur) {
+        past.set(id, {
+          ...cur,
+          ...(w.name !== undefined ? { name: w.name } : {}),
+          ...(w.date !== undefined ? { date: w.date } : {}),
+          ...(w.durationMinutes !== undefined ? { durationMinutes: w.durationMinutes } : {}),
+          ...(w.notes !== undefined ? { notes: w.notes } : {}),
+          ...(w.exercises !== undefined ? { exercises: w.exercises } : {}),
+        });
+      }
+    }),
+    getPastWorkout: vi.fn(async (_uid: string, id: string) => {
+      const cur = past.get(id);
+      if (!cur) return null;
+      return {
+        summary: {
+          id,
+          userId: _uid,
+          name: cur.name,
+          startTime: new Date(cur.date),
+          endTime: new Date(cur.date),
+          duration: cur.durationMinutes ?? 45,
+          totalExercises: cur.exercises.length,
+          totalSets: cur.exercises.reduce((n, e) => n + e.sets.length, 0),
+          totalReps: cur.exercises.reduce((n, e) => n + e.sets.reduce((rn, s) => rn + s.reps, 0), 0),
+          totalVolume: 0,
+          exercisesSummary: [],
+        } as unknown as WorkoutSummary,
+        exercises: cur.exercises.map((e, idx) => ({
+          id: e.id || `ex-${idx}`,
+          userId: _uid,
+          workoutId: id,
+          workoutName: cur.name,
+          workoutDate: cur.date,
+          exerciseId: `lib-${idx}`,
+          exerciseName: e.name,
+          configuration: '1x5',
+          totalVolume: 0,
+          sets: e.sets.map((s, sIdx) => ({
+            setNumber: sIdx + 1,
+            targetReps: s.reps,
+            actualReps: s.reps,
+            weight: s.weight ?? 0,
+            unit: s.unit ?? 'lbs',
+            completed: true,
+            rpe: s.rpe,
+            timestamp: cur.date,
+          })),
+          muscleGroups: ['Legs'],
+          equipment: 'Barbell',
+        })) as unknown as ExerciseHistory[],
+      };
     }),
   } satisfies EffectServices;
   return { saved, past, services };
@@ -407,9 +459,26 @@ describe('editPastWorkout', () => {
     expect(services.updatePastWorkout).toHaveBeenCalledWith('u1', 'w123', expect.objectContaining({
       name: 'Leg Day Heavy',
     }));
+    expect(past.get('w123')?.name).toBe('Leg Day Heavy');
 
     await undo!();
     expect(services.updatePastWorkout).toHaveBeenCalledTimes(2);
+    expect(services.updatePastWorkout).toHaveBeenNthCalledWith(
+      2,
+      'u1',
+      'w123',
+      expect.objectContaining({
+        name: 'Leg Day',
+        exercises: [
+          expect.objectContaining({
+            name: 'Squat',
+            sets: [expect.objectContaining({ reps: 5, weight: 315 })],
+          }),
+        ],
+      }),
+    );
+    expect(past.get('w123')?.name).toBe('Leg Day');
+    expect(past.get('w123')?.exercises[0].sets[0].weight).toBe(315);
   });
 
   it('rejects an empty edit', () => {

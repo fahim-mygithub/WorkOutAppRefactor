@@ -1,3 +1,5 @@
+import type { Exercise } from '../types/exercise';
+import type { ExerciseHistory, WorkoutSummary } from '../types/exerciseHistory';
 /**
  * Applying a confirmed AI plan, and taking it back.
  *
@@ -78,9 +80,10 @@ export interface EffectServices {
   /** Writes the display name and/or the WHOLE preferences object. */
   saveProfile: (userId: string, changes: { displayName?: string; preferences?: UserPreferences }) => Promise<void>;
   /** Saves a dictated past workout; resolves with its summary id and exercise history ids. */
-  savePastWorkout?: (userId: string, workout: PastWorkoutDraft) => Promise<{ workoutId: string; exerciseIds: string[] }>;
+  savePastWorkout?: (userId: string, workout: PastWorkoutDraft, library?: Exercise[]) => Promise<{ workoutId: string; exerciseIds: string[] }>;
   deletePastWorkout?: (userId: string, workoutId: string, exerciseIds?: string[]) => Promise<void>;
   updatePastWorkout?: (userId: string, workoutId: string, update: PastWorkoutUpdate) => Promise<void>;
+  getPastWorkout?: (userId: string, workoutId: string) => Promise<{ summary: WorkoutSummary; exercises: ExerciseHistory[] } | null>;
 }
 
 export interface EffectDeps {
@@ -138,7 +141,8 @@ async function runEffect(effect: AiEffect, deps: EffectDeps, userId: string): Pr
     }
     case 'logPastWorkout': {
       if (!services.savePastWorkout) throw new Error('savePastWorkout not supported');
-      const { workoutId, exerciseIds } = await services.savePastWorkout(userId, effect.workout);
+      const library = (deps.getState() as unknown as { exercise?: { exercises?: Exercise[] } })?.exercise?.exercises;
+      const { workoutId, exerciseIds } = await services.savePastWorkout(userId, effect.workout, library);
       return { type: 'deletePastWorkout', workoutId, exerciseIds };
     }
     case 'deletePastWorkout': {
@@ -148,8 +152,32 @@ async function runEffect(effect: AiEffect, deps: EffectDeps, userId: string): Pr
     }
     case 'editPastWorkout': {
       if (!services.updatePastWorkout) throw new Error('updatePastWorkout not supported');
+      let prior = effect.prior;
+      if (services.getPastWorkout && (!prior || Object.keys(prior).length === 0)) {
+        const current = await services.getPastWorkout(userId, effect.workoutId);
+        if (current) {
+          const { summary, exercises } = current;
+          prior = {
+            name: summary.name,
+            date: summary.startTime ? new Date(summary.startTime).toISOString().slice(0, 10) : undefined,
+            durationMinutes: summary.duration,
+            notes: (summary as { notes?: string }).notes,
+            exercises: exercises.map((e) => ({
+              id: e.id,
+              name: e.exerciseName,
+              notes: e.notes,
+              sets: e.sets.map((s) => ({
+                reps: s.actualReps,
+                weight: s.weight,
+                unit: s.unit as 'lbs' | 'kg' | undefined,
+                rpe: s.rpe,
+              })),
+            })),
+          };
+        }
+      }
       await services.updatePastWorkout(userId, effect.workoutId, effect.update);
-      return { type: 'editPastWorkout', workoutId: effect.workoutId, update: effect.prior, prior: effect.update };
+      return { type: 'editPastWorkout', workoutId: effect.workoutId, update: prior, prior: effect.update };
     }
   }
 }

@@ -167,4 +167,77 @@ describe('defaultActions', () => {
       defaultActions.readMachine!({ action: 'readMachine', image: { mediaType: 'image/jpeg', data: 'AAAA' } }, client, env),
     ).resolves.toEqual({ result: machine });
   });
+
+  it('fails soft through index.ts/handleChat when FIREBASE_SERVICE_ACCOUNT is missing', async () => {
+    const envNoSa = { ...env, FIREBASE_SERVICE_ACCOUNT: undefined };
+    const create = vi
+      .fn()
+      // Round 1: Model calls list_history
+      .mockResolvedValueOnce({
+        content: [{ type: 'tool_use', id: 'read_fail', name: 'list_history', input: { kind: 'workouts' } }],
+        stop_reason: 'tool_use',
+      })
+      // Round 2: Model receives soft error and explains to user
+      .mockResolvedValueOnce({
+        content: [{ type: 'text', text: 'Workout history is currently unavailable.' }],
+        stop_reason: 'end_turn',
+      });
+    const client = { messages: { create } } as unknown as Anthropic;
+
+    const res = (await defaultActions.chat!(
+      { action: 'chat', messages: [{ role: 'user', content: 'What did I do yesterday?' }] },
+      client,
+      envNoSa,
+      { uid: 'u123', email: 'me@x.io' },
+    )) as { text: string; toolCalls: unknown[] };
+
+    expect(create).toHaveBeenCalledTimes(2);
+    // Verify soft-fail error was returned in tool_result to Anthropic
+    const secondCallMessages = create.mock.calls[1][0].messages;
+    const toolResultBlock = secondCallMessages[secondCallMessages.length - 1].content[0];
+    expect(toolResultBlock.content).toContain('history is unavailable');
+    expect(res.text).toBe('Workout history is currently unavailable.');
+    expect(res.toolCalls).toHaveLength(0);
+  });
+
+  it('passes logPastWorkout and editPastWorkout proposals through defaultActions.chat', async () => {
+    const create = vi.fn().mockResolvedValueOnce({
+      content: [
+        {
+          type: 'tool_use',
+          id: 'log_1',
+          name: 'logPastWorkout',
+          input: {
+            date: '2026-10-29',
+            name: 'Push Day',
+            exercises: [{ name: 'Bench Press', sets: [{ reps: 5, weight: 225 }] }],
+          },
+        },
+        {
+          type: 'tool_use',
+          id: 'edit_1',
+          name: 'editPastWorkout',
+          input: {
+            workoutId: 'w_old',
+            name: 'Renamed Session',
+          },
+        },
+        { type: 'text', text: 'Here are the workout changes to review.' },
+      ],
+      stop_reason: 'tool_use',
+    });
+    const client = { messages: { create } } as unknown as Anthropic;
+
+    const res = (await defaultActions.chat!(
+      { action: 'chat', messages: [{ role: 'user', content: 'log and edit' }] },
+      client,
+      env,
+      { uid: 'u123', email: 'me@x.io' },
+    )) as { text: string; toolCalls: { name: string }[] };
+
+    expect(res.toolCalls).toHaveLength(2);
+    expect(res.toolCalls[0].name).toBe('logPastWorkout');
+    expect(res.toolCalls[1].name).toBe('editPastWorkout');
+    expect(res.text).toBe('Here are the workout changes to review.');
+  });
 });

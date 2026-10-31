@@ -482,11 +482,12 @@ export class WorkoutStorageService {
   static async saveCompletedWorkout(
     userId: string,
     activeWorkout: ActiveWorkout,
-    templateId?: string
-  ): Promise<string> {
-    if (isDemo(userId)) return 'demo-completed-workout';
+    templateId?: string,
+    customEndTime?: Date
+  ): Promise<{ workoutId: string; exerciseIds: string[] }> {
+    if (isDemo(userId)) return { workoutId: 'demo-completed-workout', exerciseIds: [] };
     try {
-      const endTime = new Date();
+      const endTime = customEndTime ?? new Date();
 
       // Save individual exercise performances
       const exerciseHistoryPromises = activeWorkout.exercises.map(async (exercise) => {
@@ -498,6 +499,7 @@ export class WorkoutStorageService {
             exerciseName: exercise.exercise.name,
             workoutId: activeWorkout.id,
             workoutName: activeWorkout.name,
+            workoutDate: activeWorkout.startTime,
             sets: completedSets.map((set, index) => ({
               setNumber: index + 1,
               targetReps: set.reps || 0,
@@ -517,7 +519,8 @@ export class WorkoutStorageService {
         return null;
       });
 
-      await Promise.all(exerciseHistoryPromises);
+      const rawExerciseIds = await Promise.all(exerciseHistoryPromises);
+      const exerciseIds = rawExerciseIds.filter((id): id is string => Boolean(id));
 
       // Save workout summary
       const workoutSummaryId = await ExerciseHistoryService.saveWorkoutSummary(
@@ -537,7 +540,7 @@ export class WorkoutStorageService {
         exercises: activeWorkout.exercises.length
       });
 
-      return workoutSummaryId;
+      return { workoutId: workoutSummaryId, exerciseIds };
     } catch (error) {
       console.error('❌ Error saving completed workout:', error);
       throw new Error('Failed to save completed workout');

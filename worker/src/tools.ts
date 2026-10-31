@@ -147,7 +147,7 @@ export const buildToolSchemas = {
 
   updateWorkout: z
     .object({
-      workoutId: z.string().describe('Saved workout id from `savedWorkouts` in the context.'),
+      workoutId: z.string().describe('Saved workout id from list_workouts (or savedWorkouts).'),
       name: z.string().min(1).max(80).optional().describe('New name.'),
       exercises: workoutExercisesSchema
         .optional()
@@ -235,7 +235,7 @@ export const buildToolSchemas = {
       exercises: z
         .array(
           z.object({
-            id: z.string().optional().describe('Exercise history ID if editing existing exercise.'),
+            id: z.string().optional().describe('Exercise history ID from get_history_entry (exercises[].id) when updating an existing exercise.'),
             name: z.string().min(1).max(120).describe('Exercise name.'),
             sets: z
               .array(

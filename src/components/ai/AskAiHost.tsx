@@ -127,7 +127,6 @@ export function AskAiHost() {
         trackedLifts: s.trackedLifts.lifts,
         focusExerciseId: s.ai.focusExerciseId,
         library: libraryRef.current,
-        savedWorkouts: savedWorkouts.current ?? [],
         profile: s.user.profile
           ? { displayName: s.user.profile.displayName, preferences: s.user.preferences }
           : undefined,
