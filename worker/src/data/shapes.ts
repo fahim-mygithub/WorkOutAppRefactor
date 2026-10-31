@@ -836,6 +836,9 @@ export function updateExerciseStatsDoc(
   prs: PersonalRecordsMap,
   workoutDate: Date,
 ): Record<string, unknown> {
+  if (completedSets.length === 0) {
+    return currentStats ?? {};
+  }
   const maxWeight = Math.max(...completedSets.map((s) => s.weight));
   const maxReps = Math.max(...completedSets.map((s) => s.actualReps));
   const newReps = completedSets.reduce((sum, s) => sum + s.actualReps, 0);

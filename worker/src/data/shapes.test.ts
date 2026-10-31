@@ -372,6 +372,31 @@ describe('workout history documents (ExerciseHistoryService)', () => {
       maxReps: 10,
     });
   });
+
+  it('updateExerciseStatsDoc safely handles empty completedSets without -Infinity', () => {
+    const emptyStats = updateExerciseStatsDoc(
+      'bench-press',
+      'Bench Press',
+      null,
+      [],
+      0,
+      {},
+      NOW,
+    );
+    expect(emptyStats).toEqual({});
+
+    const existingStats = { maxWeight: 200, maxReps: 10 };
+    const unchangedStats = updateExerciseStatsDoc(
+      'bench-press',
+      'Bench Press',
+      existingStats,
+      [],
+      0,
+      {},
+      NOW,
+    );
+    expect(unchangedStats).toBe(existingStats);
+  });
 });
 
 describe('superset counting (Pull Day Seal Row Oct 1 fixture)', () => {

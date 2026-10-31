@@ -325,6 +325,10 @@ export class UserData {
       if (!e.sets || e.sets.length === 0) {
         throw new DataError('invalid-argument', `Exercise "${e.name}" must have at least one set.`);
       }
+      const completed = e.sets.filter((s) => s.completed !== false);
+      if (completed.length === 0) {
+        throw new DataError('invalid-argument', `Exercise "${e.name}" must have at least one completed set.`);
+      }
     }
 
     const now = this.now();
@@ -402,21 +406,36 @@ export class UserData {
     }
 
     const linkedWorkoutId = (currentWorkout.workoutId as string) || workoutId;
-    const existingDocs = await this.fs.query(this.path(), 'exercise_history', {
+    let existingDocs = await this.fs.query(this.path(), 'exercise_history', {
       filters: [{ field: 'workoutId', op: 'EQUAL', value: { stringValue: linkedWorkoutId } }],
     });
+    if (linkedWorkoutId !== workoutId) {
+      const extraDocs = await this.fs.query(this.path(), 'exercise_history', {
+        filters: [{ field: 'workoutId', op: 'EQUAL', value: { stringValue: workoutId } }],
+      });
+      const seen = new Set(existingDocs.map((d) => docId(d)));
+      for (const d of extraDocs) {
+        if (!seen.has(docId(d))) existingDocs.push(d);
+      }
+    }
     const existingById = new Map(existingDocs.map((d) => [docId(d), d]));
 
-    // Validate any exercise ids in input belong to this user's exercise_history
+    // Validate any exercise ids in input belong to this workout, and validate completed sets
     const affectedExerciseIds = new Set<string>();
     if (input.exercises) {
       for (const ex of input.exercises) {
         if (ex.id) {
           safeId(ex.id, 'exercise history');
-          const targetDoc = existingById.get(ex.id) ?? (await this.fs.get(this.path('exercise_history', ex.id)));
-          if (!targetDoc) {
-            throw new DataError('invalid-argument', `Exercise history id ${ex.id} does not belong to your account.`);
+          if (!existingById.has(ex.id)) {
+            throw new DataError('invalid-argument', `Exercise history id ${ex.id} does not belong to this workout.`);
           }
+        }
+        if (!ex.sets || ex.sets.length === 0) {
+          throw new DataError('invalid-argument', `Exercise "${ex.name}" must have at least one set.`);
+        }
+        const completed = ex.sets.filter((s) => s.completed !== false);
+        if (completed.length === 0) {
+          throw new DataError('invalid-argument', `Exercise "${ex.name}" must have at least one completed set.`);
         }
       }
     }
@@ -463,6 +482,10 @@ export class UserData {
         const configuration = generateConfigurationString(completedSets);
         const totalVolume = completedSets.reduce((sum, s) => sum + s.weight * s.actualReps, 0);
 
+        const statsDoc = await this.fs.get(this.path('exercise_stats', exerciseId));
+        const currentStats = statsDoc ? data(statsDoc) : null;
+        const prs = checkPersonalRecords(currentStats, completedSets, totalVolume);
+
         if (ex.id && existingById.has(ex.id)) {
           const prevExId = data(existingById.get(ex.id)!).exerciseId as string;
           if (prevExId) affectedExerciseIds.add(prevExId);
@@ -475,14 +498,15 @@ export class UserData {
             totalVolume,
             workoutDate,
             workoutName,
+            personalRecords: prs,
             updatedAt: now,
             ...(ex.notes?.trim() !== undefined ? { notes: ex.notes.trim() } : {}),
           };
-          const mask = ['exerciseId', 'exerciseName', 'sets', 'configuration', 'totalVolume', 'workoutDate', 'workoutName', 'updatedAt'];
+          const mask = ['exerciseId', 'exerciseName', 'sets', 'configuration', 'totalVolume', 'workoutDate', 'workoutName', 'personalRecords', 'updatedAt'];
           if (ex.notes !== undefined) mask.push('notes');
           await this.fs.patch(this.path('exercise_history', ex.id), toFields(fields), { mask });
         } else {
-          const newDoc = buildExerciseHistoryDoc(this.uid, workoutId, workoutName, workoutDate, ex, {}, now);
+          const newDoc = buildExerciseHistoryDoc(this.uid, linkedWorkoutId, workoutName, workoutDate, ex, prs, now);
           await this.fs.create(this.path('exercise_history'), toFields(newDoc));
         }
       }
@@ -506,9 +530,18 @@ export class UserData {
     }
 
     // Recompute workout summary totals
-    const finalExDocs = await this.fs.query(this.path(), 'exercise_history', {
+    let finalExDocs = await this.fs.query(this.path(), 'exercise_history', {
       filters: [{ field: 'workoutId', op: 'EQUAL', value: { stringValue: linkedWorkoutId } }],
     });
+    if (linkedWorkoutId !== workoutId) {
+      const extraDocs = await this.fs.query(this.path(), 'exercise_history', {
+        filters: [{ field: 'workoutId', op: 'EQUAL', value: { stringValue: workoutId } }],
+      });
+      const seen = new Set(finalExDocs.map((d) => docId(d)));
+      for (const d of extraDocs) {
+        if (!seen.has(docId(d))) finalExDocs.push(d);
+      }
+    }
     let totalSets = 0;
     let totalReps = 0;
     let totalVolume = 0;

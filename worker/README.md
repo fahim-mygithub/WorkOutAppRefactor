@@ -74,6 +74,11 @@ unchanged.
   (Google sign-in with the Firebase JS SDK; the ID token is checked with
   `verifyIdToken` and the email must be in `AI_ALLOWED_EMAILS`).
 
+### History and Personal Records
+
+- `log_workout` writes workout summaries to `workout_history`, individual exercise performances to `exercise_history`, and updates `exercise_stats` and per-doc `personalRecords` flags matching the app's `exerciseHistoryService.ts`.
+- `update_history_entry` recomputes workout summary totals and recalculates overall `exercise_stats` for all affected exercises. Per-doc PR flags are updated for exercises in the edited workout. As in the app's own edit flow, per-document PR flags on other past workout records are not re-evaluated retroactively across the entire historical timeline.
+
 Packages: `@modelcontextprotocol/sdk` 1.32.2, `@cloudflare/workers-oauth-provider`
 1.2.4, `@cfworker/json-schema` 4.1.4; Firebase JS SDK 11.10.0 (from gstatic, on
 the sign-in page only).

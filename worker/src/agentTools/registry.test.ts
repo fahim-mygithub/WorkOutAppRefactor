@@ -396,6 +396,16 @@ describe('log_workout', () => {
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.error).toMatch(/future/i);
   });
+
+  it('refuses exercises whose sets are all completed: false', async () => {
+    const r = await run('log_workout', {
+      date: '2026-10-25',
+      name: 'Uncompleted Sets',
+      exercises: [{ name: 'Bench Press', sets: [{ reps: 8, weight: 185, completed: false }] }],
+    });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error).toMatch(/must have at least one completed set/i);
+  });
 });
 
 describe('get_history_entry', () => {
@@ -532,6 +542,66 @@ describe('update_history_entry', () => {
     });
     expect(rFuture.ok).toBe(false);
     if (!rFuture.ok) expect(rFuture.error).toMatch(/future/i);
+  });
+
+  it('refuses exercise ids belonging to a different workout of the same user', async () => {
+    const workout1 = await ok('log_workout', {
+      date: '2026-10-24',
+      name: 'Workout 1',
+      exercises: [{ name: 'Row', sets: [{ reps: 8, weight: 135 }] }],
+    });
+    const workout2 = await ok('log_workout', {
+      date: '2026-10-25',
+      name: 'Workout 2',
+      exercises: [{ name: 'Squat', sets: [{ reps: 5, weight: 225 }] }],
+    });
+    const exId1 = (workout1.exercises as { id: string }[])[0].id;
+
+    const r = await run('update_history_entry', {
+      workoutId: workout2.id as string,
+      exercises: [{ id: exId1, name: 'Row', sets: [{ reps: 8, weight: 135 }] }],
+    });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error).toMatch(/does not belong to this workout/i);
+  });
+
+  it('refuses exercises whose sets are all completed: false in update', async () => {
+    const created = await ok('log_workout', {
+      date: '2026-10-25',
+      name: 'Workout',
+      exercises: [{ name: 'Bench', sets: [{ reps: 8, weight: 185 }] }],
+    });
+    const exId = (created.exercises as { id: string }[])[0].id;
+    const r = await run('update_history_entry', {
+      workoutId: created.id as string,
+      exercises: [{ id: exId, name: 'Bench', sets: [{ reps: 8, weight: 185, completed: false }] }],
+    });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error).toMatch(/must have at least one completed set/i);
+  });
+
+  it('computes personal records for exercises added during update', async () => {
+    const created = await ok('log_workout', {
+      date: '2026-10-25',
+      name: 'Initial Workout',
+      exercises: [{ name: 'Bench Press', sets: [{ reps: 8, weight: 185 }] }],
+    });
+    const updated = await ok('update_history_entry', {
+      workoutId: created.id as string,
+      exercises: [
+        { id: (created.exercises as { id: string }[])[0].id, name: 'Bench Press', sets: [{ reps: 8, weight: 185 }] },
+        { name: 'Overhead Press', sets: [{ reps: 5, weight: 135 }] },
+      ],
+    });
+    const ohpEx = (updated.exercises as { exerciseName: string; personalRecords: Record<string, boolean> }[]).find(
+      (e) => e.exerciseName === 'Overhead Press',
+    );
+    expect(ohpEx).toBeDefined();
+    expect(ohpEx?.personalRecords).toMatchObject({
+      maxWeight: true,
+      maxReps: true,
+      maxVolume: true,
+    });
   });
 });
 
