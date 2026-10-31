@@ -229,13 +229,12 @@ describe('history log / undoLog', () => {
   });
 
   it('reuses the user existing exercise ID from past exercise_history, updates stats in place, and sets no false PR', async () => {
-    // Real ID and Root Cause:
-    // In the app, when a workout is planned or added before the library is loaded (e.g. via BuildPage or
-    // planWorkout), fallback exercises receive an ID from `generateFallbackExerciseId(name)` (workoutConversion.ts).
-    // For "Barbell Bench Press", Math.abs(hash).toString(36) is "eo82lz", yielding "fallback-eo82lz".
-    // When the user finished that workout on Oct 1 and Oct 26, `useFinishWorkout` -> `saveCompletedWorkout`
-    // recorded the performance under exerciseId "fallback-eo82lz" in `exercise_history` and `exercise_stats`.
-    // The Worker originally resolved only against the static library (exercise-1335), causing split stats and false PRs.
+    // HYPOTHESIS (not verified against the real account): the app's Barbell Bench Press sessions
+    // were stored under "fallback-eo82lz" (= fallbackExerciseId('Barbell Bench Press')) because the
+    // workout was built with no exercise library loaded, so the app's own fallback id generator
+    // (generateFallbackExerciseId in workoutConversion.ts) named the exercise. This was inferred
+    // from the code, not read from the user's Firestore. Either way, the Worker must reuse whatever
+    // id the user's own exercise_history holds for the same normalised name.
     const APP_BENCH_ID = fallbackExerciseId('Barbell Bench Press'); // Exactly 'fallback-eo82lz'
     fs.put([...user(UID), 'exercise_history', 'pastBenchDoc1'], {
       userId: UID,
@@ -368,6 +367,52 @@ describe('history log / undoLog', () => {
     expect(fs.read([...user(UID), 'exercise_stats', 'exercise-1335'])).toBeUndefined();
     const stats = fs.read([...user(UID), 'exercise_stats', APP_BENCH_ID])!;
     expect(stats.totalSessions).toBe(2);
+  });
+
+  it('does not merge a base exercise into a history variant (history holds only "Incline Barbell Bench Press")', async () => {
+    const INCLINE_ID = 'fallback-incline1';
+    fs.put([...user(UID), 'exercise_history', 'pastInclineDoc'], {
+      userId: UID,
+      workoutId: 'pastWorkoutIncline',
+      workoutName: 'Upper',
+      workoutDate: new Date('2026-10-01T12:00:00.000Z'),
+      exerciseId: INCLINE_ID,
+      exerciseName: 'Incline Barbell Bench Press',
+      sets: [set(1, 5, 155)],
+      totalVolume: 775,
+      muscleGroups: ['Chest'],
+      equipment: 'Barbell',
+    });
+    fs.put([...user(UID), 'exercise_stats', INCLINE_ID], {
+      exerciseId: INCLINE_ID,
+      exerciseName: 'Incline Barbell Bench Press',
+      totalSessions: 1,
+      totalSets: 1,
+      totalReps: 5,
+      totalVolume: 775,
+      maxWeight: 155,
+      maxReps: 5,
+      lastPerformed: new Date('2026-10-01T12:00:00.000Z'),
+      personalRecords: {},
+    });
+
+    const logged = await okRun('log', {
+      date: '2026-10-30',
+      name: 'Flat day',
+      exercises: [
+        { name: 'Bench Press', sets: [{ reps: 5, weight: 135 }] },
+        { name: 'Barbell Bench Press', sets: [{ reps: 5, weight: 135 }] },
+        { name: 'Press', sets: [{ reps: 5, weight: 95 }] },
+      ],
+    });
+    for (const docId of logged.exerciseIds as string[]) {
+      const doc = fs.read([...user(UID), 'exercise_history', docId])!;
+      expect(doc.exerciseId).not.toBe(INCLINE_ID);
+    }
+    // The incline stats are untouched.
+    const inclineStats = fs.read([...user(UID), 'exercise_stats', INCLINE_ID])!;
+    expect(inclineStats.totalSessions).toBe(1);
+    expect(inclineStats.totalSets).toBe(1);
   });
 
   it('refuses a future date', async () => {

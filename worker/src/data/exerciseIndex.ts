@@ -177,6 +177,11 @@ function toTimestamp(d?: Date | string | number | null): number {
   return isNaN(t) ? 0 : t;
 }
 
+/**
+ * Match a name against the user's own history/stats. EXACT normalised name or
+ * alias only: a subset/partial match would let "Bench Press" inherit the id and
+ * stats of "Incline Barbell Bench Press" (a different exercise). Most recent wins.
+ */
 export function matchHistoryExercise(
   name: string,
   historyList: readonly HistoryExerciseLike[],
@@ -186,61 +191,27 @@ export function matchHistoryExercise(
   const key = query.join(' ');
   const alias = ALIASES[key];
 
-  const exactCandidates: HistoryExerciseLike[] = [];
-  const partialCandidates: { h: HistoryExerciseLike; extra: number }[] = [];
-
+  const candidates: HistoryExerciseLike[] = [];
   for (const h of historyList) {
     if (!h.exerciseName) continue;
-    const hTokens = exerciseTokens(h.exerciseName);
-    const hKey = hTokens.join(' ');
-
+    const hKey = exerciseTokens(h.exerciseName).join(' ');
     if (
       hKey === key ||
       (alias !== undefined && hKey === alias) ||
       (ALIASES[hKey] !== undefined && ALIASES[hKey] === key)
     ) {
-      exactCandidates.push(h);
-      continue;
-    }
-
-    const queryInH = query.every((q) => hTokens.includes(q));
-    const hInQuery = hTokens.length > 1 && hTokens.every((t) => query.includes(t));
-    if (queryInH || hInQuery) {
-      const extra = hTokens.filter((t) => !query.includes(t) && !EQUIPMENT.has(t)).length;
-      partialCandidates.push({ h, extra });
+      candidates.push(h);
     }
   }
+  if (candidates.length === 0) return null;
 
-  const sortExact = (list: HistoryExerciseLike[]) => {
-    list.sort((a, b) => {
-      const timeA = toTimestamp(a.workoutDate);
-      const timeB = toTimestamp(b.workoutDate);
-      if (timeB !== timeA) return timeB - timeA;
-      const groupsA = a.muscleGroups?.length ?? 0;
-      const groupsB = b.muscleGroups?.length ?? 0;
-      return groupsB - groupsA;
-    });
-    return list[0];
-  };
-
-  if (exactCandidates.length > 0) {
-    return sortExact(exactCandidates);
-  }
-
-  if (partialCandidates.length > 0) {
-    partialCandidates.sort((a, b) => {
-      if (a.extra !== b.extra) return a.extra - b.extra;
-      const timeA = toTimestamp(a.h.workoutDate);
-      const timeB = toTimestamp(b.h.workoutDate);
-      if (timeB !== timeA) return timeB - timeA;
-      const groupsA = a.h.muscleGroups?.length ?? 0;
-      const groupsB = b.h.muscleGroups?.length ?? 0;
-      return groupsB - groupsA;
-    });
-    return partialCandidates[0].h;
-  }
-
-  return null;
+  candidates.sort((a, b) => {
+    const timeA = toTimestamp(a.workoutDate);
+    const timeB = toTimestamp(b.workoutDate);
+    if (timeB !== timeA) return timeB - timeA;
+    return (b.muscleGroups?.length ?? 0) - (a.muscleGroups?.length ?? 0);
+  });
+  return candidates[0];
 }
 
 let memoryLibrary: LibraryExercise[] | null = null;
@@ -284,7 +255,8 @@ export function resolveExercise(
   // 1. Check user's history / stats first (most recent wins)
   if (historyExercises && historyExercises.length > 0) {
     let historyMatch = matchHistoryExercise(trimmed, historyExercises);
-    // At minimum, also try the library-matched name and custom-matched name against history
+    // Also try the library-resolved and custom-resolved canonical names against history
+    // (same exact-only matcher, so a variant in history never stands in for the base exercise).
     if (!historyMatch) {
       const libCandidate = matchExerciseInList(trimmed, library);
       if (libCandidate) {

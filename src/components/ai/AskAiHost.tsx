@@ -51,6 +51,9 @@ const GENERIC = 'Something went wrong — try again.';
 
 interface QueuedUndo {
   id: string;
+  /** Distinct per showing, so a toast queued again after a failed take-back is
+   *  not mistaken for the one still animating out (which ignores clicks). */
+  key?: string;
   message: string;
   undo: () => void;
 }
@@ -162,13 +165,51 @@ export function AskAiHost() {
     if (!open) {
       pendingCalls.current.clear();
       savedWorkouts.current = null;
-      setSessionUndos(new Map());
+      commitSessionUndos(new Map());
       setDecisions({});
     }
   }, [open]);
   const [undos, setUndos] = React.useState<QueuedUndo[]>([]);
   const [sessionUndos, setSessionUndos] = React.useState<Map<string, ActiveUndo>>(new Map());
+  // Mirror of sessionUndos that handlers can read synchronously, so state
+  // updaters stay pure (no setState inside another updater).
+  const sessionUndosRef = React.useRef<Map<string, ActiveUndo>>(new Map());
+  const requeues = React.useRef(0);
   const [decisions, setDecisions] = React.useState<Record<string, ApplyRejectDecision>>({});
+
+  function commitSessionUndos(next: Map<string, ActiveUndo>) {
+    sessionUndosRef.current = next;
+    setSessionUndos(next);
+  }
+
+  // Takes one applied proposal back, from the card's Undo or the toast's Undo
+  // (same path, so a failure is reported the same way): the card flips to
+  // "undone" at once; if the take-back fails it goes back to "applied", its
+  // Undo is restored and the toast is queued again. Rethrows for the caller.
+  async function undoActive(proposalId: string, active: ActiveUndo): Promise<void> {
+    const without = new Map(sessionUndosRef.current);
+    without.delete(proposalId);
+    commitSessionUndos(without);
+    setUndos((q) => q.filter((u) => u.id !== proposalId));
+    setDecisions((d) => ({ ...d, [proposalId]: 'undone' }));
+    try {
+      await active.undo();
+    } catch (err) {
+      commitSessionUndos(new Map(sessionUndosRef.current).set(proposalId, active));
+      setUndos((q) => [
+        ...q,
+        { id: proposalId, key: `${proposalId}:retry${++requeues.current}`, message: active.message, undo: toastUndo(proposalId, active) },
+      ]);
+      setDecisions((d) => ({ ...d, [proposalId]: 'applied' }));
+      throw err;
+    }
+  }
+
+  function toastUndo(proposalId: string, active: ActiveUndo): () => void {
+    return () => {
+      undoActive(proposalId, active).catch((e) => console.error('AI undo failed', e));
+    };
+  }
 
   const planNow = React.useCallback((call: AiToolCall) => {
     const now = store.getState();
@@ -246,7 +287,7 @@ export function AskAiHost() {
     <AnimatePresence mode="wait">
       {current ? (
         <UndoToast
-          key={current.id}
+          key={current.key ?? current.id}
           message={current.message}
           onUndo={current.undo}
           onDone={() => setUndos((q) => q.filter((u) => u.id !== current.id))}
@@ -337,82 +378,32 @@ export function AskAiHost() {
               await takeBack();
               if (savedChanged) savedWorkouts.current = null;
             };
-            setSessionUndos((prev) => {
-              const next = new Map(prev);
-              const replacedIds = new Set<string>();
-              for (const [id, entry] of prev) {
-                if (entry.recordKeys.some((k) => recordKeys.includes(k))) {
-                  next.delete(id);
-                  replacedIds.add(id);
-                }
-              }
-              if (replacedIds.size > 0) {
-                setUndos((q) => q.filter((u) => !replacedIds.has(u.id)));
-              }
-              next.set(proposal.id, {
-                proposalId: proposal.id,
-                recordKeys,
-                undo: activeUndoFn,
-                message: plan.summary,
-              });
-              return next;
-            });
-
-            setUndos((q) => [...q, {
-              id: plan.id,
+            const entry: ActiveUndo = {
+              proposalId: proposal.id,
+              recordKeys,
+              undo: activeUndoFn,
               message: plan.summary,
-              undo: () => {
-                activeUndoFn()
-                  .then(() => {
-                    setDecisions((d) => ({ ...d, [proposal.id]: 'undone' }));
-                    setSessionUndos((prev) => {
-                      const next = new Map(prev);
-                      next.delete(proposal.id);
-                      return next;
-                    });
-                  })
-                  .catch((e) => console.error('AI undo failed', e));
-              },
-            }]);
+            };
+            const next = new Map(sessionUndosRef.current);
+            const replacedIds = new Set<string>();
+            for (const [id, prior] of sessionUndosRef.current) {
+              if (prior.recordKeys.some((k) => recordKeys.includes(k))) {
+                next.delete(id);
+                replacedIds.add(id);
+              }
+            }
+            next.set(proposal.id, entry);
+            commitSessionUndos(next);
+            setUndos((q) => [
+              ...(replacedIds.size > 0 ? q.filter((u) => !replacedIds.has(u.id)) : q),
+              { id: proposal.id, message: plan.summary, undo: toastUndo(proposal.id, entry) },
+            ]);
           }
         }}
         onUndoProposal={async (proposal) => {
-          const active = sessionUndos.get(proposal.id);
+          const active = sessionUndosRef.current.get(proposal.id);
           if (!active) return;
-          setSessionUndos((prev) => {
-            const next = new Map(prev);
-            next.delete(proposal.id);
-            return next;
-          });
-          setUndos((q) => q.filter((u) => u.id !== proposal.id));
-          setDecisions((d) => ({ ...d, [proposal.id]: 'undone' }));
-          try {
-            await active.undo();
-          } catch (err) {
-            setSessionUndos((prev) => new Map(prev).set(proposal.id, active));
-            setUndos((q) => [
-              ...q,
-              {
-                id: proposal.id,
-                message: active.message,
-                undo: () => {
-                  active
-                    .undo()
-                    .then(() => {
-                      setDecisions((d) => ({ ...d, [proposal.id]: 'undone' }));
-                      setSessionUndos((prev) => {
-                        const next = new Map(prev);
-                        next.delete(proposal.id);
-                        return next;
-                      });
-                    })
-                    .catch((e) => console.error('AI undo failed', e));
-                },
-              },
-            ]);
-            setDecisions((d) => ({ ...d, [proposal.id]: 'applied' }));
-            throw err;
-          }
+          await undoActive(proposal.id, active);
         }}
         isProposalUndoable={(proposalId) => sessionUndos.has(proposalId)}
         decisions={decisions}

@@ -539,6 +539,44 @@ describe('AskAiHost — build, plan and profile tools', () => {
     expect(await screen.findByText('Undone')).toBeInTheDocument();
   });
 
+  it("a failed take-back from the toast's Undo is reported to the card like the card's own Undo", async () => {
+    const historyLog = vi.fn().mockResolvedValue({ workoutId: 'w-ai-3', exerciseIds: ['ex-ai-3'] });
+    const historyUndoLog = vi.fn().mockRejectedValueOnce(new Error('undo network error')).mockResolvedValueOnce(undefined);
+    svc.history = { log: historyLog, undoLog: historyUndoLog, edit: vi.fn(), undoEdit: vi.fn() };
+    vi.spyOn(aiClient, 'chat').mockResolvedValue({
+      reply: 'Logged it.',
+      source: 'backend',
+      toolCalls: [{
+        id: 'call-log-toast-fail',
+        name: 'logPastWorkout',
+        input: {
+          date: '2026-10-30',
+          name: 'Push',
+          exercises: [{ name: 'Barbell Bench Press', sets: [{ reps: 5, weight: 135 }] }],
+        },
+      }],
+    });
+
+    const store = signedInStore();
+    renderHost(store, '/build');
+    const u = await send('log bench');
+    await u.click(await screen.findByRole('button', { name: 'Apply' }));
+    await waitFor(() => expect(historyLog).toHaveBeenCalledTimes(1));
+
+    // First take-back, from the toast, fails: the card must say Applied again with its Undo.
+    const toast = await screen.findByTestId('undo-toast');
+    await u.click(within(toast).getByRole('button', { name: 'Undo' }));
+    await waitFor(() => expect(historyUndoLog).toHaveBeenCalledTimes(1));
+    expect(await screen.findByText('Applied')).toBeInTheDocument();
+    expect(screen.queryByText('Undone')).not.toBeInTheDocument();
+
+    // And it can be undone again (toast re-queued or the card's Undo).
+    const again = await screen.findAllByRole('button', { name: 'Undo' });
+    await u.click(again[0]);
+    await waitFor(() => expect(historyUndoLog).toHaveBeenCalledTimes(2));
+    expect(await screen.findByText('Undone')).toBeInTheDocument();
+  });
+
   it('logging a workout and then editing it replaces the log Undo with the edit Undo on the same workout', async () => {
     const historyLog = vi.fn().mockResolvedValue({ workoutId: 'w-ai-10', exerciseIds: ['ex-ai-10'] });
     const historyEdit = vi.fn().mockResolvedValue({ prior: { name: 'Push', date: '2026-10-30', exercises: [] } });
