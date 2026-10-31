@@ -86,7 +86,7 @@ export class DuplicateExerciseError extends DataError {
   constructor(public readonly match: ExerciseMatchInfo) {
     super(
       'conflict',
-      `Exercise "${match.name}" already exists as a ${match.isCustom ? 'custom' : 'library'} exercise.`,
+      `Exercise "${match.name}" already exists as a ${match.isCustom ? 'custom' : 'library'} exercise (id ${match.id}). Use that id instead of adding it again.`,
     );
     this.name = 'DuplicateExerciseError';
   }
