@@ -16,11 +16,12 @@ import { db } from '../firebase/config';
 import { isDemo } from '../demo/demo';
 import { Exercise } from '../types/exercise';
 
-export interface CustomExercise extends Omit<Exercise, 'id'> {
+export interface CustomExercise extends Omit<Exercise, 'id' | 'createdAt' | 'updatedAt' | 'muscleGroups'> {
   id?: string;
   userId: string;
   isCustom: true;
   originalName: string; // What the user originally typed
+  muscleGroups?: string[];
   createdAt: Date;
   updatedAt: Date;
   usageCount: number; // Track how often it's used
@@ -41,7 +42,7 @@ export interface SaveCustomExerciseData {
 export class CustomExerciseService {
   private static readonly COLLECTION_NAME = 'customExercises';
 
-  // Save a custom exercise for a user
+  // Save a custom exercise for a user (demo returns mock id)
   static async saveCustomExercise(
     userId: string, 
     exerciseData: SaveCustomExerciseData
@@ -51,7 +52,7 @@ export class CustomExerciseService {
         ...exerciseData,
         userId,
         isCustom: true,
-        id: '', // Will be set by Firestore
+        // id will be set by Firestore
         videoLinks: exerciseData.videoLinks || [],
         force: null,
         grips: null,
@@ -310,7 +311,7 @@ export class CustomExerciseService {
           ...exerciseData,
           userId,
           isCustom: true,
-          id: '',
+          // id will be set by Firestore
           videoLinks: exerciseData.videoLinks || [],
           force: null,
           grips: null,
