@@ -69,7 +69,13 @@ unchanged.
 - `src/agentTools/` — the tool registry (zod inputs, model-facing
   descriptions): `get_profile`, `update_profile`, `list_workouts`,
   `get_workout`, `create_workout` (one or many), `update_workout`,
-  `list_plans`, `plan_workout`, `list_history` (date range and paging), `get_history_entry`, `log_workout` (dictate past workouts with sets and PR updates), `update_history_entry`, `add_exercise`.
+  `list_plans`, `plan_workout`, `list_history` (date range and paging), `get_history_entry`,
+  `log_workout` (dictate past workouts with sets, exercise IDs and PR updates),
+  `update_history_entry`, `add_exercise` (with duplicate detection and media_url),
+  `search_exercises` (searches library + custom exercises), `update_exercise`,
+  `attach_media_from_url`, and `create_media_upload_link`.
+- `src/media/` — Cloudflare R2 media storage, magic-bytes sniffing, size validation,
+  temporary upload token generation and mobile upload web handler.
 - `src/mcp/` — the MCP server, the OAuth provider and the `/authorize` page
   (Google sign-in with the Firebase JS SDK; the ID token is checked with
   `verifyIdToken` and the email must be in `AI_ALLOWED_EMAILS`).
@@ -91,6 +97,18 @@ the sign-in page only).
 
 1. **OAuth KV namespace:** `npx wrangler kv namespace create OAUTH_KV` and put
    the id in `wrangler.toml` (`binding = "OAUTH_KV"`).
+2. **Exercise Media R2 Bucket:** Create the R2 bucket for exercise demo media and photos:
+
+   ```bash
+   npx wrangler r2 bucket create workout-media
+   ```
+
+   Add the binding to `wrangler.toml`:
+   ```toml
+   [[r2_buckets]]
+   binding = "EXERCISE_MEDIA"
+   bucket_name = "workout-media"
+   ```
 2. **Service account:** Firebase console → Project settings → Service accounts
    → *Generate new private key*. Store the whole JSON file as a secret, then
    delete the file:
@@ -107,6 +125,34 @@ the sign-in page only).
 4. **Allow-list:** your email must be in `AI_ALLOWED_EMAILS` (same secret as the
    AI coach). Removing an email cuts off its connector tokens on the next call.
 5. `npx wrangler deploy`.
+
+### Media Storage & Snapshot-to-Log Tools
+
+Custom exercise photos, GIFs, and videos are stored in Cloudflare R2 under bucket `workout-media` (`EXERCISE_MEDIA` binding).
+
+- **Endpoints**:
+  - `GET /media/<uid>/<id>.<ext>`: Serves exercise media with strong cache headers (`public, max-age=31536000, immutable`), `ALLOWED_ORIGINS` CORS headers, and HTTP 206 Partial Content support for video playback range requests in `<video>` / `<img>` elements. URLs end in the media extension (`.mp4`, `.webm`, `.gif`, `.jpg`, `.png`) so the app's media players recognize them immediately.
+  - `POST /media`: Direct upload authenticated with Firebase ID token (`Authorization: Bearer <token>`). Validates type by sniffing file magic bytes (not request content-type header) and enforces strict file size caps:
+    - **Photos** (JPEG, PNG, WebP, HEIC): <= 8 MB
+    - **GIFs**: <= 15 MB
+    - **Videos** (MP4, WebM, MOV): <= 60 MB
+    - Daily upload count rate-limited per user via `AI_USAGE` KV.
+  - `GET /upload/<token>` & `POST /upload/<token>`: Temporary mobile web page for users to upload media directly from device camera (`accept="image/*,video/*"`, `capture="environment"`). Tokens are single-use, expire after 15 minutes, bound to user and exercise IDs, and managed in KV.
+
+- **Connector Tools for Agents**:
+  - `search_exercises(query)`: Searches both the 1,540-exercise built-in library and the user's custom exercises by name, muscle groups, or equipment. Returns canonical IDs, names, muscle groups, equipment, whether custom, and existing media URLs.
+  - `add_exercise`: Adds a new custom exercise with support for `media_url`. Refuses near-duplicates of library exercises or existing custom exercises, returning the matching exercise in the response.
+  - `update_exercise`: Updates custom exercise fields (name, muscles, equipment, setup cues, notes, media URL). Refuses edits to built-in library exercises.
+  - `attach_media_from_url(exercise_id, url)`: Downloads a media file from a public HTTPS URL, validates magic bytes and size caps (photos <= 8MB, GIF <= 15MB, video <= 60MB), uploads to R2, and links it to the exercise's `videoLinks`.
+  - `create_media_upload_link(exercise_id)`: Generates a temporary 15-minute single-use upload URL for the user to upload photos or videos from their phone camera.
+  - `log_workout`: Accepts exercises by `id` directly from `search_exercises` or `add_exercise`, avoiding fallback IDs and correctly mapping equipment and muscle groups.
+
+- **Snapshot Flow**:
+  1. Inspect the machine/equipment photo.
+  2. Call `search_exercises` with the machine or exercise name.
+  3. If missing, call `add_exercise` to register it in the user's directory. If duplicate refusal triggers, use the returned match.
+  4. Log or plan the workout with `log_workout` or `plan_workout`, referencing the exercise by its ID.
+  5. Call `create_media_upload_link` to give the user a link to upload the photo/video to the exercise.
 
 ### Add it to Claude
 

@@ -12,6 +12,8 @@ export interface McpEnv extends Env {
   FIREBASE_AUTH_DOMAIN: string;
   /** Set by the OAuth provider before it calls our handlers. */
   OAUTH_PROVIDER?: OAuthHelpers;
+  /** R2 bucket for exercise media (photos, GIFs, videos). */
+  EXERCISE_MEDIA?: R2Bucket;
 }
 
 /** Stored (encrypted) in the grant; arrives as `ctx.props` on every MCP request. */

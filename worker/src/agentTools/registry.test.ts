@@ -4,6 +4,8 @@ import { UserData } from '../data/userData';
 import { fallbackExerciseId } from '../data/shapes';
 import { resolveExercise } from '../data/exerciseIndex';
 import { agentTools, runAgentTool } from './registry';
+import { fakeR2 } from '../media/testing/fakeR2';
+import { memoryKv } from '../mcp/testing/memoryKv';
 
 const UID = 'ownerUid123';
 const OTHER = 'someoneElse456';
@@ -12,11 +14,30 @@ const NOW = new Date('2026-10-30T12:00:00.000Z');
 let fs: FakeFirestore;
 let ctx: { data: UserData };
 let ids: number;
+let r2Bucket: ReturnType<typeof fakeR2>;
+let kvNamespace: ReturnType<typeof memoryKv>;
+let fetchMock: (url: string | URL | Request, init?: RequestInit) => Promise<Response>;
 
 beforeEach(() => {
   fs = new FakeFirestore();
+  r2Bucket = fakeR2();
+  kvNamespace = memoryKv();
+  fetchMock = async () => new Response('not found', { status: 404 });
   ids = 0;
-  ctx = { data: new UserData(fs.client(), UID, () => NOW, () => `plan-${++ids}`) };
+  ctx = {
+    data: new UserData(
+      fs.client(),
+      UID,
+      () => NOW,
+      () => `plan-${++ids}`,
+      {
+        r2: r2Bucket,
+        kv: kvNamespace,
+        origin: 'https://workout-ai.test',
+        fetchImpl: (url, init) => fetchMock(url, init),
+      },
+    ),
+  };
   fs.put(['users', UID], {
     email: 'owner@example.com',
     displayName: 'Owner',
@@ -38,11 +59,12 @@ const ok = async (name: string, input: unknown) => {
 const BENCH = { name: 'Bench Press', sets: 3, reps: 8, weight: 135 };
 
 describe('agent tool registry', () => {
-  it('has the thirteen tools with model-facing descriptions', () => {
+  it('has the seventeen tools with model-facing descriptions', () => {
     expect(agentTools.map((t) => t.name)).toEqual([
       'get_profile', 'update_profile', 'list_workouts', 'get_workout', 'create_workout',
       'update_workout', 'list_plans', 'plan_workout', 'list_history', 'get_history_entry',
       'log_workout', 'update_history_entry', 'add_exercise',
+      'search_exercises', 'update_exercise', 'attach_media_from_url', 'create_media_upload_link',
     ]);
     for (const t of agentTools) expect(t.description.length).toBeGreaterThan(40);
   });
@@ -753,7 +775,7 @@ describe('update_history_entry', () => {
 
   it('resolves custom exercises created via add_exercise', async () => {
     await ok('add_exercise', {
-      name: 'Belt Squat Machine',
+      name: 'Hammer Strength V-Squat',
       muscleGroups: ['Quads', 'Glutes'],
       equipment: 'Machine',
     });
@@ -761,7 +783,7 @@ describe('update_history_entry', () => {
     const logged = await ok('log_workout', {
       date: '2026-10-25',
       name: 'Leg Day',
-      exercises: [{ name: 'Belt Squat Machine', sets: [{ reps: 10, weight: 200 }] }],
+      exercises: [{ name: 'Hammer Strength V-Squat', sets: [{ reps: 10, weight: 200 }] }],
     });
     expect(logged.unmatchedExercises).toBeUndefined();
 
@@ -1035,5 +1057,242 @@ describe('list_workouts and get_workout superset count', () => {
     const workout = await ok('get_workout', { workoutId: 'sw-seal-row' });
     expect((workout.exercises as unknown[])).toHaveLength(3);
     expect((workout.supersets as unknown[])).toHaveLength(3);
+  });
+});
+
+
+describe('search_exercises', () => {
+  it('searches the library and finds exercises', async () => {
+    const res = await ok('search_exercises', { query: 'Bench Press' });
+    const exercises = res.exercises as { id: string; name: string; custom: boolean; isCustom: boolean }[];
+    expect(exercises.length).toBeGreaterThan(0);
+    const bench = exercises.find((e) => e.name.toLowerCase().includes('bench press'));
+    expect(bench).toBeDefined();
+    expect(bench?.custom).toBe(false);
+  });
+
+  it('searches custom exercises and returns mediaUrl', async () => {
+    const added = await ok('add_exercise', {
+      name: 'Custom Belt Squat Deluxe',
+      muscleGroups: ['Quads', 'Glutes'],
+      equipment: 'Machine',
+      media_url: 'https://workout-ai.test/media/ownerUid123/deluxe.mp4',
+    });
+    expect(added.id).toBeDefined();
+
+    const res = await ok('search_exercises', { query: 'Deluxe' });
+    const exercises = res.exercises as { id: string; name: string; custom: boolean; mediaUrl?: string }[];
+    const found = exercises.find((e) => e.id === added.id);
+    expect(found).toBeDefined();
+    expect(found?.custom).toBe(true);
+    expect(found?.mediaUrl).toBe('https://workout-ai.test/media/ownerUid123/deluxe.mp4');
+  });
+});
+
+describe('add_exercise duplicate refusal', () => {
+  it('refuses near-duplicate of a library exercise and returns match', async () => {
+    const res = await run('add_exercise', {
+      name: 'Barbell Bench Press',
+      muscleGroups: ['Chest'],
+      equipment: 'Barbell',
+    });
+    expect(res.ok).toBe(false);
+    if (!res.ok) {
+      expect(res.error).toMatch(/already exists as a library exercise/);
+      expect(res.match).toMatchObject({
+        isCustom: false,
+        name: expect.any(String),
+      });
+    }
+  });
+
+  it('refuses near-duplicate of an existing custom exercise and returns match', async () => {
+    await ok('add_exercise', {
+      name: 'Custom Hack Squat Pro',
+      muscleGroups: ['Quads'],
+      equipment: 'Machine',
+    });
+
+    const dup = await run('add_exercise', {
+      name: 'custom hack squat pro',
+      muscleGroups: ['Quads'],
+      equipment: 'Machine',
+    });
+    expect(dup.ok).toBe(false);
+    if (!dup.ok) {
+      expect(dup.error).toMatch(/already exists as a custom exercise/);
+      expect(dup.match).toMatchObject({
+        isCustom: true,
+        name: 'Custom Hack Squat Pro',
+      });
+    }
+  });
+
+  it('accepts media_url and persists it to videoLinks', async () => {
+    const created = await ok('add_exercise', {
+      name: 'Custom Gym Contraption 42',
+      muscleGroups: ['Quads'],
+      equipment: 'Machine',
+      media_url: 'https://workout-ai.test/media/ownerUid123/pendulum.mp4',
+    });
+    expect(created.videoLinks).toEqual(['https://workout-ai.test/media/ownerUid123/pendulum.mp4']);
+    const doc = fs.read(['users', UID, 'customExercises', created.id as string]) as Record<string, unknown>;
+    expect(doc.videoLinks).toEqual(['https://workout-ai.test/media/ownerUid123/pendulum.mp4']);
+  });
+});
+
+describe('update_exercise', () => {
+  it('updates custom exercise fields and refuses non-custom exercises', async () => {
+    const added = await ok('add_exercise', {
+      name: 'Seal Row Bench',
+      muscleGroups: ['Back'],
+      equipment: 'Bench',
+    });
+
+    const updated = await ok('update_exercise', {
+      exercise_id: added.id,
+      name: 'Seal Row Heavy Bench',
+      muscles: ['Back', 'Biceps'],
+      notes: 'Chest flat against pad',
+      media: 'https://workout-ai.test/media/ownerUid123/seal.mp4',
+    });
+    expect(updated.name).toBe('Seal Row Heavy Bench');
+    expect(updated.muscleGroup).toBe('Back, Biceps');
+    expect(updated.videoLinks).toEqual(['https://workout-ai.test/media/ownerUid123/seal.mp4']);
+
+    // Non-existent exercise
+    const notFound = await run('update_exercise', {
+      exercise_id: 'nonexistent123',
+      name: 'Whatever',
+    });
+    expect(notFound.ok).toBe(false);
+    if (!notFound.ok) expect(notFound.error).toMatch(/No custom exercise with id nonexistent123/);
+  });
+
+  it('refuses updating to a duplicate library or custom name', async () => {
+    const added = await ok('add_exercise', {
+      name: 'Custom Preacher Curl 9000',
+      muscleGroups: ['Biceps'],
+      equipment: 'Machine',
+    });
+
+    const dupLib = await run('update_exercise', {
+      exercise_id: added.id,
+      name: 'Barbell Bench Press',
+    });
+    expect(dupLib.ok).toBe(false);
+    if (!dupLib.ok) {
+      expect(dupLib.error).toMatch(/already exists as a library exercise/);
+      expect(dupLib.match).toBeDefined();
+    }
+  });
+});
+
+describe('attach_media_from_url', () => {
+  it('refuses non-https URL, oversize files, and wrong types', async () => {
+    const added = await ok('add_exercise', {
+      name: 'Nordic Hamstring Station',
+      muscleGroups: ['Hamstrings'],
+      equipment: 'Bench',
+    });
+
+    // 1. Non-https URL
+    const nonHttps = await run('attach_media_from_url', {
+      exercise_id: added.id,
+      url: 'http://example.com/demo.mp4',
+    });
+    expect(nonHttps.ok).toBe(false);
+    if (!nonHttps.ok) expect(nonHttps.error).toMatch(/https/i);
+
+    // 2. Oversize photo (> 8MB)
+    const oversizeJpeg = new Uint8Array(9 * 1024 * 1024);
+    oversizeJpeg.set([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46]);
+    fetchMock = async () => new Response(oversizeJpeg, { status: 200, headers: { 'content-type': 'image/jpeg' } });
+
+    const oversize = await run('attach_media_from_url', {
+      exercise_id: added.id,
+      url: 'https://example.com/huge.jpg',
+    });
+    expect(oversize.ok).toBe(false);
+    if (!oversize.ok) expect(oversize.error).toMatch(/exceeds limit/i);
+
+    // 3. Wrong type (e.g. plain text / html)
+    fetchMock = async () => new Response(new TextEncoder().encode('<html>not media</html>'), { status: 200 });
+    const wrongType = await run('attach_media_from_url', {
+      exercise_id: added.id,
+      url: 'https://example.com/page.html',
+    });
+    expect(wrongType.ok).toBe(false);
+    if (!wrongType.ok) expect(wrongType.error).toMatch(/Unsupported media type/i);
+  });
+
+  it('succeeds on valid media, saves to R2, and updates exercise videoLinks', async () => {
+    const added = await ok('add_exercise', {
+      name: 'Tibialis Trainer Pro',
+      muscleGroups: ['Calves'],
+      equipment: 'Machine',
+    });
+
+    const sampleMp4 = new Uint8Array([0x00, 0x00, 0x00, 0x18, 0x66, 0x74, 0x79, 0x70, 0x69, 0x73, 0x6f, 0x6d, 0x00, 0x00, 0x00, 0x00]);
+    fetchMock = async () => new Response(sampleMp4, { status: 200, headers: { 'content-type': 'video/mp4' } });
+
+    const res = await ok('attach_media_from_url', {
+      exercise_id: added.id,
+      url: 'https://example.com/demo.mp4',
+    });
+    expect(res.kind).toBe('video');
+    expect(res.mediaUrl).toMatch(/^https:\/\/workout-ai\.test\/media\/ownerUid123\/[a-z0-9]+\.mp4$/);
+
+    const doc = fs.read(['users', UID, 'customExercises', added.id as string]) as Record<string, unknown>;
+    expect(doc.videoLinks).toEqual([res.mediaUrl]);
+  });
+});
+
+describe('create_media_upload_link', () => {
+  it('generates a 15-minute single-use upload link for custom exercise', async () => {
+    const added = await ok('add_exercise', {
+      name: 'Sissy Squat Bench Pro',
+      muscleGroups: ['Quads'],
+      equipment: 'Bench',
+    });
+
+    const res = await ok('create_media_upload_link', {
+      exercise_id: added.id,
+    });
+    expect(res.uploadUrl).toMatch(/^https:\/\/workout-ai\.test\/upload\/[A-Za-z0-9_-]+$/);
+    expect(res.expiresSeconds).toBe(900);
+
+    // Refuses non-existent exercise
+    const notFound = await run('create_media_upload_link', {
+      exercise_id: 'missing999',
+    });
+    expect(notFound.ok).toBe(false);
+  });
+});
+
+describe('log_workout with exercise id', () => {
+  it('accepts exercises by id from add_exercise or search_exercises', async () => {
+    const custom = await ok('add_exercise', {
+      name: 'My Custom Belt Squat Loaded 3000',
+      muscleGroups: ['Quads', 'Glutes'],
+      equipment: 'Machine',
+    });
+
+    const logged = await ok('log_workout', {
+      date: '2026-10-25',
+      name: 'Snapshot Leg Day',
+      exercises: [
+        {
+          id: custom.id,
+          sets: [{ reps: 8, weight: 225 }],
+        },
+      ],
+    });
+    expect(logged.unmatchedExercises).toBeUndefined();
+
+    const history = await ok('get_history_entry', { workoutId: logged.workoutId });
+    const exercises = history.exercises as { exerciseId: string; exerciseName: string }[];
+    expect(exercises[0].exerciseId).toBe(custom.id);
+    expect(exercises[0].exerciseName).toBe('My Custom Belt Squat Loaded 3000');
   });
 });

@@ -7,7 +7,23 @@
 import { docId, FirestoreError, type FirestoreRest, type FsDocument } from './firestore';
 import { fromFields, toFields } from './firestoreValue';
 import type { QueryFilter } from './firestore';
-import { resolveExercise, type CustomExerciseLike, type HistoryExerciseLike } from './exerciseIndex';
+import {
+  resolveExercise,
+  matchExerciseInList,
+  matchCustomExercise,
+  getCachedLibrary,
+  searchExerciseIndex,
+  type CustomExerciseLike,
+  type HistoryExerciseLike,
+} from './exerciseIndex';
+import {
+  isMediaSizeAllowed,
+  maxBytesForKind,
+  sniffMediaType,
+} from '../media/sniff';
+import { generateMediaId } from '../media/storage';
+import { createUploadToken } from '../media/uploadToken';
+import type { UpdateExerciseInput } from './shapes';
 import {
   buildCustomExerciseDoc,
   buildExerciseHistoryDoc,
@@ -56,6 +72,34 @@ export class DataError extends Error {
   }
 }
 
+export interface ExerciseMatchInfo {
+  id: string;
+  name: string;
+  isCustom: boolean;
+  muscleGroups?: string[];
+  equipment?: string;
+  [key: string]: unknown;
+}
+
+export class DuplicateExerciseError extends DataError {
+  constructor(public readonly match: ExerciseMatchInfo) {
+    super(
+      'conflict',
+      `Exercise "${match.name}" already exists as a ${match.isCustom ? 'custom' : 'library'} exercise.`,
+    );
+    this.name = 'DuplicateExerciseError';
+  }
+}
+
+export interface UserDataOptions {
+  now?: () => Date;
+  newId?: () => string;
+  r2?: R2Bucket;
+  kv?: KVNamespace;
+  origin?: string;
+  fetchImpl?: typeof fetch;
+}
+
 function safeId(id: string, what: string): string {
   if (!SAFE_ID.test(id)) throw new DataError('invalid-argument', `Invalid ${what} id.`);
   return id;
@@ -72,7 +116,7 @@ function offsetFrom(token: string | undefined): number {
 
 const data = (doc: FsDocument) => fromFields(doc.fields ?? {});
 
-function parseCustomExercises(docs: FsDocument[]): CustomExerciseLike[] {
+function parseCustomExercises(docs: FsDocument[]): (CustomExerciseLike & { videoLinks?: string[] })[] {
   return docs.map((d) => {
     const docData = data(d);
     return {
@@ -82,6 +126,7 @@ function parseCustomExercises(docs: FsDocument[]): CustomExerciseLike[] {
       muscleGroup: typeof docData.muscleGroup === 'string' ? docData.muscleGroup : undefined,
       equipment: typeof docData.equipment === 'string' ? docData.equipment : undefined,
       searchKeywords: Array.isArray(docData.searchKeywords) ? (docData.searchKeywords as string[]) : undefined,
+      videoLinks: Array.isArray(docData.videoLinks) ? (docData.videoLinks as string[]) : undefined,
     };
   });
 }
@@ -99,14 +144,27 @@ const PLAN_WRITE_ATTEMPTS = 4;
 
 export class UserData {
   readonly uid: string;
+  readonly now: () => Date;
+  readonly newId: () => string;
+  readonly options: UserDataOptions;
 
   constructor(
     private readonly fs: FirestoreRest,
     uid: string,
-    private readonly now: () => Date = () => new Date(),
-    private readonly newId: () => string = () => crypto.randomUUID(),
+    nowOrOptions?: (() => Date) | UserDataOptions,
+    newId?: () => string,
+    options?: UserDataOptions,
   ) {
     this.uid = safeId(uid, 'user');
+    if (typeof nowOrOptions === 'object' && nowOrOptions !== null) {
+      this.options = nowOrOptions;
+      this.now = nowOrOptions.now ?? (() => new Date());
+      this.newId = nowOrOptions.newId ?? (() => crypto.randomUUID());
+    } else {
+      this.now = typeof nowOrOptions === 'function' ? nowOrOptions : () => new Date();
+      this.newId = newId ?? (() => crypto.randomUUID());
+      this.options = options ?? {};
+    }
   }
 
   private path(...rest: string[]): string[] {
@@ -409,24 +467,57 @@ export class UserData {
       throw new DataError('invalid-argument', 'Workout must have at least one exercise.');
     }
     for (const e of input.exercises) {
+      const exIdentifier = e.name || e.id || 'Exercise';
       if (!e.sets || e.sets.length === 0) {
-        throw new DataError('invalid-argument', `Exercise "${e.name}" must have at least one set.`);
+        throw new DataError('invalid-argument', `Exercise "${exIdentifier}" must have at least one set.`);
       }
       const completed = e.sets.filter((s) => s.completed !== false);
       if (completed.length === 0) {
-        throw new DataError('invalid-argument', `Exercise "${e.name}" must have at least one completed set.`);
+        throw new DataError('invalid-argument', `Exercise "${exIdentifier}" must have at least one completed set.`);
       }
     }
 
-    // Resolve exercise names against user's history/stats, custom exercises and the app library
+    // Resolve exercise names/ids against user's history/stats, custom exercises and the app library
     const [historyExercises, customDocs] = await Promise.all([
       this.loadHistoryExercises(),
       this.fs.query(this.path(), 'customExercises', {}),
     ]);
     const customExercises = parseCustomExercises(customDocs);
-    const resolvedExercises = input.exercises.map((e) =>
-      resolveExercise(e.name, customExercises, undefined, historyExercises),
-    );
+    const resolvedExercises = input.exercises.map((e) => {
+      if (e.id) {
+        const custom = customExercises.find((c) => c.id === e.id);
+        if (custom) {
+          const muscleGroups =
+            custom.muscleGroups && custom.muscleGroups.length > 0
+              ? custom.muscleGroups
+              : custom.muscleGroup
+                ? custom.muscleGroup.split(',').map((s) => s.trim()).filter(Boolean)
+                : ['Custom'];
+          return {
+            id: custom.id,
+            name: e.name || custom.name,
+            matchedName: custom.name,
+            muscleGroups,
+            equipment: custom.equipment || 'Custom',
+            isFallback: false,
+            matchedBy: 'custom' as const,
+          };
+        }
+        const lib = getCachedLibrary().find((l) => l.id === e.id);
+        if (lib) {
+          return {
+            id: lib.id,
+            name: e.name || lib.name,
+            matchedName: lib.name,
+            muscleGroups: lib.muscleGroups && lib.muscleGroups.length > 0 ? lib.muscleGroups : ['Unknown'],
+            equipment: lib.equipment || 'Unknown',
+            isFallback: false,
+            matchedBy: 'library' as const,
+          };
+        }
+      }
+      return resolveExercise(e.name || e.id || 'Exercise', customExercises, undefined, historyExercises);
+    });
 
     const now = this.now();
     const workoutDate = new Date(`${input.date}T12:00:00.000Z`);
@@ -916,9 +1007,287 @@ export class UserData {
     return this.getHistoryEntry(workoutId);
   }
 
+    async searchExercises(query: string) {
+    const customDocs = await this.fs.query(this.path(), 'customExercises', {});
+    const customList = parseCustomExercises(customDocs);
+    const exercises = searchExerciseIndex(query, customList, getCachedLibrary());
+    return { exercises };
+  }
+
   async addExercise(input: CustomExerciseInput) {
+    // 1. Refuse near-duplicate of library exercise
+    const libMatch = matchExerciseInList(input.name, getCachedLibrary());
+    if (libMatch) {
+      throw new DuplicateExerciseError({
+        id: libMatch.id,
+        name: libMatch.name,
+        isCustom: false,
+        muscleGroups: libMatch.muscleGroups,
+        equipment: libMatch.equipment,
+      });
+    }
+
+    // 2. Refuse near-duplicate of custom exercise
+    const customDocs = await this.fs.query(this.path(), 'customExercises', {});
+    const customList = parseCustomExercises(customDocs);
+    const customMatch = matchCustomExercise(input.name, customList);
+    if (customMatch) {
+      const groups =
+        customMatch.muscleGroups && customMatch.muscleGroups.length > 0
+          ? customMatch.muscleGroups
+          : customMatch.muscleGroup
+            ? customMatch.muscleGroup.split(',').map((s) => s.trim()).filter(Boolean)
+            : ['Custom'];
+      throw new DuplicateExerciseError({
+        id: customMatch.id,
+        name: customMatch.name,
+        isCustom: true,
+        muscleGroups: groups,
+        equipment: customMatch.equipment || 'Custom',
+      });
+    }
+
     const fields = buildCustomExerciseDoc(this.uid, input, this.now());
     const doc = await this.fs.create(this.path('customExercises'), toFields(fields));
-    return { id: docId(doc), name: fields.name, muscleGroup: fields.muscleGroup, equipment: fields.equipment };
+    return {
+      id: docId(doc),
+      name: fields.name as string,
+      muscleGroup: fields.muscleGroup as string,
+      muscleGroups: input.muscleGroups,
+      equipment: fields.equipment as string,
+      media_url: input.media_url,
+      videoLinks: fields.videoLinks as string[],
+    };
+  }
+
+  async updateExercise(input: UpdateExerciseInput) {
+    const exId = input.exerciseId || input.exercise_id;
+    if (!exId) throw new DataError('invalid-argument', 'exerciseId or exercise_id is required.');
+    safeId(exId, 'custom exercise');
+    const doc = await this.fs.get(this.path('customExercises', exId));
+    if (!doc) {
+      throw new DataError('not-found', `No custom exercise with id ${exId}.`);
+    }
+    const current = data(doc);
+
+    // If name is updated, check duplicates against library and other custom exercises
+    if (input.name && input.name.trim().toLowerCase() !== String(current.name).toLowerCase()) {
+      const libMatch = matchExerciseInList(input.name, getCachedLibrary());
+      if (libMatch) {
+        throw new DuplicateExerciseError({
+          id: libMatch.id,
+          name: libMatch.name,
+          isCustom: false,
+          muscleGroups: libMatch.muscleGroups,
+          equipment: libMatch.equipment,
+        });
+      }
+      const customDocs = await this.fs.query(this.path(), 'customExercises', {});
+      const otherCustoms = parseCustomExercises(customDocs).filter((c) => c.id !== exId);
+      const customMatch = matchCustomExercise(input.name, otherCustoms);
+      if (customMatch) {
+        const groups =
+          customMatch.muscleGroups && customMatch.muscleGroups.length > 0
+            ? customMatch.muscleGroups
+            : customMatch.muscleGroup
+              ? customMatch.muscleGroup.split(',').map((s) => s.trim()).filter(Boolean)
+              : ['Custom'];
+        throw new DuplicateExerciseError({
+          id: customMatch.id,
+          name: customMatch.name,
+          isCustom: true,
+          muscleGroups: groups,
+          equipment: customMatch.equipment || 'Custom',
+        });
+      }
+    }
+
+    const now = this.now();
+    const patchData: Record<string, unknown> = { updatedAt: now };
+    const mask = ['updatedAt'];
+
+    if (input.name !== undefined) {
+      patchData.name = input.name.trim();
+      patchData.originalName = input.name.trim();
+      mask.push('name', 'originalName');
+    }
+
+    const muscleGroups = input.muscles ?? input.muscleGroups;
+    if (muscleGroups !== undefined) {
+      patchData.muscleGroups = muscleGroups;
+      patchData.muscleGroup = muscleGroups.join(', ');
+      mask.push('muscleGroups', 'muscleGroup');
+    }
+
+    if (input.equipment !== undefined) {
+      patchData.equipment = input.equipment.trim();
+      mask.push('equipment');
+    }
+
+    const instructions = input.setupCues ?? input.instructions;
+    if (instructions !== undefined) {
+      patchData.instructions = instructions;
+      mask.push('instructions');
+    }
+
+    if (input.notes !== undefined) {
+      patchData.notes = input.notes.trim();
+      mask.push('notes');
+    }
+
+    const mediaUrl = input.media ?? input.media_url;
+    if (mediaUrl !== undefined) {
+      patchData.videoLinks = [mediaUrl];
+      mask.push('videoLinks');
+    }
+
+    if (input.name !== undefined || muscleGroups !== undefined || input.equipment !== undefined) {
+      const finalName = (patchData.name as string) ?? String(current.name ?? '');
+      const finalMuscle = (patchData.muscleGroup as string) ?? String(current.muscleGroup ?? '');
+      const finalEquip = (patchData.equipment as string) ?? String(current.equipment ?? '');
+      patchData.searchKeywords = [
+        finalName.toLowerCase(),
+        finalName.toLowerCase(),
+        finalMuscle.toLowerCase(),
+        finalEquip.toLowerCase(),
+        ...finalName.toLowerCase().split(' '),
+      ].filter(Boolean);
+      mask.push('searchKeywords');
+    }
+
+    await this.fs.patch(this.path('customExercises', exId), toFields(patchData), { mask });
+
+    return {
+      id: exId,
+      name: (patchData.name as string) ?? String(current.name ?? ''),
+      muscleGroup: (patchData.muscleGroup as string) ?? String(current.muscleGroup ?? ''),
+      equipment: (patchData.equipment as string) ?? String(current.equipment ?? ''),
+      videoLinks: (patchData.videoLinks as string[]) ?? (Array.isArray(current.videoLinks) ? current.videoLinks : []),
+      notes: (patchData.notes as string) ?? (typeof current.notes === 'string' ? current.notes : undefined),
+    };
+  }
+
+  async attachMediaToExercise(exerciseId: string, mediaUrl: string): Promise<void> {
+    safeId(exerciseId, 'custom exercise');
+    const now = this.now();
+    await this.fs.patch(
+      this.path('customExercises', exerciseId),
+      toFields({ videoLinks: [mediaUrl], updatedAt: now }),
+      { mask: ['videoLinks', 'updatedAt'] },
+    );
+  }
+
+  async attachMediaFromUrl(exerciseId: string, url: string) {
+    safeId(exerciseId, 'custom exercise');
+    if (!url.startsWith('https://')) {
+      throw new DataError('invalid-argument', 'URL must be https.');
+    }
+
+    let parsedUrl: URL;
+    try {
+      parsedUrl = new URL(url);
+    } catch {
+      throw new DataError('invalid-argument', 'Invalid URL.');
+    }
+    const host = parsedUrl.hostname.toLowerCase();
+    if (
+      host === 'localhost' ||
+      host === '127.0.0.1' ||
+      host === '::1' ||
+      host.startsWith('10.') ||
+      host.startsWith('192.168.') ||
+      host.startsWith('169.254.') ||
+      /^172\.(1[6-9]|2\d|3[01])\./.test(host)
+    ) {
+      throw new DataError('invalid-argument', 'Private network URLs are not allowed.');
+    }
+
+    const doc = await this.fs.get(this.path('customExercises', exerciseId));
+    if (!doc) {
+      throw new DataError('not-found', `No custom exercise with id ${exerciseId}.`);
+    }
+
+    const fetchImpl = this.options.fetchImpl ?? fetch;
+    let res: Response;
+    try {
+      res = await fetchImpl(url, { redirect: 'follow', signal: AbortSignal.timeout(15000) });
+    } catch (err) {
+      throw new DataError('invalid-argument', `Failed to fetch media from URL: ${err instanceof Error ? err.message : String(err)}`);
+    }
+
+    if (!res.ok) {
+      throw new DataError('invalid-argument', `Failed to fetch media: server returned HTTP ${res.status}.`);
+    }
+    if (res.url && !res.url.startsWith('https://')) {
+      throw new DataError('invalid-argument', 'Redirected to non-https URL.');
+    }
+
+    const contentLength = Number(res.headers.get('content-length'));
+    if (Number.isFinite(contentLength) && contentLength > 60 * 1024 * 1024) {
+      throw new DataError('invalid-argument', 'Media file exceeds 60 MB limit.');
+    }
+
+    const arrayBuffer = await res.arrayBuffer();
+    const bytes = new Uint8Array(arrayBuffer);
+    if (bytes.length === 0) {
+      throw new DataError('invalid-argument', 'Fetched file is empty.');
+    }
+    if (bytes.length > 60 * 1024 * 1024) {
+      throw new DataError('invalid-argument', 'Media file exceeds 60 MB limit.');
+    }
+
+    const sniffed = sniffMediaType(bytes);
+    if (!sniffed) {
+      throw new DataError(
+        'invalid-argument',
+        'Unsupported media type: file does not match photo (jpeg/png/webp/heic), gif, or video (mp4/webm/mov).',
+      );
+    }
+
+    if (!isMediaSizeAllowed(sniffed.kind, bytes.length)) {
+      throw new DataError(
+        'invalid-argument',
+        `File size (${bytes.length} bytes) exceeds limit for ${sniffed.kind} (${maxBytesForKind(sniffed.kind)} bytes).`,
+      );
+    }
+
+    if (!this.options.r2) {
+      throw new DataError('conflict', 'Media storage (R2) is not configured.');
+    }
+
+    const mediaId = generateMediaId();
+    const key = `${this.uid}/${mediaId}.${sniffed.ext}`;
+    await this.options.r2.put(key, bytes, {
+      httpMetadata: { contentType: sniffed.mime, cacheControl: 'public, max-age=31536000, immutable' },
+    });
+
+    const origin = this.options.origin ?? 'https://workout-ai.test';
+    const mediaUrl = `${origin}/media/${this.uid}/${mediaId}.${sniffed.ext}`;
+
+    await this.attachMediaToExercise(exerciseId, mediaUrl);
+
+    return { exerciseId, mediaUrl, kind: sniffed.kind, bytes: bytes.length };
+  }
+
+  async createMediaUploadLink(exerciseId: string) {
+    safeId(exerciseId, 'custom exercise');
+    const doc = await this.fs.get(this.path('customExercises', exerciseId));
+    if (!doc) {
+      throw new DataError('not-found', `No custom exercise with id ${exerciseId}.`);
+    }
+
+    if (!this.options.kv) {
+      throw new DataError('conflict', 'Upload token storage (KV) is not configured.');
+    }
+
+    const { token, expiresSeconds } = await createUploadToken(this.options.kv, this.uid, exerciseId);
+    const origin = this.options.origin ?? 'https://workout-ai.test';
+    return {
+      exerciseId,
+      uploadUrl: `${origin}/upload/${token}`,
+      token,
+      expiresSeconds,
+      expiresMinutes: Math.round(expiresSeconds / 60),
+    };
   }
 }

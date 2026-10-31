@@ -55,7 +55,7 @@ export function createProvider(origin: string, deps: ConnectorDeps): OAuthProvid
           console.error('connector not configured', err instanceof Error ? err.message : String(err));
           return jsonError(503, 'The connector is not configured.');
         }
-        return handleMcpRequest(request, new UserData(firestore, props.uid));
+        return handleMcpRequest(request, new UserData(firestore, props.uid, { r2: env.EXERCISE_MEDIA, kv: env.AI_USAGE, origin }));
       },
     },
     defaultHandler: {

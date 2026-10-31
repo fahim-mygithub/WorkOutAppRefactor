@@ -408,6 +408,22 @@ export interface CustomExerciseInput {
   unit?: Unit;
   difficulty?: Difficulty;
   notes?: string;
+  media_url?: string;
+  videoLinks?: string[];
+}
+
+export interface UpdateExerciseInput {
+  exerciseId?: string;
+  exercise_id?: string;
+  name?: string;
+  muscles?: string[];
+  muscleGroups?: string[];
+  equipment?: string;
+  setupCues?: string[];
+  instructions?: string[];
+  notes?: string;
+  media?: string;
+  media_url?: string;
 }
 
 /** "Default: 3 x 10 @ 50 lbs" — the app has no field for defaults, so they live in notes. */
@@ -433,7 +449,7 @@ export function buildCustomExerciseDoc(uid: string, e: CustomExerciseInput, now:
     difficulty: e.difficulty ?? 'Intermediate',
     instructions: e.setupCues ?? [],
     notes,
-    videoLinks: [],
+    videoLinks: e.videoLinks && e.videoLinks.length > 0 ? e.videoLinks : e.media_url ? [e.media_url] : [],
     userId: uid,
     isCustom: true,
     id: '',
@@ -565,7 +581,7 @@ export interface PerformedSetInput {
 
 export interface ExerciseHistoryInput {
   id?: string;
-  name: string;
+  name?: string;
   sets: PerformedSetInput[];
   notes?: string;
   customTitle?: string;
@@ -690,7 +706,7 @@ export function buildWorkoutHistoryDoc(
   workoutId: string,
   input: LogWorkoutInput,
   now: Date,
-  resolvedExercises?: Array<{ id: string }>,
+  resolvedExercises?: Array<{ id: string; matchedName?: string; name?: string }>,
 ): Record<string, unknown> {
   const startDate = new Date(`${input.date}T12:00:00.000Z`);
   const duration = input.durationMinutes ?? 0;
@@ -710,11 +726,13 @@ export function buildWorkoutHistoryDoc(
     totalReps += reps;
     totalVolume += volume;
 
-    const resolvedId = resolvedExercises?.[idx]?.id;
+    const resolved = resolvedExercises?.[idx];
+    const resolvedId = resolved?.id;
+    const exerciseName = (e.name || resolved?.matchedName || resolved?.name || '').trim();
 
     return {
-      exerciseId: resolvedId || fallbackExerciseId(e.name),
-      exerciseName: e.name.trim(),
+      exerciseId: resolvedId || fallbackExerciseId(exerciseName),
+      exerciseName,
       sets,
       reps,
       volume,
@@ -767,7 +785,8 @@ export function buildExerciseHistoryDoc(
 
   const configuration = generateConfigurationString(completedSets);
   const totalVolume = completedSets.reduce((sum, s) => sum + s.weight * s.actualReps, 0);
-  const exerciseId = resolved?.id || fallbackExerciseId(exercise.name);
+  const exerciseName = (exercise.name || (resolved as { matchedName?: string } | undefined)?.matchedName || '').trim();
+  const exerciseId = resolved?.id || fallbackExerciseId(exerciseName);
   const muscleGroups =
     resolved?.muscleGroups && resolved.muscleGroups.length > 0 ? resolved.muscleGroups : ['Unknown'];
   const equipment = resolved?.equipment || 'Unknown';
@@ -775,7 +794,7 @@ export function buildExerciseHistoryDoc(
   return {
     userId: uid,
     exerciseId,
-    exerciseName: exercise.name.trim(),
+    exerciseName,
     workoutDate,
     createdAt: now,
     sets: completedSets,
