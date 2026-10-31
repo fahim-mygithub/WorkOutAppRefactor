@@ -15,6 +15,7 @@ import {
   loadCustomExercises,
 } from '../store/slices/customExerciseSlice';
 import { ExerciseHueDot } from '../components/ExerciseThumbnail';
+import { ExerciseVideo } from '../components/ExerciseVideo';
 import { CustomExerciseBadge } from '../components/workout/CustomExerciseBadge';
 import { Exercise } from '../types/exercise';
 import { type CustomExercise } from '../services/customExerciseService';
@@ -528,16 +529,29 @@ export default function ExercisesPage() {
                   </div>
                 </dl>
 
-                {/* Media display using LibraryMediaClip */}
+                {/* Built-in exercises keep their original player (fallback clips, Front/Side
+                    labels); custom exercises show the user's own media. */}
                 {selectedExercise.videoLinks && selectedExercise.videoLinks.length > 0 && (
                   <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                    {selectedExercise.videoLinks.slice(0, 2).map((url, idx) => (
-                      <LibraryMediaClip
-                        key={idx}
-                        url={url}
-                        alt={`${selectedExercise.name} demo ${idx + 1}`}
-                      />
-                    ))}
+                    {selectedExercise.videoLinks.slice(0, 2).map((url, idx) =>
+                      isCustomExercise(selectedExercise.id) ? (
+                        <LibraryMediaClip
+                          key={idx}
+                          url={url}
+                          alt={`${selectedExercise.name} demo ${idx + 1}`}
+                        />
+                      ) : (
+                        <ExerciseVideo
+                          key={idx}
+                          videoUrl={url}
+                          exerciseName={`${selectedExercise.name} - ${idx === 0 ? 'Front' : 'Side'} View`}
+                          autoPlay={idx === 0}
+                          muted={true}
+                          fallbackVideoUrls={selectedExercise.videoLinks.slice(idx + 1)}
+                          instructions={selectedExercise.instructions}
+                        />
+                      ),
+                    )}
                   </div>
                 )}
 
