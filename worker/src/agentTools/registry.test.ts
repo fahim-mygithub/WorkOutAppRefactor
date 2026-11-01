@@ -838,19 +838,10 @@ describe('update_history_entry', () => {
     expect(new Date(squatStats.lastPerformed as string).toISOString().slice(0, 10)).toBe('2026-10-20');
   });
 
-  it('rejects workout-level notes while accepting and persisting exercise and set notes', async () => {
-    // Workout-level notes rejected on log_workout
-    const rLogNotes = await run('log_workout', {
+  it('persists session notes on log_workout, returned by get_history_entry and list_history', async () => {
+    const logged = await ok('log_workout', {
       date: '2026-10-25',
-      notes: 'Session notes are not on workout_history',
-      exercises: [{ name: 'Bench Press', sets: [{ reps: 8, weight: 185 }] }],
-    });
-    expect(rLogNotes.ok).toBe(false);
-    if (!rLogNotes.ok) expect(rLogNotes.error).toMatch(/unrecognized key/i);
-
-    // Workout-level notes rejected on update_history_entry
-    const valid = await ok('log_workout', {
-      date: '2026-10-25',
+      notes: '  Paused bench with red bands, felt solid  ',
       exercises: [
         {
           name: 'Bench Press',
@@ -859,21 +850,65 @@ describe('update_history_entry', () => {
         },
       ],
     });
-    const workoutId = valid.id as string;
+    const workoutId = logged.id as string;
 
-    const rUpNotes = await run('update_history_entry', {
-      workoutId,
-      notes: 'New session note',
+    // Stored on workout_history doc
+    const summaryDoc = fs.read(['users', UID, 'workout_history', workoutId])!;
+    expect(summaryDoc.notes).toBe('Paused bench with red bands, felt solid');
+
+    // Returned by get_history_entry
+    const entry = (await ok('get_history_entry', { workoutId })) as {
+      notes?: string;
+      exercises: Array<{ notes?: string; sets: Array<{ notes?: string }> }>;
+    };
+    expect(entry.notes).toBe('Paused bench with red bands, felt solid');
+    expect(entry.exercises[0].notes).toBe('Felt good on chest');
+    expect(entry.exercises[0].sets[0].notes).toBe('Paused rep');
+
+    // Returned by list_history
+    const historyList = (await ok('list_history', { kind: 'workouts' })) as {
+      items: Array<{ id: string; notes?: string }>;
+    };
+    const found = historyList.items.find((item) => item.id === workoutId);
+    expect(found).toBeDefined();
+    expect(found?.notes).toBe('Paused bench with red bands, felt solid');
+  });
+
+  it('updates session notes, clears them with empty string, and leaves them untouched when omitted', async () => {
+    const logged = await ok('log_workout', {
+      date: '2026-10-25',
+      name: 'Chest Focus',
+      notes: 'Original session note',
+      exercises: [{ name: 'Bench Press', sets: [{ reps: 8, weight: 185 }] }],
     });
-    expect(rUpNotes.ok).toBe(false);
-    if (!rUpNotes.ok) expect(rUpNotes.error).toMatch(/unrecognized key/i);
+    const workoutId = logged.id as string;
 
-    // Notes on exercise and sets are properly saved
-    const exHistId = (valid.exercises as { id: string }[])[0].id;
-    const exDoc = fs.read(['users', UID, 'exercise_history', exHistId])!;
-    expect(exDoc.notes).toBe('Felt good on chest');
-    const sets = exDoc.sets as { notes?: string }[];
-    expect(sets[0].notes).toBe('Paused rep');
+    // Update sets notes
+    await ok('update_history_entry', {
+      workoutId,
+      notes: '  Updated note: added tempo work  ',
+    });
+    let entry = (await ok('get_history_entry', { workoutId })) as { name?: string; notes?: string };
+    expect(entry.notes).toBe('Updated note: added tempo work');
+    const summaryDoc = fs.read(['users', UID, 'workout_history', workoutId])!;
+    expect(summaryDoc.notes).toBe('Updated note: added tempo work');
+
+    // Update without notes leaves it unchanged
+    await ok('update_history_entry', {
+      workoutId,
+      name: 'Chest Focus Renamed',
+    });
+    entry = (await ok('get_history_entry', { workoutId })) as { name: string; notes?: string };
+    expect(entry.name).toBe('Chest Focus Renamed');
+    expect(entry.notes).toBe('Updated note: added tempo work');
+
+    // Update with "" clears notes
+    await ok('update_history_entry', {
+      workoutId,
+      notes: '',
+    });
+    entry = (await ok('get_history_entry', { workoutId })) as { notes?: string };
+    expect(entry.notes).toBeUndefined();
   });
 
   it('validates all changes before writing and does not leave partial mutations on error', async () => {

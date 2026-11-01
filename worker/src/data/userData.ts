@@ -968,6 +968,7 @@ export class UserData {
       totalVolume,
       exercisesSummary,
       updatedAt: now,
+      ...(input.notes !== undefined ? { notes: input.notes.trim() } : {}),
     };
     const summaryMask = [
       'name',
@@ -980,6 +981,7 @@ export class UserData {
       'totalVolume',
       'exercisesSummary',
       'updatedAt',
+      ...(input.notes !== undefined ? ['notes'] : []),
     ];
     await this.fs.patch(this.path('workout_history', workoutId), toFields(summaryPatch), { mask: summaryMask });
 

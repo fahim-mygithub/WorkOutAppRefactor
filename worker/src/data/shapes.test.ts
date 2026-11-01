@@ -271,7 +271,7 @@ describe('workout history documents (ExerciseHistoryService)', () => {
     expect(Object.keys(summary).sort()).toEqual(['exerciseId', 'exerciseName', 'reps', 'sets', 'volume'].sort());
   });
 
-  it('does not include notes in workout_history doc even if notes are passed in input', () => {
+  it('includes trimmed notes in workout_history doc when non-empty', () => {
     const docWithNotes = buildWorkoutHistoryDoc(
       'uid1',
       'wh1',
@@ -279,13 +279,28 @@ describe('workout history documents (ExerciseHistoryService)', () => {
         date: '2026-10-25',
         name: 'Push Day',
         durationMinutes: 45,
-        notes: 'Felt strong today',
+        notes: '  Felt strong today  ',
         exercises: [{ name: 'Bench Press', sets: [{ reps: 8, weight: 185 }] }],
-      } as unknown as import('./shapes').LogWorkoutInput,
+      },
       NOW,
     );
-    expect(docWithNotes).not.toHaveProperty('notes');
-    expect(Object.keys(docWithNotes).sort()).toEqual([...WORKOUT_HISTORY_KEYS].sort());
+    expect(docWithNotes.notes).toBe('Felt strong today');
+    expect(Object.keys(docWithNotes).sort()).toEqual([...WORKOUT_HISTORY_KEYS, 'notes'].sort());
+
+    const docEmptyNotes = buildWorkoutHistoryDoc(
+      'uid1',
+      'wh1',
+      {
+        date: '2026-10-25',
+        name: 'Push Day',
+        durationMinutes: 45,
+        notes: '   ',
+        exercises: [{ name: 'Bench Press', sets: [{ reps: 8, weight: 185 }] }],
+      },
+      NOW,
+    );
+    expect(docEmptyNotes).not.toHaveProperty('notes');
+    expect(Object.keys(docEmptyNotes).sort()).toEqual([...WORKOUT_HISTORY_KEYS].sort());
   });
 
   it('has exactly the fields saveExercisePerformance writes', () => {

@@ -12,7 +12,7 @@ const OTHER = 'someoneElse456';
 const NOW = new Date('2026-10-30T12:00:00.000Z');
 
 type Op = Parameters<typeof runHistoryAction>[0];
-type Entry = { name: string; startTime: string; exercises: Record<string, any>[] };
+type Entry = { name: string; startTime: string; notes?: string; exercises: Record<string, any>[] };
 
 let fs: FakeFirestore;
 let data: UserData;
@@ -139,6 +139,51 @@ describe('history edit / undoEdit on app-shaped records', () => {
     });
     await okRun('undoEdit', { workoutId: 'sumDoc1', prior: edited.prior });
     expect((await entry('sumDoc1')).startTime).toBe(startBefore);
+  });
+
+  it('undoEdit restores modified session notes, or clears a session note added by the edit', async () => {
+    seedAppSession();
+    // 1. Initial session has no note. Edit adds a note.
+    const initial = await entry('sumDoc1');
+    expect(initial.notes).toBeUndefined();
+
+    const edit1 = await okRun('edit', {
+      workoutId: 'sumDoc1',
+      update: { notes: 'Session note added by edit' },
+    });
+    const after1 = await entry('sumDoc1');
+    expect(after1.notes).toBe('Session note added by edit');
+
+    // Undo edit1 should clear the added note back to undefined.
+    await okRun('undoEdit', { workoutId: 'sumDoc1', prior: edit1.prior });
+    const restored1 = await entry('sumDoc1');
+    expect(restored1.notes).toBeUndefined();
+
+    // 2. Set an initial note, edit changes it, undoEdit restores it.
+    await okRun('edit', {
+      workoutId: 'sumDoc1',
+      update: { notes: 'Original note' },
+    });
+    const edit2 = await okRun('edit', {
+      workoutId: 'sumDoc1',
+      update: { notes: 'Modified note' },
+    });
+    expect((await entry('sumDoc1')).notes).toBe('Modified note');
+
+    await okRun('undoEdit', { workoutId: 'sumDoc1', prior: edit2.prior });
+    const restored2 = await entry('sumDoc1');
+    expect(restored2.notes).toBe('Original note');
+
+    // 3. Edit clears the note (""), undoEdit restores it.
+    const edit3 = await okRun('edit', {
+      workoutId: 'sumDoc1',
+      update: { notes: '' },
+    });
+    expect((await entry('sumDoc1')).notes).toBeUndefined();
+
+    await okRun('undoEdit', { workoutId: 'sumDoc1', prior: edit3.prior });
+    const restored3 = await entry('sumDoc1');
+    expect(restored3.notes).toBe('Original note');
   });
 
   it('reports an unknown workout and writes nothing', async () => {

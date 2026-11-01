@@ -591,6 +591,7 @@ export interface LogWorkoutInput {
   date: string;
   name?: string;
   durationMinutes?: number;
+  notes?: string;
   tz?: string;
   utcOffset?: number;
   exercises: ExerciseHistoryInput[];
@@ -613,6 +614,7 @@ export interface UpdateHistoryEntryInput {
   utcOffset?: number;
   name?: string;
   durationMinutes?: number;
+  notes?: string;
   exercises?: UpdateHistoryExerciseInput[];
   removeExerciseIds?: string[];
   replaceAllExercises?: boolean;
@@ -751,6 +753,7 @@ export function buildWorkoutHistoryDoc(
     totalReps,
     totalVolume,
     exercisesSummary,
+    ...(input.notes?.trim() ? { notes: input.notes.trim() } : {}),
   };
 }
 

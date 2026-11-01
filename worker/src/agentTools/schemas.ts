@@ -211,6 +211,14 @@ export const logWorkoutInput = z
       .max(1440)
       .optional()
       .describe('Total workout duration in minutes if known.'),
+    notes: z
+      .string()
+      .trim()
+      .max(1000)
+      .optional()
+      .describe(
+        'Session note for context the numbers do not show: variations (paused reps, tempo, resistance bands, belt, straps), how it felt, injuries, gym or equipment changes. Per-exercise or per-set details go in exercises[].notes or sets[].notes.',
+      ),
     exercises: z
       .array(exerciseHistoryInput)
       .min(1)
@@ -275,6 +283,12 @@ export const updateHistoryEntryInput = z
       .describe('User UTC offset in minutes (e.g. -300 for UTC-5, +540 for UTC+9).'),
     name: z.string().trim().min(1).max(100).optional().describe('New workout name.'),
     durationMinutes: z.number().int().min(1).max(1440).optional().describe('New duration in minutes.'),
+    notes: z
+      .string()
+      .trim()
+      .max(1000)
+      .optional()
+      .describe('Session note (variations like paused reps, bands, tempo; how it felt). Replaces the existing note; send "" to clear it.'),
     exercises: z
       .array(updateHistoryExerciseInput)
       .min(1)
