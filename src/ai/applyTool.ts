@@ -48,6 +48,13 @@ import type {
 import { workoutText } from './workoutText';
 import type { AiAssistantTurn, AiToolCall } from './types';
 
+/** Tool call shape consumed by the planner (mirrors AiToolCall with open tool names). */
+export type ToolCallForPlan = {
+  id: string;
+  name: string;
+  input: Record<string, unknown>;
+};
+
 /** A saved workout the lifter has, as updateWorkout sees it. */
 export interface SavedWorkoutRef extends SavedWorkoutDraft {
   id: string;
@@ -351,7 +358,7 @@ const isDateKey = (v: unknown): v is string =>
 
 const PROGRESSION_RATES = ['beginner', 'intermediate', 'advanced'] as const;
 
-export function planToolCall(call: AiToolCall, ctx: PlanContext): ToolPlan {
+export function planToolCall(call: ToolCallForPlan | AiToolCall, ctx: PlanContext): ToolPlan {
   const { id, input } = call;
   const i = input as Record<string, unknown>;
   const reject = (reason: string): ToolPlan => ({ kind: 'rejected', id, reason });
@@ -1011,7 +1018,7 @@ export function planToolCall(call: AiToolCall, ctx: PlanContext): ToolPlan {
  */
 export function toAssistantTurn(
   reply: string,
-  plans: ReadonlyArray<{ call: AiToolCall; plan: ToolPlan }>,
+  plans: ReadonlyArray<{ call: ToolCallForPlan | AiToolCall; plan: ToolPlan }>,
 ): Required<Pick<AiAssistantTurn, 'text' | 'proposals' | 'notices'>> {
   const proposals: NonNullable<AiAssistantTurn['proposals']> = [];
   const notices: NonNullable<AiAssistantTurn['notices']> = [];

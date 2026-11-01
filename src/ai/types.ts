@@ -50,12 +50,7 @@ export type AiToolName =
   | 'updateProfile'
   | 'addExercise'
   | 'logPastWorkout'
-  | 'editPastWorkout'
-  | 'addSets'
-  | 'removeOpenSets'
-  | 'addExerciseToWorkout'
-  | 'removeExerciseFromWorkout'
-  | 'setExerciseNote';
+  | 'editPastWorkout';
 
 /** Tool input as validated by the Worker; the planner narrows it per tool. */
 export type AiToolInput = Record<string, unknown>;
