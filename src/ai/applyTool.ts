@@ -18,7 +18,16 @@ import type { ActiveWorkout, Exercise, WorkoutExercise, WorkoutSet } from '../ty
 import type { TrackedLift, TrackedLoad, TrackedTarget, WeightUnit } from '../types/trackedLifts';
 import type { ParsedExercise, ParsedSet } from '../parser/types';
 import type { UserPreferences } from '../store/slices/userSlice';
-import { replaceExerciseMovement, setsPatched, type SetPatch } from '../store/slices/workoutSlice';
+import {
+  addExerciseToWorkout,
+  addSet,
+  removeExerciseFromWorkout,
+  removeOpenSets,
+  replaceExerciseMovement,
+  setsPatched,
+  updateExerciseNotesAndTitle,
+  type SetPatch,
+} from '../store/slices/workoutSlice';
 import { planAdded, planRemoved } from '../store/slices/plannedWorkoutsSlice';
 import { dateKeyToDate, toDateKey } from '../lib/dateKey';
 import { generateFallbackExerciseId } from '../utils/workoutConversion';
@@ -38,6 +47,13 @@ import type {
 } from './effects';
 import { workoutText } from './workoutText';
 import type { AiAssistantTurn, AiToolCall } from './types';
+
+/** Tool call shape consumed by the planner (mirrors AiToolCall with open tool names). */
+export type ToolCallForPlan = {
+  id: string;
+  name: string;
+  input: Record<string, unknown>;
+};
 
 /** A saved workout the lifter has, as updateWorkout sees it. */
 export interface SavedWorkoutRef extends SavedWorkoutDraft {
@@ -342,7 +358,7 @@ const isDateKey = (v: unknown): v is string =>
 
 const PROGRESSION_RATES = ['beginner', 'intermediate', 'advanced'] as const;
 
-export function planToolCall(call: AiToolCall, ctx: PlanContext): ToolPlan {
+export function planToolCall(call: ToolCallForPlan | AiToolCall, ctx: PlanContext): ToolPlan {
   const { id, input } = call;
   const i = input as Record<string, unknown>;
   const reject = (reason: string): ToolPlan => ({ kind: 'rejected', id, reason });
@@ -418,6 +434,181 @@ export function planToolCall(call: AiToolCall, ctx: PlanContext): ToolPlan {
         summary: `${set.completed ? 'Corrected' : 'Logged'} set ${idx + 1}: ${reps} reps${weight !== undefined ? ` at ${weight} ${unit}` : ''}`,
         apply: [setsPatched({ exerciseId: ex.id, patches: [pair.apply] })],
         undo: [setsPatched({ exerciseId: ex.id, patches: [pair.undo] })],
+      };
+    }
+
+    case 'addSets': {
+      const ex = findExercise(ctx, i.exerciseId);
+      if (!ex) return reject('That exercise is not in this workout.');
+      const count = index(i.count) ?? index(i.sets) ?? 1;
+      if (count < 1 || count > 10) return reject('Sets must be 1–10.');
+
+      const lastSet = ex.sets[ex.sets.length - 1];
+      const unit = unitOf(lastSet);
+
+      let reps: number;
+      if (i.reps !== undefined) {
+        const parsedReps = index(i.reps);
+        if (!parsedReps || parsedReps > 100) return reject('Reps must be a whole number above zero.');
+        reps = parsedReps;
+      } else {
+        reps = lastSet?.reps ?? 10;
+      }
+
+      let weight: number;
+      if (i.weight !== undefined) {
+        const check = checkProposedLoad(num(i.weight) ?? 0, referenceLoad(ex), unit, stepFor(ctx, ex, unit));
+        if (!check.ok) return reject(check.reason);
+        weight = check.value;
+      } else {
+        weight = lastSet?.weight ?? 0;
+      }
+
+      const newSets: WorkoutSet[] = Array.from({ length: count }, (_, k) => ({
+        id: `set-${id}-${k}`,
+        reps,
+        weight,
+        unit: lastSet?.unit ?? (unit === 'kg' ? 'kg' : 'lbs'),
+        completed: false,
+      }));
+
+      const apply = newSets.map((s) => addSet({ exerciseId: ex.id, setData: s }));
+      const undo = [removeOpenSets({ exerciseId: ex.id, setIds: newSets.map((s) => s.id) })];
+
+      return {
+        kind: 'auto',
+        id,
+        summary: `${ex.customTitle || ex.exercise.name}: added ${count} set${count === 1 ? '' : 's'}${weight > 0 ? ` at ${weight} ${unit}` : ''}`,
+        apply,
+        undo,
+      };
+    }
+
+    case 'removeOpenSets': {
+      const ex = findExercise(ctx, i.exerciseId);
+      if (!ex) return reject('That exercise is not in this workout.');
+      const count = index(i.count) ?? index(i.sets) ?? 1;
+      if (count < 1) return reject('Count must be at least 1.');
+
+      if (ex.sets.length <= 1) return reject('An exercise must keep at least one set.');
+
+      let openCount = 0;
+      while (
+        openCount < ex.sets.length &&
+        !ex.sets[ex.sets.length - 1 - openCount].completed
+      ) {
+        openCount++;
+      }
+
+      if (openCount === 0) return reject('No open sets to remove.');
+
+      const maxRemovable = Math.min(openCount, ex.sets.length - 1);
+      if (count > openCount) return reject('Cannot remove completed sets.');
+      if (count > maxRemovable) return reject('An exercise must keep at least one set.');
+
+      const droppedSets = ex.sets.slice(ex.sets.length - count);
+      const apply = [removeOpenSets({ exerciseId: ex.id, count })];
+      const undo = droppedSets.map((s) => addSet({ exerciseId: ex.id, setData: s }));
+
+      return {
+        kind: 'auto',
+        id,
+        summary: `${ex.customTitle || ex.exercise.name}: removed ${droppedSets.length} open set${droppedSets.length === 1 ? '' : 's'}`,
+        apply,
+        undo,
+      };
+    }
+
+    case 'addExerciseToWorkout': {
+      if (!ctx.activeWorkout) return reject('No active workout.');
+      const name = str(i.exerciseName);
+      if (!name) return reject('No exercise was named.');
+      const matched = libraryMatch(ctx, name);
+      if (!matched) return reject(`"${name}" is not in the exercise library.`);
+
+      const setsCount = index(i.sets) ?? 3;
+      if (setsCount < 1 || setsCount > 10) return reject('Sets must be 1–10.');
+
+      const reps = index(i.reps) ?? 10;
+      if (reps < 1 || reps > 100) return reject('Reps must be 1–100.');
+
+      const unit: WorkoutUnit = ctx.units ?? 'lbs';
+      let weight: number | undefined;
+      if (i.weight !== undefined) {
+        const check = checkProposedLoad(num(i.weight) ?? 0, null, unit === 'kg' ? 'kg' : 'lb');
+        if (!check.ok) return reject(check.reason);
+        weight = check.value;
+      }
+
+      let afterExerciseId: string | undefined;
+      if (i.afterExerciseId !== undefined) {
+        afterExerciseId = str(i.afterExerciseId);
+        if (!afterExerciseId || !findExercise(ctx, afterExerciseId)) {
+          return reject('The reference exercise is not in this workout.');
+        }
+      }
+
+      const exerciseId = `exercise-${id}`;
+      const newSets: WorkoutSet[] = Array.from({ length: setsCount }, (_, k) => ({
+        id: `set-${id}-${k}`,
+        reps,
+        weight: weight ?? 0,
+        unit,
+        completed: false,
+      }));
+
+      const newExercise: WorkoutExercise = {
+        id: exerciseId,
+        exercise: plainExercise(matched),
+        sets: newSets,
+        restTime: 120,
+      };
+
+      const loadDesc = weight !== undefined && weight > 0 ? ` @ ${weight} ${unit === 'kg' ? 'kg' : 'lb'}` : '';
+      return {
+        kind: 'confirm',
+        id,
+        summary: `Add ${matched.name} (${setsCount}×${reps}${loadDesc}) to workout`,
+        detail: str(i.reason),
+        apply: [addExerciseToWorkout({ exercise: newExercise, afterExerciseId })],
+      };
+    }
+
+    case 'removeExerciseFromWorkout': {
+      if (!ctx.activeWorkout) return reject('No active workout.');
+      const ex = findExercise(ctx, i.exerciseId);
+      if (!ex) return reject('That exercise is not in this workout.');
+
+      if (ex.sets.some((s) => s.completed)) {
+        return reject('Cannot remove an exercise with completed sets.');
+      }
+      if (ctx.activeWorkout.exercises.length <= 1) {
+        return reject('A workout must have at least one exercise.');
+      }
+
+      return {
+        kind: 'confirm',
+        id,
+        summary: `Remove ${ex.customTitle || ex.exercise.name} from workout`,
+        detail: str(i.reason),
+        apply: [removeExerciseFromWorkout({ exerciseId: ex.id })],
+      };
+    }
+
+    case 'setExerciseNote': {
+      if (!ctx.activeWorkout) return reject('No active workout.');
+      const ex = findExercise(ctx, i.exerciseId);
+      if (!ex) return reject('That exercise is not in this workout.');
+
+      const note = str(i.note);
+      if (!note) return reject('No note was provided.');
+
+      return {
+        kind: 'auto',
+        id,
+        summary: `${ex.customTitle || ex.exercise.name}: "${note}"`,
+        apply: [updateExerciseNotesAndTitle({ exerciseId: ex.id, notes: note })],
+        undo: [updateExerciseNotesAndTitle({ exerciseId: ex.id, notes: ex.notes ?? '' })],
       };
     }
 
@@ -827,7 +1018,7 @@ export function planToolCall(call: AiToolCall, ctx: PlanContext): ToolPlan {
  */
 export function toAssistantTurn(
   reply: string,
-  plans: ReadonlyArray<{ call: AiToolCall; plan: ToolPlan }>,
+  plans: ReadonlyArray<{ call: ToolCallForPlan | AiToolCall; plan: ToolPlan }>,
 ): Required<Pick<AiAssistantTurn, 'text' | 'proposals' | 'notices'>> {
   const proposals: NonNullable<AiAssistantTurn['proposals']> = [];
   const notices: NonNullable<AiAssistantTurn['notices']> = [];

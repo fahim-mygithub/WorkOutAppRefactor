@@ -2,7 +2,9 @@
 // + live time on one row, a Cards/List mode toggle, a quiet End pill, and one segment
 // per exercise below (ice = done, amber = current) so position reads without any numbers.
 import React from 'react';
+import { Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { WorkoutDurationTimer } from '../WorkoutDurationTimer';
 import { cn } from '@/lib/utils';
 
@@ -22,6 +24,7 @@ export interface WorkoutTopBarProps {
   viewMode?: WorkoutViewMode;
   onViewModeChange?: (mode: WorkoutViewMode) => void;
   onSelectExercise?: (exerciseIndex: number) => void;
+  onAskAi?: () => void;
 }
 
 export const WorkoutTopBar: React.FC<WorkoutTopBarProps> = ({
@@ -36,6 +39,7 @@ export const WorkoutTopBar: React.FC<WorkoutTopBarProps> = ({
   viewMode = 'cards',
   onViewModeChange,
   onSelectExercise,
+  onAskAi,
 }) => {
   // Split "Push · Volume Dumbbell" into the day + a quieter variant.
   const [title, ...rest] = name.split(' · ');
@@ -89,6 +93,17 @@ export const WorkoutTopBar: React.FC<WorkoutTopBarProps> = ({
                 List
               </button>
             </div>
+          )}
+          {onAskAi && (
+            <IconButton
+              variant="ghost"
+              size="sm"
+              aria-label="Ask AI"
+              onClick={onAskAi}
+              className="shrink-0 text-ink-muted hover:text-ink"
+            >
+              <Sparkles size={18} aria-hidden="true" />
+            </IconButton>
           )}
           <Button variant="secondary" size="sm" onClick={onEndWorkout} className="shrink-0">
             End

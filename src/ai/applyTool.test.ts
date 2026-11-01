@@ -83,6 +83,236 @@ describe('planToolCall', () => {
     expect(planToolCall({ id: 't7', name: 'swapExercise', input: { exerciseId: 'e1', replacementExerciseName: 'Moon Press', scope: 'today', reason: 'x' } }, ctx).kind).toBe('rejected');
   });
 
+  describe('addSets', () => {
+    it('accepts and appends sets with defaults from last set, and undo restores', () => {
+      const s0 = startState();
+      const plan = auto(
+        planToolCall(
+          { id: 'as1', name: 'addSets', input: { exerciseId: 'e1', count: 2 } },
+          ctxFor(s0),
+        ),
+      );
+      expect(plan.summary).toContain('added 2 sets');
+      const s1 = run(s0, plan.apply);
+      expect(setsIn(s1)).toHaveLength(6);
+      expect(setsIn(s1)[4]).toMatchObject({ reps: 3, weight: 225, completed: false });
+      expect(setsIn(s1)[5]).toMatchObject({ reps: 3, weight: 225, completed: false });
+
+      // Undo restores back to s0 sets
+      const sUndone = run(s1, plan.undo);
+      expect(setsIn(sUndone)).toEqual(setsIn(s0));
+    });
+
+    it('accepts explicit reps and weight', () => {
+      const s0 = startState();
+      const plan = auto(
+        planToolCall(
+          { id: 'as2', name: 'addSets', input: { exerciseId: 'e1', count: 1, reps: 5, weight: 215 } },
+          ctxFor(s0),
+        ),
+      );
+      const s1 = run(s0, plan.apply);
+      expect(setsIn(s1)).toHaveLength(5);
+      expect(setsIn(s1)[4]).toMatchObject({ reps: 5, weight: 215, completed: false });
+    });
+
+    it('rejects invalid inputs', () => {
+      expect(planToolCall({ id: 'as3', name: 'addSets', input: { exerciseId: 'nope', count: 1 } }, ctx).kind).toBe('rejected');
+      expect(planToolCall({ id: 'as4', name: 'addSets', input: { exerciseId: 'e1', count: 0 } }, ctx).kind).toBe('rejected');
+      expect(planToolCall({ id: 'as5', name: 'addSets', input: { exerciseId: 'e1', count: 15 } }, ctx).kind).toBe('rejected');
+      // 100 lb jump from 225 lb reference load is rejected by load check
+      expect(planToolCall({ id: 'as6', name: 'addSets', input: { exerciseId: 'e1', count: 1, weight: 350 } }, ctx).kind).toBe('rejected');
+    });
+  });
+
+  describe('removeOpenSets', () => {
+    it('accepts and drops open sets from the end, and undo restores', () => {
+      const s0 = startState();
+      // e1 has 4 sets: s1 (done), s2 (done), s3 (open), s4 (open)
+      const plan = auto(
+        planToolCall(
+          { id: 'ros1', name: 'removeOpenSets', input: { exerciseId: 'e1', count: 1 } },
+          ctxFor(s0),
+        ),
+      );
+      expect(plan.summary).toContain('removed 1 open set');
+      const s1 = run(s0, plan.apply);
+      expect(setsIn(s1)).toHaveLength(3);
+      expect(setsIn(s1).map((s) => s.id)).toEqual(['s1', 's2', 's3']);
+
+      // Undo restores the dropped set
+      const sUndone = run(s1, plan.undo);
+      expect(setsIn(sUndone)).toHaveLength(4);
+      expect(setsIn(sUndone).map((s) => s.id)).toEqual(['s1', 's2', 's3', 's4']);
+    });
+
+    it('rejects dropping more open sets than available or touching completed sets', () => {
+      // e1 has 2 completed sets and 2 open sets
+      expect(
+        planToolCall(
+          { id: 'ros2', name: 'removeOpenSets', input: { exerciseId: 'e1', count: 3 } },
+          ctx,
+        ).kind,
+      ).toBe('rejected');
+    });
+
+    it('rejects when there are no open sets to remove', () => {
+      const allDone = {
+        ...workout,
+        exercises: [{ ...workout.exercises[0], sets: workout.exercises[0].sets.map((s) => ({ ...s, completed: true })) }],
+      } as unknown as ActiveWorkout;
+      expect(
+        planToolCall(
+          { id: 'ros3', name: 'removeOpenSets', input: { exerciseId: 'e1', count: 1 } },
+          { ...ctx, activeWorkout: allDone },
+        ).kind,
+      ).toBe('rejected');
+    });
+
+    it('rejects removing the only set', () => {
+      const singleSet = {
+        ...workout,
+        exercises: [{ ...workout.exercises[0], sets: [{ id: 's1', reps: 5, weight: 200, unit: 'lbs', completed: false }] }],
+      } as unknown as ActiveWorkout;
+      expect(
+        planToolCall(
+          { id: 'ros4', name: 'removeOpenSets', input: { exerciseId: 'e1', count: 1 } },
+          { ...ctx, activeWorkout: singleSet },
+        ).kind,
+      ).toBe('rejected');
+    });
+  });
+
+  describe('addExerciseToWorkout', () => {
+    it('accepts valid library exercise and plans confirm proposal', () => {
+      const plan = confirm(
+        planToolCall(
+          { id: 'aew1', name: 'addExerciseToWorkout', input: { exerciseName: 'Dumbbell Bench Press', sets: 3, reps: 10, weight: 70 } },
+          ctx,
+        ),
+      );
+      expect(plan.summary).toMatch(/Add Dumbbell Bench Press \(3×10 @ 70 lb\) to workout/);
+      expect(plan.apply).toHaveLength(1);
+
+      const s0 = startState();
+      const s1 = run(s0, plan.apply);
+      expect(s1.activeWorkout!.exercises).toHaveLength(2);
+      expect(s1.activeWorkout!.exercises[1].exercise.name).toBe('Dumbbell Bench Press');
+      expect(s1.activeWorkout!.exercises[1].sets).toHaveLength(3);
+    });
+
+    it('supports afterExerciseId placement', () => {
+      const plan = confirm(
+        planToolCall(
+          { id: 'aew2', name: 'addExerciseToWorkout', input: { exerciseName: 'Dumbbell Bench Press', afterExerciseId: 'e1' } },
+          ctx,
+        ),
+      );
+      expect(plan.kind).toBe('confirm');
+    });
+
+    it('rejects exercise not in library or invalid reference exercise', () => {
+      expect(
+        planToolCall(
+          { id: 'aew3', name: 'addExerciseToWorkout', input: { exerciseName: 'Flying Carpet Fly' } },
+          ctx,
+        ).kind,
+      ).toBe('rejected');
+
+      expect(
+        planToolCall(
+          { id: 'aew4', name: 'addExerciseToWorkout', input: { exerciseName: 'Dumbbell Bench Press', afterExerciseId: 'nonexistent' } },
+          ctx,
+        ).kind,
+      ).toBe('rejected');
+    });
+  });
+
+  describe('removeExerciseFromWorkout', () => {
+    it('accepts removing an exercise with no completed sets', () => {
+      const twoExWorkout = {
+        ...workout,
+        exercises: [
+          workout.exercises[0],
+          {
+            id: 'e2',
+            exercise: { id: 'x2', name: 'Triceps Pushdown' },
+            sets: [{ id: 's5', reps: 12, weight: 50, completed: false }],
+          },
+        ],
+      } as unknown as ActiveWorkout;
+      const localCtx = { ...ctx, activeWorkout: twoExWorkout };
+
+      const plan = confirm(
+        planToolCall(
+          { id: 'rew1', name: 'removeExerciseFromWorkout', input: { exerciseId: 'e2' } },
+          localCtx,
+        ),
+      );
+      expect(plan.summary).toMatch(/Remove Triceps Pushdown from workout/);
+
+      const s0 = reducer(undefined, startWorkout({ name: 'Push', exercises: twoExWorkout.exercises }));
+      const s1 = run(s0, plan.apply);
+      expect(s1.activeWorkout!.exercises).toHaveLength(1);
+      expect(s1.activeWorkout!.exercises[0].id).toBe('e1');
+    });
+
+    it('rejects removing an exercise that has completed sets', () => {
+      // e1 has completed sets
+      const plan = planToolCall(
+        { id: 'rew2', name: 'removeExerciseFromWorkout', input: { exerciseId: 'e1' } },
+        ctx,
+      );
+      expect(plan.kind).toBe('rejected');
+      if (plan.kind === 'rejected') {
+        expect(plan.reason).toContain('completed sets');
+      }
+    });
+
+    it('rejects removing the only exercise in a workout', () => {
+      const openSingle = {
+        ...workout,
+        exercises: [{
+          id: 'e1',
+          exercise: { id: 'x1', name: 'Barbell Bench Press' },
+          sets: [{ id: 's1', reps: 5, weight: 200, completed: false }],
+        }],
+      } as unknown as ActiveWorkout;
+      const plan = planToolCall(
+        { id: 'rew3', name: 'removeExerciseFromWorkout', input: { exerciseId: 'e1' } },
+        { ...ctx, activeWorkout: openSingle },
+      );
+      expect(plan.kind).toBe('rejected');
+    });
+  });
+
+  describe('setExerciseNote', () => {
+    it('accepts variation note, sets it with auto tier, and undo restores prior note', () => {
+      const s0 = startState();
+      const plan = auto(
+        planToolCall(
+          { id: 'sen1', name: 'setExerciseNote', input: { exerciseId: 'e1', note: 'paused reps 2s' } },
+          ctxFor(s0),
+        ),
+      );
+      expect(plan.summary).toContain('"paused reps 2s"');
+      const s1 = run(s0, plan.apply);
+      expect(s1.activeWorkout!.exercises[0].notes).toBe('paused reps 2s');
+
+      const sUndone = run(s1, plan.undo);
+      expect(sUndone.activeWorkout!.exercises[0].notes).toBeUndefined();
+    });
+
+    it('rejects missing or empty note', () => {
+      expect(
+        planToolCall(
+          { id: 'sen2', name: 'setExerciseNote', input: { exerciseId: 'e1', note: '   ' } },
+          ctx,
+        ).kind,
+      ).toBe('rejected');
+    });
+  });
+
   describe('swapExercise name resolution', () => {
     const library = [
       { id: 'x-rdl', name: 'Barbell Romanian Deadlift' },

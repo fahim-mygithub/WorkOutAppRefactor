@@ -45,6 +45,7 @@ export interface AiContextExercise {
   sets: AiContextSet[];
   /** Library names that work the same muscles: what swapExercise can resolve. */
   alternatives?: string[];
+  notes?: string;
 }
 
 /** A tracked lift; lifts outside today's workout may be cut to id, name and benchmark. */
@@ -147,6 +148,7 @@ export function buildAiContext(input: {
             exercises: activeWorkout.exercises.map((e) => ({
               id: e.id,
               name: e.customTitle || e.exercise.name,
+              ...(e.notes ? { notes: e.notes } : {}),
               ...(e.sets[0]?.unit ? { unit: e.sets[0].unit } : {}),
               ...(e.tracked ? { trackedLiftId: e.tracked.liftId, goal: e.tracked.goal } : {}),
               sets: e.sets.map((s, index) => ({ index, ...pick(s, SET_KEYS), completed: s.completed })),

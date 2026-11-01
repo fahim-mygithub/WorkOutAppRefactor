@@ -62,6 +62,16 @@ describe('CHAT_SYSTEM_PROMPT build and plan tools', () => {
   });
 });
 
+describe('CHAT_SYSTEM_PROMPT live workout editing tools', () => {
+  it('names every live edit tool and says when to use each in one line', () => {
+    for (const tool of ['addSets', 'removeOpenSets', 'addExerciseToWorkout', 'removeExerciseFromWorkout', 'setExerciseNote']) {
+      expect(CHAT_SYSTEM_PROMPT).toContain(tool);
+    }
+    expect(CHAT_SYSTEM_PROMPT).toContain('addSets, removeOpenSets and setExerciseNote apply at once (the lifter can Undo)');
+    expect(CHAT_SYSTEM_PROMPT).toContain('addExerciseToWorkout, removeExerciseFromWorkout');
+  });
+});
+
 describe('READ_MACHINE_SYSTEM_PROMPT', () => {
   it('answers with submitMachine and never invents a brand-specific name it cannot read', () => {
     expect(READ_MACHINE_SYSTEM_PROMPT).toContain('submitMachine');
