@@ -22,6 +22,7 @@
 //   - The client is injected so this file compiles and tests without any
 //     network/SDK dependency.
 import * as React from 'react';
+import { useKeyboardInset } from '@/lib/useKeyboardInset';
 import {
   Sheet,
   SheetContent,
@@ -199,6 +200,8 @@ export function AiChatSheet({
   className,
 }: AiChatSheetProps) {
   const isAvailable = available ?? client != null;
+  // On iPhone the keyboard covers a bottom-fixed sheet; lift it above the keyboard.
+  const { inset: keyboardInset, visibleHeight } = useKeyboardInset(open);
 
   const [messages, setMessages] = React.useState<AiChatMessage[]>([]);
   const [draft, setDraft] = React.useState('');
@@ -420,6 +423,16 @@ export function AiChatSheet({
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
         className={cn('mx-auto flex h-[80vh] max-h-[90vh] max-w-lg flex-col', className)}
+        style={
+          keyboardInset > 0 && visibleHeight != null
+            ? {
+                bottom: keyboardInset,
+                height: `min(80vh, ${visibleHeight - 12}px)`,
+                maxHeight: visibleHeight - 12,
+                paddingBottom: '1rem',
+              }
+            : undefined
+        }
       >
         <SheetTitle className="text-title">AI assistant</SheetTitle>
         <SheetDescription>
