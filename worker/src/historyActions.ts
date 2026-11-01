@@ -36,6 +36,7 @@ const priorSchema = z
     name: z.string().trim().min(1).max(100),
     date: dateKey,
     durationMinutes: z.number().int().min(1).max(1440).optional(),
+    notes: z.string().max(1000).optional(),
     exercises: z
       .array(
         z
@@ -85,6 +86,7 @@ interface Entry {
   name?: string;
   startTime?: string;
   durationMinutes?: number;
+  notes?: string;
   exercises: EntryExercise[];
 }
 
@@ -96,6 +98,7 @@ function snapshot(entry: Entry): PriorSnapshot {
     name: entry.name || 'Workout',
     date: String(entry.startTime ?? '').slice(0, 10),
     ...(num(entry.durationMinutes) && entry.durationMinutes >= 1 ? { durationMinutes: Math.round(entry.durationMinutes) } : {}),
+    ...(typeof entry.notes === 'string' && entry.notes.trim() ? { notes: entry.notes.trim() } : {}),
     exercises: entry.exercises.map((e) => ({
       id: e.id,
       name: e.exerciseName,
@@ -223,6 +226,8 @@ async function undoEdit(data: UserData, input: unknown): Promise<HistoryResult> 
       ...(prior.durationMinutes && prior.durationMinutes !== entry.durationMinutes
         ? { durationMinutes: prior.durationMinutes }
         : {}),
+      // Restore the session note, or clear one the edit added.
+      ...((prior.notes ?? '') !== (entry.notes ?? '') ? { notes: prior.notes ?? '' } : {}),
     },
     { data },
   );

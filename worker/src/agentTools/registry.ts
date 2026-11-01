@@ -142,7 +142,7 @@ export const agentTools: readonly AgentTool[] = [
     name: 'get_history_entry',
     title: 'Get history entry',
     description:
-      'Read one past workout session in full by workoutId: its date, duration, totals, and every exercise with all completed sets (reps, weight, unit, rpe, time), configuration, total volume, notes, and individual exercise history IDs.',
+      'Read one past workout session in full by workoutId: its date, duration, totals, session notes, and every exercise with all completed sets (reps, weight, unit, rpe, time), configuration, total volume, notes, and individual exercise history IDs. Use notes for context the numbers don\'t show (paused reps, tempo, resistance bands, belt/straps, how it felt); per-exercise/set details go in exercises[].notes / sets[].notes.',
     input: getHistoryEntryInput,
     readOnly: true,
     run: (input, { data }) => data.getHistoryEntry(input.workoutId),
@@ -151,7 +151,7 @@ export const agentTools: readonly AgentTool[] = [
     name: 'log_workout',
     title: 'Log a past workout',
     description:
-      'Log a completed workout session into the user\'s history (e.g. when the user dictates a past workout or from a machine snapshot). Date must be past or today (YYYY-MM-DD), never in the future. Accepts exercises by name or by id from search_exercises/add_exercise. Supports optional tz (e.g. "America/New_York") or utcOffset to validate local today. Exercise names are resolved against the app library and custom exercises to store real exercise IDs, muscle groups, and equipment; unmatched names keep deterministic fallback IDs (fallback-<hash>) with Unknown muscle groups/equipment, reported in unmatchedExercises. In the snapshot flow: read the photo -> search_exercises -> add_exercise if missing -> log_workout or plan -> offer create_media_upload_link to save the photo/clip.',
+      'Log a completed workout session into the user\'s history (e.g. when the user dictates a past workout or from a machine snapshot). Date must be past or today (YYYY-MM-DD), never in the future. Accepts exercises by name or by id from search_exercises/add_exercise. Supports optional tz (e.g. "America/New_York") or utcOffset to validate local today. Exercise names are resolved against the app library and custom exercises to store real exercise IDs, muscle groups, and equipment; unmatched names keep deterministic fallback IDs (fallback-<hash>) with Unknown muscle groups/equipment, reported in unmatchedExercises. Use notes for context the numbers don\'t show (paused reps, tempo, resistance bands, belt/straps, how it felt); per-exercise/set details go in exercises[].notes / sets[].notes. In the snapshot flow: read the photo -> search_exercises -> add_exercise if missing -> log_workout or plan -> offer create_media_upload_link to save the photo/clip.',
     input: logWorkoutInput,
     readOnly: false,
     run: (input, { data }) => data.logWorkout(input),
@@ -160,7 +160,7 @@ export const agentTools: readonly AgentTool[] = [
     name: 'update_history_entry',
     title: 'Update a past workout',
     description:
-      'Edit a past workout record (e.g. "change Tuesday\'s bench to 195" or fix reps/weight, add/remove sets, add/remove exercises, change date or name). Call get_history_entry first to get existing exercise IDs and sets. Supports explicit addSets / removeSetNumbers per exercise, explicit removeExerciseIds, and safe partial updates (unlisted exercises are never deleted unless replaceAllExercises: true or named in removeExerciseIds). Automatically recomputes the workout totals and recalculates affected exercise stats and personal records (PRs). Notes can be updated per exercise (exercises[].notes) or per set (exercises[].sets[].notes).',
+      'Edit a past workout record (e.g. "change Tuesday\'s bench to 195" or fix reps/weight, add/remove sets, add/remove exercises, change date or name). Call get_history_entry first to get existing exercise IDs and sets. Supports explicit addSets / removeSetNumbers per exercise, explicit removeExerciseIds, and safe partial updates (unlisted exercises are never deleted unless replaceAllExercises: true or named in removeExerciseIds). Automatically recomputes the workout totals and recalculates affected exercise stats and personal records (PRs). Use notes for context the numbers don\'t show (paused reps, tempo, resistance bands, belt/straps, how it felt); per-exercise/set details go in exercises[].notes / sets[].notes.',
     input: updateHistoryEntryInput,
     readOnly: false,
     run: (input, { data }) => data.updateHistoryEntry(input),
