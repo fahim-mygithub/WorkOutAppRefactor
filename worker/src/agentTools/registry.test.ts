@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { FakeFirestore } from '../data/testing/fakeFirestore';
 import { UserData } from '../data/userData';
 import { fallbackExerciseId } from '../data/shapes';
@@ -67,6 +67,10 @@ describe('agent tool registry', () => {
       'search_exercises', 'update_exercise', 'attach_media_from_url', 'create_media_upload_link',
     ]);
     for (const t of agentTools) expect(t.description.length).toBeGreaterThan(40);
+    const createTool = agentTools.find((t) => t.name === 'create_workout')!;
+    expect(createTool.description).toContain('to put it on the calendar, pass dateKey');
+    const planTool = agentTools.find((t) => t.name === 'plan_workout')!;
+    expect(planTool.description).toContain('create_workout');
   });
 });
 
@@ -156,6 +160,104 @@ describe('create_workout', () => {
     expect((await run('create_workout', { workouts: [{ name: 'x', exercises: [] }] })).ok).toBe(false);
     const eleven = Array.from({ length: 11 }, (_, i) => ({ name: `w${i}`, exercises: [BENCH] }));
     expect((await run('create_workout', { workouts: eleven })).ok).toBe(false);
+  });
+
+  it('saves and plans on the calendar when dateKey is provided, appearing in list_plans', async () => {
+    const r = await ok('create_workout', {
+      workouts: [
+        { name: 'Leg Day', exercises: [{ name: 'Squat', sets: 4, reps: 6, weight: 225 }], dateKey: '2026-11-02' },
+      ],
+    });
+    const created = r.created as Array<{ id: string; name: string; plan?: { id: string; dateKey: string } }>;
+    expect(created).toHaveLength(1);
+    expect(created[0].name).toBe('Leg Day');
+    expect(created[0].id).toBeDefined();
+    expect(created[0].plan).toEqual({
+      id: expect.any(String),
+      dateKey: '2026-11-02',
+    });
+
+    // Template is in savedWorkouts
+    const saved = fs.read(['users', UID, 'savedWorkouts', created[0].id])!;
+    expect(saved).toMatchObject({ name: 'Leg Day', userId: UID });
+
+    // Plan is on the calendar
+    const plansResult = await ok('list_plans', {});
+    const plans = plansResult.plans as Array<{ id: string; name: string; dateKey: string }>;
+    expect(plans).toContainEqual(
+      expect.objectContaining({
+        id: created[0].plan!.id,
+        name: 'Leg Day',
+        dateKey: '2026-11-02',
+      }),
+    );
+  });
+
+  it('without dateKey does neither plan nor add to list_plans', async () => {
+    const r = await ok('create_workout', {
+      workouts: [
+        { name: 'Chest Only', exercises: [BENCH] },
+      ],
+    });
+    const created = r.created as Array<{ id: string; name: string; plan?: unknown }>;
+    expect(created[0].name).toBe('Chest Only');
+    expect(created[0].plan).toBeUndefined();
+
+    const plansResult = await ok('list_plans', {});
+    const plans = plansResult.plans as Array<unknown>;
+    expect(plans).toHaveLength(0);
+  });
+
+  it('refuses a past date on create_workout and plan_workout, saving nothing', async () => {
+    // NOW is 2026-10-30; 2026-10-29 is in the past
+    const rPast = await run('create_workout', {
+      workouts: [{ name: 'Past Workout', exercises: [BENCH], dateKey: '2026-10-29' }],
+    });
+    expect(rPast.ok).toBe(false);
+    if (!rPast.ok) expect(rPast.error).toMatch(/past/i);
+
+    // Nothing was saved to Firestore
+    const list = await ok('list_workouts', {});
+    expect(list.items).toHaveLength(0);
+
+    // plan_workout also refuses past dates
+    const rPlanPast = await run('plan_workout', {
+      dateKey: '2026-10-29',
+      name: 'Past Plan',
+      exercises: [BENCH],
+    });
+    expect(rPlanPast.ok).toBe(false);
+    if (!rPlanPast.ok) expect(rPlanPast.error).toMatch(/past/i);
+
+    // Invalid calendar date format is rejected by schema
+    const rBadDate = await run('create_workout', {
+      workouts: [{ name: 'Bad Date', exercises: [BENCH], dateKey: '2026-02-30' }],
+    });
+    expect(rBadDate.ok).toBe(false);
+    if (!rBadDate.ok) expect(rBadDate.error).toMatch(/calendar date/i);
+  });
+
+  it('returns the saved workout id and error when planning fails after a good save', async () => {
+    const spy = vi.spyOn(ctx.data, 'planWorkout').mockRejectedValueOnce(new Error('Schedule write conflict'));
+
+    const r = await ok('create_workout', {
+      workouts: [
+        { name: 'Push Day', exercises: [BENCH], dateKey: '2026-11-02' },
+      ],
+    });
+    const created = r.created as Array<{ id: string; name: string; plan?: unknown; planError?: string; error?: string }>;
+    expect(created).toHaveLength(1);
+    expect(created[0].name).toBe('Push Day');
+    expect(created[0].id).toBeDefined();
+    expect(created[0].plan).toBeUndefined();
+    expect(created[0].planError).toBe('Schedule write conflict');
+    expect(created[0].error).toBe('Schedule write conflict');
+
+    // The workout template was nonetheless saved properly
+    const saved = fs.read(['users', UID, 'savedWorkouts', created[0].id])!;
+    expect(saved).toMatchObject({ name: 'Push Day', userId: UID });
+
+    spy.mockRestore();
   });
 });
 

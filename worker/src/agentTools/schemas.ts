@@ -69,7 +69,14 @@ const workoutFields = {
   difficulty: difficulty.optional().describe('Defaults to Intermediate.'),
 };
 
-export const workoutInput = z.object(workoutFields).strict();
+export const workoutInput = z
+  .object({
+    ...workoutFields,
+    dateKey: dateKey
+      .optional()
+      .describe("Optional day to place the workout on the calendar, YYYY-MM-DD (today or later in the user's local calendar)."),
+  })
+  .strict();
 
 export const getProfileInput = z.object({}).strict();
 
@@ -127,7 +134,7 @@ export const listPlansInput = z
 export const planWorkoutInput = z
   .object({
     dateKey: dateKey.describe('The day to do it, YYYY-MM-DD in the user\'s local calendar.'),
-    workoutId: docId('saved workout').optional().describe('Plan a saved workout (from list_workouts).'),
+    workoutId: docId('saved workout').optional().describe('Plan a saved workout (from list_workouts or create_workout).'),
     exercises: z.array(exerciseInput).max(30).optional().describe('Or plan these exercises directly.'),
     supersets: z.array(superset).max(10).optional(),
     name: z.string().trim().min(1).max(100).optional().describe('Required with exercises; defaults to the saved workout\'s name.'),

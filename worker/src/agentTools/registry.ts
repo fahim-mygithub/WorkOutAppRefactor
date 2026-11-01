@@ -47,6 +47,12 @@ export interface AgentTool<S extends z.AnyZodObject = z.AnyZodObject> {
 
 const define = <S extends z.AnyZodObject>(tool: AgentTool<S>): AgentTool => tool as unknown as AgentTool;
 
+const getTodayKey = (data: UserData): string => {
+  const nowFn = (data as unknown as { now?: () => Date }).now;
+  const now = typeof nowFn === 'function' ? nowFn.call(data) : new Date();
+  return now.toISOString().slice(0, 10);
+};
+
 export const agentTools: readonly AgentTool[] = [
   define({
     name: 'get_profile',
@@ -87,16 +93,58 @@ export const agentTools: readonly AgentTool[] = [
     name: 'create_workout',
     title: 'Create workouts',
     description:
-      'Save one or more new workout templates to the app (up to 10 per call). Each exercise has sets x reps (or a rep range with repsMax) at an optional weight. Returns the new ids. The workouts appear in the app on its next load.',
+      'Save one or more new workout templates to the app (up to 10 per call); to put it on the calendar, pass dateKey (or call plan_workout with the returned id); a saved workout alone does not appear on the calendar. Each exercise has sets x reps (or a rep range with repsMax) at an optional weight. Returns the new ids. The workouts appear in the app on its next load.',
     input: createWorkoutInput,
     readOnly: false,
     run: async (input, { data }) => {
+      const today = getTodayKey(data);
       for (const w of input.workouts) {
         if (w.exercises.length + (w.supersets?.length ?? 0) === 0) {
           throw new DataError('invalid-argument', `Workout "${w.name}" has no exercises.`);
         }
+        if (w.dateKey && w.dateKey < today) {
+          throw new DataError('invalid-argument', `Date ${w.dateKey} is in the past.`);
+        }
       }
-      return { created: await data.createWorkouts(input.workouts) };
+      const created = await data.createWorkouts(input.workouts);
+      const results: Array<{
+        id: string;
+        name: string;
+        plan?: { id: string; dateKey: string };
+        planError?: string;
+        error?: string;
+      }> = [];
+
+      for (let i = 0; i < created.length; i++) {
+        const item = created[i];
+        const w = input.workouts[i];
+        if (!w.dateKey) {
+          results.push(item);
+          continue;
+        }
+        try {
+          const planned = await data.planWorkout({
+            dateKey: w.dateKey,
+            workoutId: item.id,
+            name: item.name,
+          });
+          results.push({
+            ...item,
+            plan: {
+              id: planned.id,
+              dateKey: planned.dateKey,
+            },
+          });
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          results.push({
+            ...item,
+            planError: message,
+            error: message,
+          });
+        }
+      }
+      return { created: results };
     },
   }),
   define({
@@ -124,10 +172,16 @@ export const agentTools: readonly AgentTool[] = [
     name: 'plan_workout',
     title: 'Plan a workout on a day',
     description:
-      "Put a workout on the user's calendar for a day (YYYY-MM-DD): either a saved workout by workoutId, or a list of exercises with a name. Other plans are never touched. Pass planId to replace one existing plan (e.g. to move or change it).",
+      "Put a workout on the user's calendar for a day (YYYY-MM-DD): either a saved workout by workoutId (accepts a workoutId from create_workout or list_workouts), or a list of exercises with a name. Other plans are never touched. Pass planId to replace one existing plan (e.g. to move or change it).",
     input: planWorkoutInput,
     readOnly: false,
-    run: async (input, { data }) => ({ plan: await data.planWorkout(input) }),
+    run: async (input, { data }) => {
+      const today = getTodayKey(data);
+      if (input.dateKey < today) {
+        throw new DataError('invalid-argument', `Date ${input.dateKey} is in the past.`);
+      }
+      return { plan: await data.planWorkout(input) };
+    },
   }),
   define({
     name: 'list_history',

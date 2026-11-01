@@ -280,6 +280,51 @@ describe('MCP round trip (OAuth token + SDK client + mocked Firestore)', () => {
     await c.close();
   });
 
+  it('creates and places a workout on the calendar via MCP create_workout with dateKey', async () => {
+    const token = await connect();
+    const c = await client(token);
+
+    const result = await c.callTool({
+      name: 'create_workout',
+      arguments: {
+        workouts: [
+          {
+            name: 'Leg Day MCP',
+            exercises: [{ name: 'Squat', sets: 3, reps: 5, weight: 225 }],
+            dateKey: '2026-11-02',
+          },
+        ],
+      },
+    });
+    expect(result.isError).toBeFalsy();
+    const parsed = JSON.parse((result.content as { text: string }[])[0].text);
+    const item = parsed.created[0];
+    expect(item).toMatchObject({
+      name: 'Leg Day MCP',
+      id: expect.any(String),
+      plan: {
+        id: expect.any(String),
+        dateKey: '2026-11-02',
+      },
+    });
+
+    // Check calendar list_plans
+    const plansRes = await c.callTool({
+      name: 'list_plans',
+      arguments: {},
+    });
+    expect(plansRes.isError).toBeFalsy();
+    const plansData = JSON.parse((plansRes.content as { text: string }[])[0].text);
+    expect(plansData.plans).toContainEqual(
+      expect.objectContaining({
+        name: 'Leg Day MCP',
+        dateKey: '2026-11-02',
+      }),
+    );
+
+    await c.close();
+  });
+
   it('cuts off a token whose email leaves the allow-list', async () => {
     const token = await connect();
     env.AI_ALLOWED_EMAILS = 'someone-else@example.com';
