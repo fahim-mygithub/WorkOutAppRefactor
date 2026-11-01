@@ -34,6 +34,20 @@ describe('WorkoutTopBar', () => {
     expect(onEndWorkout).toHaveBeenCalledOnce();
   });
 
+  it('renders Ask AI button when onAskAi is provided and fires on click', async () => {
+    const onAskAi = vi.fn();
+    render(<WorkoutTopBar {...defaultProps} onAskAi={onAskAi} />);
+    const aiBtn = screen.getByRole('button', { name: 'Ask AI' });
+    expect(aiBtn).toBeInTheDocument();
+    await userEvent.setup().click(aiBtn);
+    expect(onAskAi).toHaveBeenCalledOnce();
+  });
+
+  it('does not render Ask AI button when onAskAi is omitted', () => {
+    render(<WorkoutTopBar {...defaultProps} />);
+    expect(screen.queryByRole('button', { name: 'Ask AI' })).not.toBeInTheDocument();
+  });
+
   it('renders view mode toggle when onViewModeChange is provided and fires on click', async () => {
     const user = userEvent.setup();
     const onViewModeChange = vi.fn();

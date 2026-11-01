@@ -94,6 +94,50 @@ export const mutationToolSchemas = {
       reason: z.string().describe('One short line shown to the lifter.'),
     })
     .describe('Remove a lift from the tracked list. Needs confirmation.'),
+
+  addSets: z
+    .object({
+      exerciseId: z.string().describe('WorkoutExercise id in the active workout.'),
+      count: z.number().int().min(1).max(10).default(1).describe('Number of sets to append (1–10). Defaults to 1.'),
+      reps: z.number().int().positive().optional().describe("Target reps for the new sets; defaults to the last set's reps."),
+      weight: z.number().nonnegative().optional().describe("Load for the new sets in the workout unit; defaults to the last set's weight."),
+      reason: z.string().optional().describe('One short line shown to the lifter.'),
+    })
+    .describe('Append sets to an active exercise. Applies immediately with Undo.'),
+
+  removeOpenSets: z
+    .object({
+      exerciseId: z.string().describe('WorkoutExercise id in the active workout.'),
+      count: z.number().int().min(1).max(10).default(1).describe('Number of open sets to drop from the end. Defaults to 1.'),
+      reason: z.string().optional().describe('One short line shown to the lifter.'),
+    })
+    .describe('Drop not-yet-completed sets from the end of an exercise. Applies immediately with Undo.'),
+
+  addExerciseToWorkout: z
+    .object({
+      exerciseName: z.string().describe('Library name of the exercise to add.'),
+      sets: z.number().int().min(1).max(10).default(3).describe('Number of sets (1–10). Defaults to 3.'),
+      reps: z.number().int().min(1).max(100).default(10).describe('Target reps per set. Defaults to 10.'),
+      weight: z.number().nonnegative().optional().describe('Load per set in the workout unit.'),
+      afterExerciseId: z.string().optional().describe('WorkoutExercise id to insert after; appended at the end if omitted.'),
+      reason: z.string().optional().describe('One short line shown to the lifter.'),
+    })
+    .describe('Add a library exercise to the active workout. Needs confirmation.'),
+
+  removeExerciseFromWorkout: z
+    .object({
+      exerciseId: z.string().describe('WorkoutExercise id in the active workout.'),
+      reason: z.string().optional().describe('One short line shown to the lifter.'),
+    })
+    .describe('Remove an exercise with no completed sets from the active workout. Needs confirmation.'),
+
+  setExerciseNote: z
+    .object({
+      exerciseId: z.string().describe('WorkoutExercise id in the active workout.'),
+      note: z.string().describe('Variation or form note for the exercise (e.g. "paused reps", "with resistance band").'),
+      reason: z.string().optional().describe('One short line shown to the lifter.'),
+    })
+    .describe('Attach a variation note to an active exercise. Applies immediately with Undo.'),
 } as const;
 
 // ---------------------------------------------------------------------------

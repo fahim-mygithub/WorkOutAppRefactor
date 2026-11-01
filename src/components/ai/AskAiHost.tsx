@@ -120,7 +120,14 @@ function getPlanRecordKeys(plan: { effects?: AiEffect[]; apply: UnknownAction[];
         break;
       case 'workout/replaceExerciseMovement':
       case 'workout/setsPatched':
+      case 'workout/removeOpenSets':
+      case 'workout/removeExerciseFromWorkout':
+      case 'workout/updateExerciseNotesAndTitle':
+      case 'workout/addSet':
         if (payload.exerciseId) keys.push(`activeExercise:${payload.exerciseId}`);
+        break;
+      case 'workout/addExerciseToWorkout':
+        if (payload.exercise?.id) keys.push(`activeExercise:${payload.exercise.id}`);
         break;
       case 'customExercises/customExerciseAdded':
         if (payload.id) keys.push(`customExercise:${payload.id}`);

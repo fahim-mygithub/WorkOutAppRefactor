@@ -689,6 +689,7 @@ export default function WorkoutPage() {
           viewMode={viewMode}
           onViewModeChange={setViewMode}
           onSelectExercise={handleSelectExercise}
+          onAskAi={aiUsable ? handleAskCoachGeneral : undefined}
         />
 
         {viewMode === 'list' ? (

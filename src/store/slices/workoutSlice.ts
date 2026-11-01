@@ -206,11 +206,15 @@ const workoutSlice = createSlice({
       }
     },
 
-    addSet: (state, action: PayloadAction<{ exerciseIndex: number; setData?: Partial<WorkoutSet> }>) => {
+    addSet: (state, action: PayloadAction<{ exerciseIndex?: number; exerciseId?: string; setData?: Partial<WorkoutSet> }>) => {
       if (!state.activeWorkout) return;
 
-      const { exerciseIndex, setData = {} } = action.payload;
-      const exercise = state.activeWorkout.exercises[exerciseIndex];
+      const { exerciseIndex, exerciseId, setData = {} } = action.payload;
+      const exercise = exerciseId !== undefined
+        ? state.activeWorkout.exercises.find((ex) => ex.id === exerciseId)
+        : exerciseIndex !== undefined
+          ? state.activeWorkout.exercises[exerciseIndex]
+          : undefined;
       if (exercise) {
         // Get default reps from the last set if it exists
         const lastSet = exercise.sets[exercise.sets.length - 1];
@@ -226,6 +230,89 @@ const workoutSlice = createSlice({
         };
         exercise.sets.push(newSet);
       }
+    },
+
+    removeOpenSets: (
+      state,
+      action: PayloadAction<{ exerciseId: string; count?: number; setIds?: string[] }>,
+    ) => {
+      if (!state.activeWorkout) return;
+      const exercise = state.activeWorkout.exercises.find((ex) => ex.id === action.payload.exerciseId);
+      if (!exercise || exercise.sets.length <= 1) return;
+
+      const { count, setIds } = action.payload;
+      if (setIds && setIds.length > 0) {
+        const idSet = new Set(setIds);
+        const remaining: WorkoutSet[] = [];
+        for (const s of exercise.sets) {
+          if (idSet.has(s.id) && !s.completed) {
+            // Drop candidate: skip it as long as we keep at least one set overall
+          } else {
+            remaining.push(s);
+          }
+        }
+        if (remaining.length >= 1) {
+          exercise.sets = remaining;
+        } else {
+          exercise.sets = [exercise.sets[0]];
+        }
+      } else if (count !== undefined && count > 0) {
+        let dropped = 0;
+        while (
+          dropped < count &&
+          exercise.sets.length > 1 &&
+          !exercise.sets[exercise.sets.length - 1].completed
+        ) {
+          exercise.sets.pop();
+          dropped++;
+        }
+      }
+
+      if (state.activeWorkout.currentSetIndex >= exercise.sets.length) {
+        state.activeWorkout.currentSetIndex = Math.max(0, exercise.sets.length - 1);
+      }
+    },
+
+    addExerciseToWorkout: (
+      state,
+      action: PayloadAction<{ exercise: WorkoutExercise; afterExerciseId?: string }>,
+    ) => {
+      if (!state.activeWorkout) return;
+      const { exercise, afterExerciseId } = action.payload;
+      if (afterExerciseId) {
+        const idx = state.activeWorkout.exercises.findIndex((ex) => ex.id === afterExerciseId);
+        if (idx !== -1) {
+          state.activeWorkout.exercises.splice(idx + 1, 0, exercise);
+          return;
+        }
+      }
+      state.activeWorkout.exercises.push(exercise);
+    },
+
+    removeExerciseFromWorkout: (
+      state,
+      action: PayloadAction<{ exerciseId: string }>,
+    ) => {
+      if (!state.activeWorkout) return;
+      const { exerciseId } = action.payload;
+      const index = state.activeWorkout.exercises.findIndex((ex) => ex.id === exerciseId);
+      if (index === -1) return;
+      const exercise = state.activeWorkout.exercises[index];
+      if (exercise.sets.some((s) => s.completed)) return;
+      if (state.activeWorkout.exercises.length <= 1) return;
+
+      state.activeWorkout.exercises.splice(index, 1);
+
+      if (state.activeWorkout.currentExerciseIndex >= state.activeWorkout.exercises.length) {
+        state.activeWorkout.currentExerciseIndex = state.activeWorkout.exercises.length - 1;
+        state.activeWorkout.currentSetIndex = 0;
+      } else if (state.activeWorkout.currentExerciseIndex > index) {
+        state.activeWorkout.currentExerciseIndex -= 1;
+      }
+
+      const current = state.activeWorkout.exercises[state.activeWorkout.currentExerciseIndex];
+      state.activeWorkout.isInSuperset = current?.isSuperset || false;
+      state.activeWorkout.currentSupersetIndex = 0;
     },
 
     // Starts (or resumes) the countdown. We anchor an absolute `targetEndTime`
@@ -436,7 +523,11 @@ const workoutSlice = createSlice({
 
       if (exerciseIndex !== -1) {
         if (notes !== undefined) {
-          state.activeWorkout.exercises[exerciseIndex].notes = notes;
+          if (notes) {
+            state.activeWorkout.exercises[exerciseIndex].notes = notes;
+          } else {
+            delete state.activeWorkout.exercises[exerciseIndex].notes;
+          }
         }
         if (customTitle !== undefined) {
           state.activeWorkout.exercises[exerciseIndex].customTitle = customTitle;
@@ -515,6 +606,9 @@ export const {
   setsPatched,
   uncompleteSet,
   addSet,
+  removeOpenSets,
+  addExerciseToWorkout,
+  removeExerciseFromWorkout,
   startRestTimer,
   updateRestTimer,
   pauseRestTimer,

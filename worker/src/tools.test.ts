@@ -5,9 +5,10 @@ import { buildToolDefs, toolValidators } from './tools';
 describe('tool catalog', () => {
   it('exposes exactly the applied tools', () => {
     expect(buildToolDefs().map((t) => t.name).sort()).toEqual([
-      'addExercise', 'addTrackedLift', 'adjustSet', 'createWorkout', 'editPastWorkout',
-      'logPastWorkout', 'logSet', 'planWorkout', 'removeTrackedLift', 'swapExercise',
-      'updateBenchmark', 'updateProfile', 'updateWorkout',
+      'addExercise', 'addExerciseToWorkout', 'addSets', 'addTrackedLift', 'adjustSet',
+      'createWorkout', 'editPastWorkout', 'logPastWorkout', 'logSet', 'planWorkout',
+      'removeExerciseFromWorkout', 'removeOpenSets', 'removeTrackedLift', 'setExerciseNote',
+      'swapExercise', 'updateBenchmark', 'updateProfile', 'updateWorkout',
     ]);
   });
   it('validates adjustSet', () => {
@@ -36,6 +37,53 @@ describe('tool catalog', () => {
       buildToolDefs().find((t) => t.name === name)!.input_schema.properties as Record<string, { description?: string }>;
     expect(props('adjustSet').weight.description).toContain('in the workout unit');
     expect(props('swapExercise').weight.description).toContain('in the workout unit');
+  });
+
+  describe('live workout editing tools validation', () => {
+    it('validates addSets', () => {
+      expect(toolValidators.addSets.safeParse({ exerciseId: 'e1', count: 2, reps: 8, weight: 185 }).success).toBe(true);
+      expect(toolValidators.addSets.safeParse({ exerciseId: 'e1' }).success).toBe(true);
+      expect(toolValidators.addSets.safeParse({ exerciseId: 'e1', count: 0 }).success).toBe(false);
+      expect(toolValidators.addSets.safeParse({ exerciseId: 'e1', count: 11 }).success).toBe(false);
+    });
+
+    it('validates removeOpenSets', () => {
+      expect(toolValidators.removeOpenSets.safeParse({ exerciseId: 'e1', count: 2 }).success).toBe(true);
+      expect(toolValidators.removeOpenSets.safeParse({ exerciseId: 'e1' }).success).toBe(true);
+      expect(toolValidators.removeOpenSets.safeParse({ exerciseId: 'e1', count: 0 }).success).toBe(false);
+    });
+
+    it('validates addExerciseToWorkout', () => {
+      expect(
+        toolValidators.addExerciseToWorkout.safeParse({
+          exerciseName: 'Incline Dumbbell Press',
+          sets: 3,
+          reps: 10,
+          weight: 60,
+          afterExerciseId: 'e1',
+        }).success,
+      ).toBe(true);
+      expect(
+        toolValidators.addExerciseToWorkout.safeParse({
+          exerciseName: 'Incline Dumbbell Press',
+        }).success,
+      ).toBe(true);
+      expect(
+        toolValidators.addExerciseToWorkout.safeParse({
+          sets: 3,
+        }).success,
+      ).toBe(false);
+    });
+
+    it('validates removeExerciseFromWorkout', () => {
+      expect(toolValidators.removeExerciseFromWorkout.safeParse({ exerciseId: 'e1' }).success).toBe(true);
+      expect(toolValidators.removeExerciseFromWorkout.safeParse({}).success).toBe(false);
+    });
+
+    it('validates setExerciseNote', () => {
+      expect(toolValidators.setExerciseNote.safeParse({ exerciseId: 'e1', note: 'paused reps' }).success).toBe(true);
+      expect(toolValidators.setExerciseNote.safeParse({ exerciseId: 'e1' }).success).toBe(false);
+    });
   });
 });
 
