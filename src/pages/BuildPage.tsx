@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { useAppDispatch, useAppSelector } from '../store/hooks';
 import { useAuth } from '../contexts/AuthContext';
 import { startWorkout } from '../store/slices/workoutSlice';
+import { buildDraftChanged, buildPresetConsumed } from '../store/slices/aiSlice';
 import { WorkoutStorageService } from '../services/workoutStorageService';
 
 // Debug: Verify WorkoutStorageService is properly imported
@@ -809,6 +810,39 @@ export default function BuildPage() {
     preparedWorkout.exercises = allExercises;
     return preparedWorkout;
   }, []);
+
+  // A workout the assistant loaded (loadIntoBuild): it replaces what is here
+  // and opens on Visual for review; nothing is saved until the lifter does.
+  const buildPreset = useAppSelector((s) => s.ai.buildPreset);
+  useEffect(() => {
+    if (!buildPreset || isViewingSharedWorkout) return;
+    if (debounceTimeoutRef.current) {
+      clearTimeout(debounceTimeoutRef.current);
+      debounceTimeoutRef.current = null;
+    }
+    const { workout } = buildPreset;
+    resetWorkoutText(workout.workoutText);
+    setParseResult(null);
+    setEditedWorkout(
+      prepareWorkoutForConfigurator({
+        exercises: workout.parsedWorkout.exercises ?? [],
+        supersets: workout.parsedWorkout.supersets ?? [],
+      }),
+    );
+    setWorkoutName(buildPreset.name);
+    setWorkoutNameError('');
+    setActiveTab('visual');
+    dispatch(buildPresetConsumed(buildPreset.id));
+  }, [buildPreset, isViewingSharedWorkout, resetWorkoutText, prepareWorkoutForConfigurator, dispatch]);
+
+  // Tells the assistant whether loading a workout here would replace something.
+  const hasDraft = !!(workoutText.trim() || workoutName.trim() || editedWorkout);
+  useEffect(() => {
+    dispatch(buildDraftChanged(hasDraft));
+  }, [hasDraft, dispatch]);
+  useEffect(() => () => {
+    dispatch(buildDraftChanged(false));
+  }, [dispatch]);
 
   // Handle workout update from configurator
   const handleWorkoutUpdate = useCallback((updatedWorkout: any) => {

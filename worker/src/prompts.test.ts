@@ -79,3 +79,22 @@ describe('READ_MACHINE_SYSTEM_PROMPT', () => {
     expect(READ_MACHINE_SYSTEM_PROMPT).toContain('defaultSets');
   });
 });
+
+describe('CHAT_SYSTEM_PROMPT app-control tools', () => {
+  const line = (tool: string) => CHAT_SYSTEM_PROMPT.split('\n').filter((l) => l.startsWith(`- ${tool}:`));
+  it('gives each new tool one line on when to use it', () => {
+    for (const tool of ['openTab', 'startWorkout', 'loadIntoBuild']) expect(line(tool)).toHaveLength(1);
+    expect(line('startWorkout')[0]).toContain('overrides');
+    expect(line('startWorkout')[0]).toContain('Asks the lifter first.');
+    expect(line('loadIntoBuild')[0]).toContain('it never saves');
+    expect(line('openTab')[0]).toContain('workout only while a workout is in progress');
+  });
+  it('loads workouts through tools, never by describing taps', () => {
+    expect(CHAT_SYSTEM_PROMPT).toContain(
+      'To load a workout for the lifter, use startWorkout (or loadIntoBuild to review first); never describe tapping buttons yourself.',
+    );
+  });
+  it('opens the workout tab after a live edit only when the lifter is elsewhere', () => {
+    expect(CHAT_SYSTEM_PROMPT).toContain("After a live edit, call openTab with tab workout only when the context's `tab` is not already workout.");
+  });
+});

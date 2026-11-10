@@ -261,3 +261,37 @@ describe('handleChat', () => {
     });
   });
 });
+
+describe('handleChat app-control tools', () => {
+  it('passes valid openTab / startWorkout / loadIntoBuild calls and drops malformed ones', async () => {
+    const { client } = fakeClient([
+      { type: 'tool_use', id: 'a1', name: 'openTab', input: { tab: 'build' } },
+      { type: 'tool_use', id: 'a2', name: 'openTab', input: { tab: 'settings' } },
+      { type: 'tool_use', id: 'a3', name: 'startWorkout', input: { workoutId: 'w1', overrides: [{ exerciseName: 'Bench Press', weight: 185 }] } },
+      { type: 'tool_use', id: 'a4', name: 'startWorkout', input: { workoutId: 'w1', planId: 'p1' } },
+      { type: 'tool_use', id: 'a5', name: 'startWorkout', input: { today: true, overrides: [{ weight: 185 }] } },
+      { type: 'tool_use', id: 'a6', name: 'loadIntoBuild', input: { name: 'Push', exercises: [{ name: 'Bench Press', sets: 3, reps: 8 }] } },
+      { type: 'tool_use', id: 'a7', name: 'loadIntoBuild', input: {} },
+      { type: 'tool_use', id: 'a8', name: 'clickElement', input: { selector: '#start' } },
+    ], 'tool_use');
+    const r = await handleChat(client, [{ role: 'user', content: 'load push day' }], { tab: 'today' });
+    expect(r.toolCalls.map((c) => c.id)).toEqual(['a1', 'a3', 'a6']);
+    expect(r.toolCalls[1].input).toEqual({ workoutId: 'w1', overrides: [{ exerciseName: 'Bench Press', weight: 185 }] });
+  });
+
+  it('keeps the tab and today plans of the context', async () => {
+    const { chatRequestSchema } = await import('./schemas');
+    const parsed = chatRequestSchema.parse({
+      action: 'chat',
+      messages: [{ role: 'user', content: 'hi' }],
+      context: { tab: 'build', todayPlans: [{ id: 'p1', name: 'Push' }] },
+    });
+    expect(parsed.context).toEqual({ tab: 'build', todayPlans: [{ id: 'p1', name: 'Push' }] });
+    expect(chatRequestSchema.safeParse({
+      action: 'chat', messages: [{ role: 'user', content: 'hi' }], context: { tab: 'settings' },
+    }).success).toBe(false);
+    const { client, create } = fakeClient([{ type: 'text', text: 'ok' }]);
+    await handleChat(client, [{ role: 'user', content: 'hi' }], parsed.context);
+    expect(create.mock.calls[0][0].messages[0].content).toContain('"todayPlans":[{"id":"p1","name":"Push"}]');
+  });
+});

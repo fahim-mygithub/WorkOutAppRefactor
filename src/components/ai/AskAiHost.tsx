@@ -9,11 +9,18 @@
 //
 // The build / plan / profile tools save outside the store on Apply
 // (`applyPlan`: saved workouts, custom exercises, the profile) and then offer
-// the same Undo toast. The chat context carries the saved workouts (read once
-// per opening, again after a change), the profile and today's date.
+// the same Undo toast. The chat context carries the profile, today's date, the
+// tab the lifter is on and today's planned workouts; saved workouts are read
+// once per opening (again after a change) for the planner.
+//
+// The conversation and its card decisions live in the store (aiSlice), kept
+// per user across reloads (ai/chatPersistence.ts), so closing the sheet or
+// navigating loses nothing; "New chat" clears it. App-control tools: openTab
+// navigates at once; startWorkout and loadIntoBuild navigate (and close the
+// sheet) once applied.
 import * as React from 'react';
 import { useStore } from 'react-redux';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import type { UnknownAction } from '@reduxjs/toolkit';
 import { AnimatePresence, motion as fmotion } from 'framer-motion';
 import { Sparkles } from 'lucide-react';
@@ -21,24 +28,36 @@ import { IconButton } from '@/components/ui/icon-button';
 import { motion as motionTokens } from '@/lib/motion';
 import { useAppDispatch, useAppSelector } from '../../store/hooks';
 import type { RootState } from '../../store';
-import { aiDisabled, askAiClosed, askAiOpened } from '../../store/slices/aiSlice';
+import {
+  aiDecisionSet,
+  aiDisabled,
+  aiMessageAdded,
+  aiNewChat,
+  aiPendingRemoved,
+  aiPendingSet,
+  askAiClosed,
+  askAiOpened,
+} from '../../store/slices/aiSlice';
+import { selectPlansForToday } from '../../store/slices/plannedWorkoutsSlice';
+import { setStoredPlanContext } from '../../lib/workoutSession';
 import { AiBackendError, chat, isBackendAvailable, isSignedIn } from '../../ai/aiClient';
 import { buildAiContext } from '../../ai/context';
 import {
   planToolCall,
   sameEffects,
   sameIntent,
+  tabOfPath,
   toAssistantTurn,
+  type AfterApply,
   type SavedWorkoutRef,
 } from '../../ai/applyTool';
 import { applyPlan, type AiEffect } from '../../ai/effects';
 import { appServices } from '../../ai/appServices';
 import { toDateKey } from '../../lib/dateKey';
-import type { AiErrorCode, AiToolCall } from '../../ai/types';
+import type { AiErrorCode, AiProposalDecision, AiToolCall } from '../../ai/types';
 import { useExerciseLibrary } from '../workout/useExerciseLibrary';
 import { AiChatSheet, type AiChatClient } from './AiChatSheet';
 import { UndoToast } from './UndoToast';
-import { type ApplyRejectDecision } from './ApplyRejectCard';
 
 const FRIENDLY: Partial<Record<AiErrorCode, string>> = {
   limit: 'AI limit reached for today.',
@@ -145,8 +164,13 @@ function getPlanRecordKeys(plan: { effects?: AiEffect[]; apply: UnknownAction[];
 export function AskAiHost() {
   const dispatch = useAppDispatch();
   const store = useStore<RootState>();
+  const navigate = useNavigate();
   const { pathname } = useLocation();
+  // Read at plan time (openTab skips the tab the lifter is on).
+  const pathnameRef = React.useRef(pathname);
+  pathnameRef.current = pathname;
   const { open, seed, disabledReason } = useAppSelector((s) => s.ai);
+  const conversation = useAppSelector((s) => s.ai.chat);
   const resting = useAppSelector((s) => s.workout.restTimer.isActive);
   // Built-in + custom exercises: the context offers swap alternatives from it
   // and the planner resolves swaps against it. Read through a ref so the chat
@@ -155,26 +179,17 @@ export function AskAiHost() {
   const libraryRef = React.useRef(library);
   libraryRef.current = library;
 
-  // A fresh sheet (and transcript) per opening, so each seed is sent. Bumped
-  // during render (not in an effect) so the old sheet never sees the new seed.
-  const [session, setSession] = React.useState({ open, n: 0 });
-  if (session.open !== open) setSession({ open, n: open ? session.n + 1 : session.n });
-
-  // Calls awaiting Apply, with the actions their card was planned with. Each
-  // is re-planned on Apply against the state at that moment.
-  const pendingCalls = React.useRef(
-    new Map<string, { call: AiToolCall; apply: UnknownAction[]; effects?: AiEffect[] }>(),
-  );
-  // The lifter's saved workouts: read on the first turn of an opening, and
-  // again after an Apply or Undo changed them. null = read on the next turn.
+  // The lifter's saved workouts: read on the first turn of an opening (or the
+  // first Apply), and again after an Apply or Undo changed them. null = read next time.
   const savedWorkouts = React.useRef<SavedWorkoutRef[] | null>(null);
-  React.useEffect(() => {
-    if (!open) {
-      pendingCalls.current.clear();
-      savedWorkouts.current = null;
-      commitSessionUndos(new Map());
-      setDecisions({});
+  const loadSavedWorkouts = React.useCallback(async () => {
+    const uid = store.getState().user.profile?.uid;
+    if (uid && savedWorkouts.current === null) {
+      savedWorkouts.current = await appServices.listSavedWorkouts(uid).catch(() => []);
     }
+  }, [store]);
+  React.useEffect(() => {
+    if (!open) savedWorkouts.current = null;
   }, [open]);
   const [undos, setUndos] = React.useState<QueuedUndo[]>([]);
   const [sessionUndos, setSessionUndos] = React.useState<Map<string, ActiveUndo>>(new Map());
@@ -182,12 +197,23 @@ export function AskAiHost() {
   // updaters stay pure (no setState inside another updater).
   const sessionUndosRef = React.useRef<Map<string, ActiveUndo>>(new Map());
   const requeues = React.useRef(0);
-  const [decisions, setDecisions] = React.useState<Record<string, ApplyRejectDecision>>({});
+  const setDecision = React.useCallback(
+    (id: string, decision: AiProposalDecision) => {
+      dispatch(aiDecisionSet({ id, decision }));
+    },
+    [dispatch],
+  );
 
   function commitSessionUndos(next: Map<string, ActiveUndo>) {
     sessionUndosRef.current = next;
     setSessionUndos(next);
   }
+
+  // A new conversation (New chat, another user): its cards have no Undo here.
+  const chatId = conversation.id;
+  React.useEffect(() => {
+    commitSessionUndos(new Map());
+  }, [chatId]);
 
   // Takes one applied proposal back, from the card's Undo or the toast's Undo
   // (same path, so a failure is reported the same way): the card flips to
@@ -198,7 +224,7 @@ export function AskAiHost() {
     without.delete(proposalId);
     commitSessionUndos(without);
     setUndos((q) => q.filter((u) => u.id !== proposalId));
-    setDecisions((d) => ({ ...d, [proposalId]: 'undone' }));
+    setDecision(proposalId, 'undone');
     try {
       await active.undo();
     } catch (err) {
@@ -207,7 +233,7 @@ export function AskAiHost() {
         ...q,
         { id: proposalId, key: `${proposalId}:retry${++requeues.current}`, message: active.message, undo: toastUndo(proposalId, active) },
       ]);
-      setDecisions((d) => ({ ...d, [proposalId]: 'applied' }));
+      setDecision(proposalId, 'applied');
       throw err;
     }
   }
@@ -229,6 +255,10 @@ export function AskAiHost() {
       savedWorkouts: savedWorkouts.current ?? [],
       displayName: now.user.profile?.displayName,
       preferences: now.user.preferences,
+      pathname: pathnameRef.current,
+      plannedWorkouts: now.plannedWorkouts?.plans ?? [],
+      defaultGoal: now.trackedLifts.lastGoal ?? 'volume',
+      buildHasDraft: now.ai.buildHasDraft,
     });
   }, [store]);
 
@@ -239,16 +269,30 @@ export function AskAiHost() {
     services: appServices,
   }), [store, dispatch]);
 
+  /** Navigation and session bookkeeping of an applied start / Build load. */
+  const runAfterApply = React.useCallback((after: AfterApply | undefined) => {
+    if (!after) return;
+    if (after.planContext) setStoredPlanContext(after.planContext);
+    const uid = store.getState().user.profile?.uid;
+    if (after.markPerformed && uid) {
+      Promise.resolve(appServices.markWorkoutPerformed?.(uid, after.markPerformed)).catch(() => undefined);
+    }
+    if (after.closeChat) dispatch(askAiClosed());
+    if (after.navigate) {
+      pathnameRef.current = after.navigate;
+      navigate(after.navigate);
+    }
+  }, [store, dispatch, navigate]);
+
   const client = React.useMemo<AiChatClient>(() => ({
     async sendMessage({ messages }) {
-      const uid = store.getState().user.profile?.uid;
-      if (uid && savedWorkouts.current === null) {
-        savedWorkouts.current = await appServices.listSavedWorkouts(uid).catch(() => []);
-      }
+      await loadSavedWorkouts();
       const s = store.getState();
       const activeWorkout = s.workout.activeWorkout;
+      const todayKey = toDateKey(new Date());
+      const here = pathnameRef.current;
       const context = buildAiContext({
-        screen: activeWorkout ? 'workout' : pathname.startsWith('/build') ? 'build' : 'other',
+        screen: activeWorkout ? 'workout' : here.startsWith('/build') ? 'build' : 'other',
         units: s.user.preferences.weightUnit,
         activeWorkout,
         trackedLifts: s.trackedLifts.lifts,
@@ -257,7 +301,9 @@ export function AskAiHost() {
         profile: s.user.profile
           ? { displayName: s.user.profile.displayName, preferences: s.user.preferences }
           : undefined,
-        today: toDateKey(new Date()),
+        today: todayKey,
+        tab: tabOfPath(here),
+        todayPlans: selectPlansForToday(s, todayKey),
       });
       let res;
       try {
@@ -279,15 +325,21 @@ export function AskAiHost() {
         const plan = planNow(call);
         if (plan.kind === 'auto') {
           plan.apply.forEach((a) => dispatch(a));
-          setUndos((q) => [...q, { id: plan.id, message: plan.summary, undo: () => plan.undo.forEach((a) => dispatch(a)) }]);
+          if (plan.undo.length > 0) {
+            setUndos((q) => [...q, { id: plan.id, message: plan.summary, undo: () => plan.undo.forEach((a) => dispatch(a)) }]);
+          }
+          if (plan.navigate) {
+            pathnameRef.current = plan.navigate;
+            navigate(plan.navigate);
+          }
         } else if (plan.kind === 'confirm') {
-          pendingCalls.current.set(plan.id, { call, apply: plan.apply, effects: plan.effects });
+          dispatch(aiPendingSet({ id: plan.id, pending: { call, apply: plan.apply, effects: plan.effects } }));
         }
         return { call, plan };
       });
       return toAssistantTurn(res.reply, planned);
     },
-  }), [store, dispatch, pathname, planNow]);
+  }), [store, dispatch, planNow, loadSavedWorkouts, navigate]);
 
   const current = undos[0];
   const toast = (
@@ -329,16 +381,23 @@ export function AskAiHost() {
         ) : null}
       </AnimatePresence>
       <AiChatSheet
-        key={session.n}
         open={open}
         onOpenChange={(next) => {
           if (!next) dispatch(askAiClosed());
         }}
         client={client}
         initialMessage={seed}
+        messages={conversation.messages}
+        chatKey={conversation.id}
+        onMessageAdded={(message, chatId) => dispatch(aiMessageAdded({ chatId, message }))}
+        onNewChat={() => dispatch(aiNewChat())}
         onApplyProposal={async (proposal) => {
-          const pending = pendingCalls.current.get(proposal.id);
-          if (!pending) return "Couldn't apply: this suggestion has expired.";
+          const pending = store.getState().ai.pending[proposal.id];
+          if (!pending) {
+            setDecision(proposal.id, 'expired');
+            return "Couldn't apply: this suggestion has expired.";
+          }
+          await loadSavedWorkouts();
           const plan = planNow(pending.call);
           if (plan.kind !== 'confirm') {
             return `Couldn't apply: ${plan.kind === 'rejected' ? plan.reason : 'things changed since.'}`;
@@ -352,12 +411,12 @@ export function AskAiHost() {
             return "Couldn't apply: things changed since this was suggested.";
           }
           // Taken off the pending list first so a second tap can't apply twice.
-          pendingCalls.current.delete(proposal.id);
+          dispatch(aiPendingRemoved(proposal.id));
           let undo: (() => Promise<void>) | undefined;
           try {
             undo = await applyPlan(plan, effectDeps());
           } catch (err) {
-            pendingCalls.current.set(proposal.id, pending);
+            dispatch(aiPendingSet({ id: proposal.id, pending }));
             const signIn = err instanceof Error && err.message === 'Sign in to save.';
             return signIn ? 'Sign in to save.' : "Couldn't save — try again.";
           }
@@ -378,7 +437,8 @@ export function AskAiHost() {
               }
             }
           }
-          setDecisions((d) => ({ ...d, [proposal.id]: 'applied' }));
+          setDecision(proposal.id, 'applied');
+          runAfterApply(plan.afterApply);
           if (undo) {
             const takeBack = undo;
             const activeUndoFn = async () => {
@@ -413,11 +473,11 @@ export function AskAiHost() {
           await undoActive(proposal.id, active);
         }}
         isProposalUndoable={(proposalId) => sessionUndos.has(proposalId)}
-        decisions={decisions}
-        onDecisionChange={(id, dec) => setDecisions((d) => ({ ...d, [id]: dec }))}
+        decisions={conversation.decisions}
+        onDecisionChange={setDecision}
         onRejectProposal={(proposal) => {
-          pendingCalls.current.delete(proposal.id);
-          setDecisions((d) => ({ ...d, [proposal.id]: 'rejected' }));
+          dispatch(aiPendingRemoved(proposal.id));
+          setDecision(proposal.id, 'rejected');
         }}
         overlay={open ? toast : undefined}
       />

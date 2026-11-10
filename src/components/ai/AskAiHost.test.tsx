@@ -2,14 +2,14 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Provider } from 'react-redux';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, useLocation } from 'react-router-dom';
 import { configureStore } from '@reduxjs/toolkit';
 import workout, { startWorkout, completeSet, startRestTimer, endWorkout } from '../../store/slices/workoutSlice';
 import trackedLifts, { trackedLiftsHydrated, liftUpdated } from '../../store/slices/trackedLiftsSlice';
 import exercise, { setExercises } from '../../store/slices/exerciseSlice';
 import customExercise from '../../store/slices/customExerciseSlice';
 import user from '../../store/slices/userSlice';
-import ai, { askAiOpened, askAiClosed } from '../../store/slices/aiSlice';
+import ai, { askAiOpened, askAiClosed, aiChatRestored, buildDraftChanged } from '../../store/slices/aiSlice';
 import * as aiClient from '../../ai/aiClient';
 import type { AiContext } from '../../ai/context';
 import type { WorkoutExercise, Exercise } from '../../types/exercise';
@@ -326,7 +326,7 @@ describe('AskAiHost', () => {
     expect(screen.queryByRole('button', { name: 'Ask AI' })).not.toBeInTheDocument();
   });
 
-  it('sends the seed again when reopened with a new one', async () => {
+  it('sends the seed again when reopened with a new one, after the kept conversation', async () => {
     const chat = vi.spyOn(aiClient, 'chat').mockResolvedValue(reply('ok'));
     const store = makeStore();
     store.dispatch(setExercises([bench]));
@@ -337,8 +337,9 @@ describe('AskAiHost', () => {
     await waitFor(() => expect(chat).toHaveBeenCalledTimes(1));
     expect(chat.mock.calls[0][0]).toMatchObject({
       messages: [{ role: 'user', content: 'seed A' }],
-      context: { screen: 'build' },
+      context: { screen: 'build', tab: 'build' },
     });
+    await waitFor(() => expect(store.getState().ai.chat.messages).toHaveLength(2));
     act(() => {
       store.dispatch(askAiClosed());
     });
@@ -346,7 +347,51 @@ describe('AskAiHost', () => {
       store.dispatch(askAiOpened({ seed: 'seed B' }));
     });
     await waitFor(() => expect(chat).toHaveBeenCalledTimes(2));
-    expect(chat.mock.calls[1][0].messages).toEqual([{ role: 'user', content: 'seed B' }]);
+    expect(chat.mock.calls[1][0].messages).toEqual([
+      { role: 'user', content: 'seed A' },
+      { role: 'assistant', content: 'ok' },
+      { role: 'user', content: 'seed B' },
+    ]);
+  });
+
+  it('keeps the conversation when the sheet closes, and New chat clears it', async () => {
+    const chat = vi.spyOn(aiClient, 'chat').mockResolvedValue(reply('Bench day it is.'));
+    const store = renderHost(makeStoreWithWorkoutAndLift(), '/');
+    const u = await send('what should I train?');
+    const log = screen.getByRole('log');
+    expect(await within(log).findByText('Bench day it is.')).toBeInTheDocument();
+    act(() => {
+      store.dispatch(askAiClosed());
+    });
+    await u.click(await screen.findByRole('button', { name: 'Ask AI' }));
+    expect(within(screen.getByRole('log')).getByText('what should I train?')).toBeInTheDocument();
+    expect(within(screen.getByRole('log')).getByText('Bench day it is.')).toBeInTheDocument();
+
+    await u.click(screen.getByRole('button', { name: 'New chat' }));
+    expect(within(screen.getByRole('log')).queryByText('what should I train?')).not.toBeInTheDocument();
+    expect(within(screen.getByRole('log')).queryByText('Bench day it is.')).not.toBeInTheDocument();
+    expect(store.getState().ai.chat.messages).toEqual([]);
+
+    // The next message starts a fresh history.
+    await u.type(screen.getByLabelText('Message'), 'hi again');
+    await u.click(screen.getByRole('button', { name: 'Send' }));
+    await waitFor(() => expect(chat).toHaveBeenCalledTimes(2));
+    expect(chat.mock.calls[1][0].messages).toEqual([{ role: 'user', content: 'hi again' }]);
+  });
+
+  it('drops a reply that arrives after New chat', async () => {
+    let answer!: (v: ReturnType<typeof reply>) => void;
+    vi.spyOn(aiClient, 'chat').mockImplementationOnce(() => new Promise((r) => { answer = r; }));
+    const store = renderHost(makeStoreWithWorkoutAndLift(), '/');
+    const u = await send('slow question');
+    expect(await screen.findByTestId('ai-pending')).toBeInTheDocument();
+    await u.click(screen.getByRole('button', { name: 'New chat' }));
+    await act(async () => {
+      answer(reply('late answer'));
+    });
+    expect(screen.queryByText('late answer')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('ai-pending')).not.toBeInTheDocument();
+    expect(store.getState().ai.chat.messages).toEqual([]);
   });
 });
 
@@ -665,7 +710,7 @@ describe('AskAiHost — build, plan and profile tools', () => {
       undoEdit: vi.fn(),
     };
 
-    // First turn: plan workout for date 2026-11-01
+    // First turn: plan workout for date 2099-11-01
     vi.spyOn(aiClient, 'chat')
       .mockResolvedValueOnce({
         reply: 'Planned workout 1.',
@@ -674,13 +719,13 @@ describe('AskAiHost — build, plan and profile tools', () => {
           id: 'call-plan-1',
           name: 'planWorkout',
           input: {
-            dateKey: '2026-11-01',
+            dateKey: '2099-11-01',
             name: 'Push Day',
             exercises: [{ name: 'Barbell Bench Press', sets: 3, reps: 5 }],
           },
         }],
       })
-      // Second turn: plan workout for date 2026-11-02 (different record/date)
+      // Second turn: plan workout for date 2099-11-02 (different record/date)
       .mockResolvedValueOnce({
         reply: 'Planned workout 2.',
         source: 'backend',
@@ -688,7 +733,7 @@ describe('AskAiHost — build, plan and profile tools', () => {
           id: 'call-plan-2',
           name: 'planWorkout',
           input: {
-            dateKey: '2026-11-02',
+            dateKey: '2099-11-02',
             name: 'Pull Day',
             exercises: [{ name: 'Barbell Row', sets: 3, reps: 8 }],
           },
@@ -721,5 +766,129 @@ describe('AskAiHost — build, plan and profile tools', () => {
     // Both cards still have their Undo buttons! (No over-invalidation across different records)
     expect(within(cards[0]).getByRole('button', { name: 'Undo' })).toBeInTheDocument();
     expect(within(cards[1]).getByRole('button', { name: 'Undo' })).toBeInTheDocument();
+  });
+});
+
+describe('AskAiHost — app control', () => {
+  const svc = vi.mocked(appServices);
+  const pushSaved = {
+    id: 'w-push', name: 'Push', workoutText: '3x8 Barbell Bench Press @135',
+    parsedWorkout: { exercises: [{ name: 'Barbell Bench Press', sets: [0, 1, 2].map(() => ({ reps: 8, weight: 135, unit: 'lbs' as const })) }], supersets: [] },
+  };
+
+  function appStore() {
+    const store = configureStore({ reducer: { workout, trackedLifts, exercise, customExercise, user, ai, plannedWorkouts } });
+    store.dispatch(setExercises([bench]));
+    store.dispatch(setProfile({ uid: 'u1', email: 'a@b.c', displayName: 'Alex', createdAt: '', lastActiveAt: '' }));
+    return store;
+  }
+
+  function Where() {
+    return <p data-testid="where">{useLocation().pathname}</p>;
+  }
+
+  function renderApp(store: ReturnType<typeof appStore>, path = '/') {
+    render(
+      <Provider store={store}>
+        <MemoryRouter initialEntries={[path]}>
+          <Where />
+          <AskAiHost />
+        </MemoryRouter>
+      </Provider>,
+    );
+    return store;
+  }
+
+  beforeEach(() => {
+    svc.listSavedWorkouts.mockResolvedValue([pushSaved]);
+  });
+
+  it('an applied startWorkout opens the player on /workout with the weight the lifter named', async () => {
+    const chat = vi.spyOn(aiClient, 'chat').mockResolvedValue({
+      reply: 'Loading Push with 185 on bench.', source: 'backend',
+      toolCalls: [{ id: 'st1', name: 'startWorkout', input: { workoutId: 'w-push', overrides: [{ exerciseName: 'Barbell Bench Press', weight: 185 }] } }],
+    });
+    const store = renderApp(appStore(), '/');
+    const u = await send('load my push day with 185 on bench');
+    const card = await screen.findByTestId('apply-reject-card');
+    expect(card).toHaveTextContent('Start "Push" (1 exercise)');
+    expect(card).toHaveTextContent('Barbell Bench Press 3×8 @ 185 lb');
+    expect(store.getState().workout.activeWorkout).toBeNull();
+    expect(chat.mock.calls[0][0].context).toMatchObject({ tab: 'today' });
+
+    await u.click(within(card).getByRole('button', { name: 'Apply' }));
+    await waitFor(() => expect(screen.getByTestId('where')).toHaveTextContent('/workout'));
+    const active = store.getState().workout.activeWorkout!;
+    expect(active.name).toBe('Push');
+    expect(active.exercises[0].sets.map((s) => [s.reps, s.weight])).toEqual([[8, 185], [8, 185], [8, 185]]);
+    expect(store.getState().ai.open).toBe(false);
+    expect(store.getState().ai.chat.decisions.st1).toBe('applied');
+  });
+
+  it('refuses to start while a workout is in progress', async () => {
+    vi.spyOn(aiClient, 'chat').mockResolvedValue({
+      reply: '', source: 'backend', toolCalls: [{ id: 'st2', name: 'startWorkout', input: { workoutId: 'w-push' } }],
+    });
+    const store = appStore();
+    store.dispatch(startWorkout({ name: 'Legs', exercises: [] }));
+    renderApp(store, '/');
+    await send('start push');
+    expect(await screen.findByText(/"Legs" is still in progress\. End or finish it first\./)).toBeInTheDocument();
+    expect(screen.queryByTestId('apply-reject-card')).not.toBeInTheDocument();
+  });
+
+  it('openTab switches tabs at once, and refuses the workout tab with no workout', async () => {
+    vi.spyOn(aiClient, 'chat')
+      .mockResolvedValueOnce({ reply: 'Here is Build.', source: 'backend', toolCalls: [{ id: 'ot1', name: 'openTab', input: { tab: 'build' } }] })
+      .mockResolvedValueOnce({ reply: '', source: 'backend', toolCalls: [{ id: 'ot2', name: 'openTab', input: { tab: 'workout' } }] });
+    renderApp(appStore(), '/');
+    const u = await send('take me to build');
+    await waitFor(() => expect(screen.getByTestId('where')).toHaveTextContent('/build'));
+    expect(screen.getByRole('log')).toHaveTextContent('Opened Build');
+    // No Undo toast for a tab switch.
+    expect(screen.queryByRole('button', { name: 'Undo' })).not.toBeInTheDocument();
+    await u.type(screen.getByLabelText('Message'), 'open my workout');
+    await u.click(screen.getByRole('button', { name: 'Send' }));
+    expect(await screen.findByText(/No workout is in progress/)).toBeInTheDocument();
+    expect(screen.getByTestId('where')).toHaveTextContent('/build');
+  });
+
+  it('loadIntoBuild says it replaces the Build draft, and on Apply opens Build with the workout', async () => {
+    vi.spyOn(aiClient, 'chat').mockResolvedValue({
+      reply: '', source: 'backend', toolCalls: [{ id: 'lb1', name: 'loadIntoBuild', input: { workoutId: 'w-push' } }],
+    });
+    const store = appStore();
+    store.dispatch(buildDraftChanged(true));
+    renderApp(store, '/build/custom');
+    const u = await send('put push day on build');
+    const card = await screen.findByTestId('apply-reject-card');
+    expect(card).toHaveTextContent('This replaces what is on the Build screen now.');
+    act(() => {
+      store.dispatch(buildDraftChanged(false));
+    });
+    // Applying loads the workout into Build; nothing is saved.
+    await u.click(within(card).getByRole('button', { name: 'Apply' }));
+    await waitFor(() => expect(store.getState().ai.buildPreset?.name).toBe('Push'));
+    expect(store.getState().ai.buildPreset?.workout.parsedWorkout).toEqual(pushSaved.parsedWorkout);
+    expect(screen.getByTestId('where')).toHaveTextContent('/build/custom');
+    expect(svc.saveWorkout).not.toHaveBeenCalled();
+  });
+
+  it('shows a card restored undecided as expired, not applyable', async () => {
+    const store = appStore();
+    store.dispatch(aiChatRestored({
+      uid: 'u1',
+      messages: [
+        { id: 'm1', role: 'user', text: 'load push' },
+        { id: 'm2', role: 'assistant', text: 'Ready.', proposals: [{ id: 'old1', tool: 'startWorkout', summary: 'Start "Push" (1 exercise)' }] },
+      ],
+    }));
+    renderApp(store, '/');
+    const u = userEvent.setup();
+    await u.click(screen.getByRole('button', { name: 'Ask AI' }));
+    const card = await screen.findByTestId('apply-reject-card');
+    expect(card).toHaveAttribute('data-decision', 'expired');
+    expect(within(card).queryByRole('button', { name: 'Apply' })).not.toBeInTheDocument();
+    expect(card).toHaveTextContent(/Expired/);
   });
 });

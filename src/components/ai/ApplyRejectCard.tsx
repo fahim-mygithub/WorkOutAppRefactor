@@ -24,11 +24,19 @@ import { Button } from '@/components/ui/button';
 import { motion as motionTokens } from '@/lib/motion';
 import { cn } from '@/lib/utils';
 
-import type { AiToolProposal } from '@/ai/types';
+import type { AiProposalDecision, AiToolProposal } from '@/ai/types';
 
 export type { AiToolProposal };
 
-export type ApplyRejectDecision = 'applied' | 'rejected' | 'undone';
+/** 'expired': restored undecided from an earlier session; no longer applyable. */
+export type ApplyRejectDecision = AiProposalDecision;
+
+const RESOLVED_LABEL: Record<ApplyRejectDecision, string> = {
+  applied: 'Applied',
+  undone: 'Undone',
+  rejected: 'Rejected',
+  expired: 'Expired — ask again to redo this',
+};
 
 export interface ApplyRejectCardProps {
   proposal: AiToolProposal;
@@ -128,7 +136,7 @@ export const ApplyRejectCard = React.forwardRef<
                   )}
                   role="status"
                 >
-                  {resolved === 'applied' ? 'Applied' : resolved === 'undone' ? 'Undone' : 'Rejected'}
+                  {resolved ? RESOLVED_LABEL[resolved] : null}
                 </p>
                 {resolved === 'applied' && canUndo !== false && onUndo ? (
                   <Button

@@ -21,6 +21,13 @@ Active workout editing:
 - addExerciseToWorkout: add another library exercise to today's active workout when the lifter wants an extra movement.
 - removeExerciseFromWorkout: remove an exercise that has no completed sets from today's active workout.
 - setExerciseNote: attach a variation or form note to an active exercise (e.g. paused reps, bands, tempo).
+- After a live edit, call openTab with tab workout only when the context's \`tab\` is not already workout.
+
+Moving around the app and loading workouts:
+- To load a workout for the lifter, use startWorkout (or loadIntoBuild to review first); never describe tapping buttons yourself.
+- openTab: show a tab (today, workout, build, library, profile) when the lifter asks to go there; workout only while a workout is in progress. Applies at once.
+- startWorkout: start a saved workout (workoutId from list_workouts), a planned one (planId from \`todayPlans\`) or today's plan (today: true); put only the sets, reps or weights the lifter named in overrides. Not while a workout is in progress. Asks the lifter first.
+- loadIntoBuild: put a saved workout (workoutId) or an exercise list on the Build screen for the lifter to review, edit, then start or save; it never saves. Asks the lifter first.
 
 Workout history and past sessions:
 - You can read the whole workout history using read-only tools: list_history (read finished workouts or exercise logs; page with pageToken or filter with from/to), get_history_entry (get full details and sets of an entry by id), list_workouts (list saved workout templates), and get_workout.

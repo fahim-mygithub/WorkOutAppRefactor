@@ -236,3 +236,17 @@ describe('buildAiContext — profile and today', () => {
     expect(ctx.today).toBe('2026-10-30');
   });
 });
+
+describe('buildAiContext — tab and today plans', () => {
+  it('sends the tab and at most three of today plans, id and name only', () => {
+    const plans = [1, 2, 3, 4].map((k) => ({ id: `p${k}`, name: `Plan ${k}`, exercises: ['big'], status: 'planned' }));
+    const ctx = buildAiContext({ screen: 'other', units: 'lbs', activeWorkout: null, trackedLifts: [], tab: 'build', todayPlans: plans });
+    expect(ctx.tab).toBe('build');
+    expect(ctx.todayPlans).toEqual([{ id: 'p1', name: 'Plan 1' }, { id: 'p2', name: 'Plan 2' }, { id: 'p3', name: 'Plan 3' }]);
+  });
+  it('leaves them out when there are none', () => {
+    const ctx = buildAiContext({ screen: 'other', units: 'lbs', activeWorkout: null, trackedLifts: [], todayPlans: [] });
+    expect(ctx).not.toHaveProperty('tab');
+    expect(ctx).not.toHaveProperty('todayPlans');
+  });
+});
