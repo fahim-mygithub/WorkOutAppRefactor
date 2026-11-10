@@ -283,6 +283,8 @@ describe('MCP round trip (OAuth token + SDK client + mocked Firestore)', () => {
   it('creates and places a workout on the calendar via MCP create_workout with dateKey', async () => {
     const token = await connect();
     const c = await client(token);
+    // A week ahead: a fixed date rots into the past and the past-date guard refuses it.
+    const dateKey = new Date(Date.now() + 7 * 86_400_000).toISOString().slice(0, 10);
 
     const result = await c.callTool({
       name: 'create_workout',
@@ -291,7 +293,7 @@ describe('MCP round trip (OAuth token + SDK client + mocked Firestore)', () => {
           {
             name: 'Leg Day MCP',
             exercises: [{ name: 'Squat', sets: 3, reps: 5, weight: 225 }],
-            dateKey: '2026-11-02',
+            dateKey,
           },
         ],
       },
@@ -304,7 +306,7 @@ describe('MCP round trip (OAuth token + SDK client + mocked Firestore)', () => {
       id: expect.any(String),
       plan: {
         id: expect.any(String),
-        dateKey: '2026-11-02',
+        dateKey,
       },
     });
 
@@ -318,7 +320,7 @@ describe('MCP round trip (OAuth token + SDK client + mocked Firestore)', () => {
     expect(plansData.plans).toContainEqual(
       expect.objectContaining({
         name: 'Leg Day MCP',
-        dateKey: '2026-11-02',
+        dateKey,
       }),
     );
 
