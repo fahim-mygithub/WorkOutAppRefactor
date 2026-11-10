@@ -118,6 +118,10 @@ export function buildAiContext(input: {
   profile?: { displayName?: string; preferences: UserPreferences };
   /** Today, YYYY-MM-DD local. */
   today?: string;
+  /** The tab the lifter is on. */
+  tab?: AiChatContext['tab'];
+  /** Today's planned workouts not yet done; only id and name are sent (at most 3). */
+  todayPlans?: readonly { id: string; name: string }[];
 }): AiContext {
   const { activeWorkout, library = [], profile } = input;
   const alternativesFor = (e: ActiveWorkout['exercises'][number]) => {
@@ -129,6 +133,10 @@ export function buildAiContext(input: {
     units: input.units,
     ...(input.focusExerciseId ? { focusExerciseId: input.focusExerciseId } : {}),
     ...(input.today ? { today: input.today } : {}),
+    ...(input.tab ? { tab: input.tab } : {}),
+    ...(input.todayPlans?.length
+      ? { todayPlans: input.todayPlans.slice(0, 3).map(({ id, name }) => ({ id: id.slice(0, 200), name: name.slice(0, 120) })) }
+      : {}),
     ...(profile
       ? {
           profile: {

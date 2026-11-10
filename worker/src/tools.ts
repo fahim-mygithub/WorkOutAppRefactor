@@ -300,11 +300,73 @@ export const buildToolSchemas = {
 } as const;
 
 // ---------------------------------------------------------------------------
+// App-control tools: move around the app and load workouts (client-applied)
+// ---------------------------------------------------------------------------
+
+/** One change to a workout being started; names its exercise by name or position. */
+const startOverrideSchema = z
+  .object({
+    exerciseName: z.string().min(1).max(120).optional().describe('Exercise to change, as named in the workout.'),
+    index: z.number().int().min(0).max(19).optional().describe('Or its position in the workout, from 0.'),
+    sets: z.number().int().min(1).max(10).optional().describe('Number of sets.'),
+    reps: z.number().int().min(1).max(100).optional().describe('Reps per set.'),
+    weight: z.number().positive().finite().optional().describe('Load per set, in the workout unit. Only when the lifter named it.'),
+  })
+  .strict()
+  .refine((o) => (o.exerciseName === undefined) !== (o.index === undefined), {
+    message: 'Name the exercise by exerciseName or index (one of them).',
+  })
+  .refine((o) => o.sets !== undefined || o.reps !== undefined || o.weight !== undefined, {
+    message: 'Change at least one of sets, reps or weight.',
+  });
+
+export const appToolSchemas = {
+  openTab: z
+    .object({
+      tab: z.enum(['today', 'workout', 'build', 'library', 'profile']).describe('Tab to show.'),
+      reason: z.string().max(300).optional().describe('One short line shown to the lifter.'),
+    })
+    .strict()
+    .describe('Switch the app to a tab. workout only while a workout is in progress. Applies at once.'),
+
+  startWorkout: z
+    .object({
+      workoutId: z.string().min(1).max(200).optional().describe('Saved workout id from list_workouts.'),
+      planId: z.string().min(1).max(200).optional().describe('Planned workout id (todayPlans in the context).'),
+      today: z.boolean().optional().describe("true: start today's planned workout."),
+      overrides: z
+        .array(startOverrideSchema)
+        .max(20)
+        .optional()
+        .describe('Sets / reps / weight the lifter asked for; everything else keeps the saved prescription.'),
+      reason: z.string().max(300).optional().describe('One short line shown to the lifter.'),
+    })
+    .strict()
+    .refine((i) => [i.workoutId !== undefined, i.planId !== undefined, i.today === true].filter(Boolean).length === 1, {
+      message: 'Give exactly one of workoutId, planId or today: true.',
+    })
+    .describe('Start a saved or planned workout in the player, optionally with changed sets / reps / weight. Needs confirmation.'),
+
+  loadIntoBuild: z
+    .object({
+      workoutId: z.string().min(1).max(200).optional().describe('Saved workout id from list_workouts.'),
+      name: z.string().min(1).max(80).optional().describe('Workout name shown on Build.'),
+      exercises: workoutExercisesSchema.optional().describe('Or the exercises to put on Build.'),
+      reason: z.string().max(300).optional().describe('One short line shown to the lifter.'),
+    })
+    .strict()
+    .refine((i) => (i.workoutId === undefined) !== (i.exercises === undefined), {
+      message: 'Give exactly one of workoutId or exercises.',
+    })
+    .describe('Put a workout on the Build screen for the lifter to review, edit, then start or save. Never saves. Needs confirmation.'),
+} as const;
+
+// ---------------------------------------------------------------------------
 // Assembly: Zod -> Anthropic tool definitions
 // ---------------------------------------------------------------------------
 
 /** Per-tool human descriptions surface in the API tool list via `.describe()`. */
-const allToolSchemas = { ...mutationToolSchemas, ...buildToolSchemas } as const;
+const allToolSchemas = { ...mutationToolSchemas, ...buildToolSchemas, ...appToolSchemas } as const;
 
 export type ToolName = keyof typeof allToolSchemas;
 
@@ -333,6 +395,10 @@ function zodToJsonSchema(schema: z.ZodTypeAny): Record<string, unknown> {
       current = current._def.innerType;
     } else if (current instanceof z.ZodOptional) {
       current = current._def.innerType;
+    } else if (current instanceof z.ZodEffects) {
+      // A refined object: the JSON shape is the inner schema's; the refine
+      // runs only when the Worker validates.
+      current = current._def.schema;
     } else if (current instanceof z.ZodNullable) {
       // Emitted as the inner type: tool inputs omit unknown fields rather than
       // send null (handleChat and handleReadLift also strip top-level nulls

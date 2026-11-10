@@ -50,7 +50,13 @@ export type AiToolName =
   | 'updateProfile'
   | 'addExercise'
   | 'logPastWorkout'
-  | 'editPastWorkout';
+  | 'editPastWorkout'
+  | 'openTab'
+  | 'startWorkout'
+  | 'loadIntoBuild';
+
+/** The app's bottom-nav tabs, as openTab names them. */
+export type AiAppTab = 'today' | 'workout' | 'build' | 'library' | 'profile';
 
 /** Tool input as validated by the Worker; the planner narrows it per tool. */
 export type AiToolInput = Record<string, unknown>;
@@ -75,6 +81,10 @@ export interface AiChatContext {
   profile?: unknown;
   /** Today, YYYY-MM-DD local (planWorkout). */
   today?: string;
+  /** The tab the lifter is on (from the route). */
+  tab?: AiAppTab | 'other';
+  /** Today's planned workouts not yet done (startWorkout planId). */
+  todayPlans?: { id: string; name: string }[];
 }
 
 /** Why an AI call failed, so the UI can say something specific. */
@@ -152,3 +162,24 @@ export interface AiAssistantTurn {
   /** Applied / discarded notices -> small lines under the prose. */
   notices?: AiNotice[];
 }
+
+/**
+ * One message of the chat transcript as the sheet renders it and the store
+ * keeps it (persisted per signed-in user, without image data).
+ */
+export interface AiTranscriptMessage {
+  id: string;
+  role: AiChatRole;
+  text: string;
+  /** A photo the user attached to this turn (never persisted). */
+  image?: AiImage;
+  proposals?: AiToolProposal[];
+  visualizations?: AiVisualization[];
+  notices?: AiNotice[];
+}
+
+/**
+ * What became of a proposal card. 'expired': restored from an earlier session
+ * undecided, so it can no longer be applied against today's state.
+ */
+export type AiProposalDecision = 'applied' | 'rejected' | 'undone' | 'expired';

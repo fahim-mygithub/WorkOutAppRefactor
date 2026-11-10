@@ -59,6 +59,13 @@ export const chatContextSchema = z
     profile: z.unknown().optional(),
     /** Today's date, YYYY-MM-DD in the lifter's time zone (planWorkout). */
     today: z.string().max(10).optional(),
+    /** The tab the lifter is on (openTab). */
+    tab: z.enum(['today', 'workout', 'build', 'library', 'profile', 'other']).optional(),
+    /** Today's planned workouts not yet done, id and name (startWorkout planId). */
+    todayPlans: z
+      .array(z.object({ id: z.string().max(200), name: z.string().max(120) }))
+      .max(3)
+      .optional(),
   })
   .partial();
 

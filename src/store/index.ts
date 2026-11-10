@@ -9,6 +9,7 @@ import scheduleReducer from './slices/scheduleSlice';
 import trackedLiftsReducer from './slices/trackedLiftsSlice';
 import plannedWorkoutsReducer from './slices/plannedWorkoutsSlice';
 import aiReducer from './slices/aiSlice';
+import { initChatPersistence } from '../ai/chatPersistence';
 
 export const store = configureStore({
   reducer: {
@@ -30,6 +31,9 @@ export const store = configureStore({
       },
     }),
 });
+
+// The assistant conversation, kept per signed-in user across reloads.
+initChatPersistence(store);
 
 export type RootState = ReturnType<typeof store.getState>;
 export type AppDispatch = typeof store.dispatch;

@@ -15,7 +15,7 @@
  */
 import type { UnknownAction } from '@reduxjs/toolkit';
 import type { ActiveWorkout, Exercise, WorkoutExercise, WorkoutSet } from '../types/exercise';
-import type { TrackedLift, TrackedLoad, TrackedTarget, WeightUnit } from '../types/trackedLifts';
+import type { SessionGoal, TrackedLift, TrackedLoad, TrackedTarget, WeightUnit } from '../types/trackedLifts';
 import type { ParsedExercise, ParsedSet } from '../parser/types';
 import type { UserPreferences } from '../store/slices/userSlice';
 import {
@@ -25,12 +25,22 @@ import {
   removeOpenSets,
   replaceExerciseMovement,
   setsPatched,
+  startWorkout,
   updateExerciseNotesAndTitle,
   type SetPatch,
 } from '../store/slices/workoutSlice';
-import { planAdded, planRemoved } from '../store/slices/plannedWorkoutsSlice';
+import { planAdded, planRemoved, type PlannedWorkout } from '../store/slices/plannedWorkoutsSlice';
+import { buildPresetSet } from '../store/slices/aiSlice';
+import type { SavedWorkout } from '../services/workoutStorageService';
+import type { ActivePlanContext } from '../lib/workoutSession';
+import { preparePlannedWorkoutForExecution } from '../lib/planWorkout';
+
 import { dateKeyToDate, toDateKey } from '../lib/dateKey';
-import { generateFallbackExerciseId } from '../utils/workoutConversion';
+import {
+  convertSavedWorkoutToExercises,
+  generateFallbackExerciseId,
+  sanitizeWorkoutExercisesForRedux,
+} from '../utils/workoutConversion';
 import { prescribedFloor } from '../lib/progression/setPrescription';
 import { liftAdded, liftRemoved, liftUpdated } from '../store/slices/trackedLiftsSlice';
 import { checkProposedLoad } from '../lib/aiLoadCheck';
@@ -46,7 +56,7 @@ import type {
   SavedWorkoutDraft,
 } from './effects';
 import { workoutText } from './workoutText';
-import type { AiAssistantTurn, AiToolCall } from './types';
+import type { AiAppTab, AiAssistantTurn, AiToolCall } from './types';
 
 /** Tool call shape consumed by the planner (mirrors AiToolCall with open tool names). */
 export type ToolCallForPlan = {
@@ -73,10 +83,34 @@ export interface PlanContext {
   /** Current display name and preferences (updateProfile skips no-ops). */
   displayName?: string;
   preferences?: UserPreferences;
+  /** The current route (openTab skips the tab the lifter is already on). */
+  pathname?: string;
+  /** The lifter's planned workouts (startWorkout planId / today). */
+  plannedWorkouts?: readonly PlannedWorkout[];
+  /** The session goal tracked lifts are prescribed for when a start names none. */
+  defaultGoal?: SessionGoal;
+  /** Whether the Build screen holds unsaved content (loadIntoBuild replaces it). */
+  buildHasDraft?: boolean;
+}
+
+/** What the host does once a confirm plan is applied (outside the store). */
+export interface AfterApply {
+  /** Route to open. */
+  navigate?: string;
+  /** Close the chat so the lifter sees that screen. */
+  closeChat?: boolean;
+  /** The planned workout a start belongs to (completion marks it done). */
+  planContext?: ActivePlanContext;
+  /** The saved workout a start came from (its "performed" count goes up). */
+  markPerformed?: string;
 }
 
 export type ToolPlan =
-  | { kind: 'auto'; id: string; summary: string; apply: UnknownAction[]; undo: UnknownAction[] }
+  | {
+      kind: 'auto'; id: string; summary: string; apply: UnknownAction[]; undo: UnknownAction[];
+      /** Route to open (openTab); no Undo when `undo` is empty. */
+      navigate?: string;
+    }
   | {
       kind: 'confirm'; id: string; summary: string; detail?: string; apply: UnknownAction[];
       /** The "benchmark stays" sentence inside `detail`, for the lift an ongoing swap renames. */
@@ -85,6 +119,8 @@ export type ToolPlan =
       undo?: UnknownAction[];
       /** Saves outside the store, run after `apply` (see effects.ts). */
       effects?: AiEffect[];
+      /** Navigation and session bookkeeping once applied (startWorkout, loadIntoBuild). */
+      afterApply?: AfterApply;
     }
   | { kind: 'rejected'; id: string; reason: string };
 
@@ -284,6 +320,7 @@ function readExercises(raw: unknown, ctx: PlanContext): ParsedExercise[] | strin
 /** "Barbell Bench Press 3×8-12 @ 135 lb" for a card. */
 function describeExercise(e: ParsedExercise): string {
   const first = e.sets[0];
+  if (!first) return e.name;
   const reps = typeof first.reps === 'number' ? `${first.reps}` : `${first.reps.min}-${first.reps.max}`;
   const load = first.weight ? ` @ ${first.weight} ${first.unit === 'kg' ? 'kg' : 'lb'}` : '';
   return `${e.name} ${e.sets.length}×${reps}${load}`;
@@ -1005,9 +1042,265 @@ export function planToolCall(call: ToolCallForPlan | AiToolCall, ctx: PlanContex
       };
     }
 
+    case 'openTab': {
+      const tab = i.tab;
+      if (!isTab(tab)) return reject('That tab does not exist.');
+      if (tab === 'workout' && !ctx.activeWorkout) {
+        return reject('No workout is in progress, so there is no Workout tab to open.');
+      }
+      const label = TAB_LABEL[tab];
+      if (ctx.pathname !== undefined && tabOfPath(ctx.pathname) === tab) {
+        return { kind: 'auto', id, summary: `Already on ${label}`, apply: [], undo: [] };
+      }
+      return { kind: 'auto', id, summary: `Opened ${label}`, apply: [], undo: [], navigate: TAB_PATHS[tab] };
+    }
+
+    case 'startWorkout': {
+      if (ctx.activeWorkout) {
+        return reject(`"${ctx.activeWorkout.name}" is still in progress. End or finish it first.`);
+      }
+      const named = [i.workoutId !== undefined, i.planId !== undefined, i.today === true].filter(Boolean).length;
+      if (named !== 1) return reject("Say which workout to start: a saved one, a planned one, or today's plan.");
+
+      let name: string;
+      let prepared: WorkoutExercise[];
+      let planContext: ActivePlanContext | undefined;
+      let savedWorkoutId: string | undefined;
+      if (i.workoutId !== undefined) {
+        const saved = ctx.savedWorkouts?.find((w) => w.id === i.workoutId);
+        if (!saved) return reject('That saved workout does not exist.');
+        // The app's own saved-workout start (as Profile does it), then tracked
+        // lifts prescribed the way a planned workout's are.
+        const converted = convertSavedWorkoutToExercises(
+          { ...saved, parsedWorkout: { ...saved.parsedWorkout, supersets: saved.parsedWorkout.supersets ?? [] } } as unknown as SavedWorkout,
+          ctx.library,
+        );
+        if (converted.length === 0) return reject('That saved workout has no exercises.');
+        name = saved.name;
+        savedWorkoutId = saved.id;
+        prepared = preparePlannedWorkoutForExecution(
+          { id: `ai-${id}`, dateKey: ctx.todayKey ?? '', name, exercises: converted, status: 'planned', createdAt: '' },
+          ctx.trackedLifts,
+          ctx.defaultGoal,
+        );
+      } else {
+        const plans = ctx.plannedWorkouts ?? [];
+        let plan: PlannedWorkout | undefined;
+        if (i.planId !== undefined) {
+          plan = plans.find((p) => p.id === i.planId);
+          if (!plan) return reject('That planned workout does not exist.');
+          if (plan.status !== 'planned') return reject(`"${plan.name}" is already ${plan.status}.`);
+        } else {
+          plan = plans.find((p) => p.dateKey === ctx.todayKey && p.status === 'planned');
+          if (!plan) return reject('Nothing is planned for today.');
+        }
+        if (plan.exercises.length === 0) return reject('That planned workout has no exercises.');
+        name = plan.name;
+        planContext = { templateId: 'planned-workout', dateKey: plan.dateKey, plannedWorkoutId: plan.id };
+        prepared = preparePlannedWorkoutForExecution(plan, ctx.trackedLifts, ctx.defaultGoal);
+      }
+
+      // Stable ids from the call, so the plan at Apply matches the card's.
+      const exercises = withStableIds(id, prepared);
+      const changed = applyOverrides(exercises, i.overrides, ctx);
+      if (typeof changed === 'string') return reject(changed);
+      const sanitized = sanitizeWorkoutExercisesForRedux(exercises) as WorkoutExercise[];
+      return {
+        kind: 'confirm', id,
+        summary: `Start "${name}" (${plural(sanitized.length, 'exercise')})`,
+        detail: [str(i.reason), changed.length ? `Changed: ${changed.join(', ')}` : '', describeWorkoutExercises(sanitized)]
+          .filter(Boolean)
+          .join(' — '),
+        apply: [startWorkout({ name, exercises: sanitized })],
+        afterApply: {
+          navigate: '/workout',
+          closeChat: true,
+          ...(planContext ? { planContext } : {}),
+          ...(savedWorkoutId ? { markPerformed: savedWorkoutId } : {}),
+        },
+      };
+    }
+
+    case 'loadIntoBuild': {
+      const fromSaved = i.workoutId !== undefined;
+      if (fromSaved === (i.exercises !== undefined)) {
+        return reject('Say what to load: a saved workout or a list of exercises.');
+      }
+      if (i.name !== undefined && !str(i.name)) return reject('That name is not valid.');
+      let workout: SavedWorkoutDraft;
+      if (fromSaved) {
+        const saved = ctx.savedWorkouts?.find((w) => w.id === i.workoutId);
+        if (!saved) return reject('That saved workout does not exist.');
+        workout = {
+          name: str(i.name) ?? saved.name,
+          workoutText: saved.workoutText,
+          parsedWorkout: { exercises: saved.parsedWorkout.exercises ?? [], supersets: saved.parsedWorkout.supersets ?? [] },
+        };
+      } else {
+        const exercises = readExercises(i.exercises, ctx);
+        if (typeof exercises === 'string') return reject(exercises);
+        const parsedWorkout = { exercises, supersets: [] };
+        workout = { name: str(i.name) ?? 'AI workout', workoutText: workoutText(parsedWorkout), parsedWorkout };
+      }
+      const count = workout.parsedWorkout.exercises.length + (workout.parsedWorkout.supersets?.length ?? 0);
+      if (count === 0) return reject('That workout has no exercises.');
+      return {
+        kind: 'confirm', id,
+        summary: `Load "${workout.name}" into Build (${plural(count, 'exercise')})`,
+        detail: [
+          ctx.buildHasDraft ? 'This replaces what is on the Build screen now.' : '',
+          str(i.reason),
+          describeExercises(workout.parsedWorkout.exercises),
+        ].filter(Boolean).join(' — '),
+        apply: [buildPresetSet({ id: `build-${id}`, name: workout.name, workout })],
+        afterApply: { navigate: '/build/custom', closeChat: true },
+      };
+    }
+
     default:
       return reject(`Unknown tool ${String((call as { name: unknown }).name)}.`);
   }
+}
+
+// ---------------------------------------------------------------------------
+// App-control helpers (openTab, startWorkout, loadIntoBuild)
+// ---------------------------------------------------------------------------
+
+const TABS: readonly AiAppTab[] = ['today', 'workout', 'build', 'library', 'profile'];
+const isTab = (v: unknown): v is AiAppTab => TABS.includes(v as AiAppTab);
+const TAB_PATHS: Record<AiAppTab, string> = {
+  today: '/',
+  workout: '/workout',
+  build: '/build',
+  library: '/exercises',
+  profile: '/profile',
+};
+const TAB_LABEL: Record<AiAppTab, string> = {
+  today: 'Today',
+  workout: 'Workout',
+  build: 'Build',
+  library: 'Library',
+  profile: 'Profile',
+};
+
+/** The tab a route belongs to (Build covers the wizard and the custom builder). */
+export function tabOfPath(pathname: string): AiAppTab | 'other' {
+  if (pathname === '/' || pathname === '') return 'today';
+  if (pathname.startsWith('/workout')) return 'workout';
+  if (pathname.startsWith('/build')) return 'build';
+  if (pathname.startsWith('/exercises')) return 'library';
+  if (pathname.startsWith('/profile')) return 'profile';
+  return 'other';
+}
+
+/**
+ * Exercises re-identified from the call id (exercise, set and superset ids),
+ * with library-shaped exercises that carry no timestamps, so planning the
+ * same call twice gives the same actions.
+ */
+function withStableIds(callId: string, list: readonly WorkoutExercise[]): WorkoutExercise[] {
+  const ids = new Map<string, string>();
+  const supersets = new Map<string, string>();
+  list.forEach((e, k) => ids.set(e.id, `exercise-${callId}-${k}`));
+  return list.map((e, k) => {
+    const exercise = e.exercise.id.startsWith('fallback-') ? fallbackExercise(e.exercise.name) : plainExercise(e.exercise);
+    let supersetId = e.supersetId;
+    if (supersetId) {
+      if (!supersets.has(supersetId)) supersets.set(supersetId, `superset-${callId}-${supersets.size}`);
+      supersetId = supersets.get(supersetId);
+    }
+    return {
+      ...e,
+      id: ids.get(e.id)!,
+      exercise,
+      sets: e.sets.map((s, n) => ({ ...s, id: `set-${callId}-${k}-${n}` })),
+      ...(supersetId ? { supersetId } : {}),
+      ...(e.supersetExerciseIds ? { supersetExerciseIds: e.supersetExerciseIds.map((x) => ids.get(x) ?? x) } : {}),
+    };
+  });
+}
+
+/** The one exercise an override means: by index, else by (unambiguous) name. */
+function overrideTarget(list: readonly WorkoutExercise[], o: Record<string, unknown>): WorkoutExercise | string {
+  if (o.index !== undefined) {
+    const k = index(o.index);
+    if (k === undefined || k >= list.length) return 'That exercise number is not in the workout.';
+    return list[k];
+  }
+  const asked = str(o.exerciseName);
+  if (!asked) return 'Say which exercise to change.';
+  const key = normalName(asked);
+  const nameOf = (e: WorkoutExercise) => normalName(e.customTitle || e.exercise.name);
+  const exact = list.filter((e) => nameOf(e) === key);
+  if (exact.length === 1) return exact[0];
+  const words = key.split(' ').filter(Boolean);
+  const loose = exact.length ? exact : list.filter((e) => {
+    const own = new Set(nameOf(e).split(' '));
+    return words.length > 0 && words.every((w) => own.has(w));
+  });
+  if (loose.length === 1) return loose[0];
+  return loose.length ? `"${asked}" matches more than one exercise.` : `"${asked}" is not in that workout.`;
+}
+
+/**
+ * Applies the lifter's named sets / reps / weight to the exercises in place.
+ * Resolves with a line per change, or a reason when an override is not valid.
+ */
+function applyOverrides(list: WorkoutExercise[], raw: unknown, ctx: PlanContext): string[] | string {
+  if (raw === undefined) return [];
+  if (!Array.isArray(raw)) return 'Those changes are not valid.';
+  if (raw.length > 20) return 'Too many changes at once.';
+  const lines: string[] = [];
+  for (const item of raw) {
+    const o = (item && typeof item === 'object' ? item : {}) as Record<string, unknown>;
+    const target = overrideTarget(list, o);
+    if (typeof target === 'string') return target;
+    const label = target.customTitle || target.exercise.name;
+    if (o.sets === undefined && o.reps === undefined && o.weight === undefined) return `Nothing to change for ${label}.`;
+    const what: string[] = [];
+    if (o.sets !== undefined) {
+      const n = index(o.sets);
+      if (!n || n > 10) return `${label}: sets must be 1–10.`;
+      const last = target.sets[target.sets.length - 1];
+      if (!last) return `${label} has no sets to copy.`;
+      target.sets = Array.from({ length: n }, (_, k) => target.sets[k] ?? { ...last, completed: false });
+      what.push(plural(n, 'set'));
+    }
+    if (o.reps !== undefined) {
+      const reps = index(o.reps);
+      if (!reps || reps > 100) return `${label}: reps must be 1–100.`;
+      target.sets = target.sets.map((s) => {
+        const next = { ...s, reps };
+        delete next.repMin;
+        delete next.repMax;
+        return next;
+      });
+      what.push(`${reps} reps`);
+    }
+    if (o.weight !== undefined) {
+      const unit = unitOf(target.sets[0]);
+      const check = checkProposedLoad(num(o.weight) ?? 0, null, unit, stepFor(ctx, target, unit));
+      if (!check.ok) return `${label}: ${check.reason}`;
+      target.sets = target.sets.map((s) => ({ ...s, weight: check.value }));
+      what.push(`${check.value} ${unit}`);
+    }
+    target.sets = target.sets.map((s, n) => ({ ...s, id: `${target.id.replace(/^exercise-/, 'set-')}-${n}` }));
+    lines.push(`${label} ${what.join(' × ')}`);
+  }
+  return lines;
+}
+
+/** "Barbell Bench Press 3×8 @ 135 lb, …" for a start card. */
+function describeWorkoutExercises(list: readonly WorkoutExercise[]): string {
+  return list
+    .map((e) => {
+      const first = e.sets[0];
+      if (!first) return e.customTitle || e.exercise.name;
+      const reps = first.repMin !== undefined && first.repMax !== undefined ? `${first.repMin}-${first.repMax}` : `${first.reps}`;
+      const load = first.weight ? ` @ ${first.weight} ${unitOf(first)}` : '';
+      return `${e.customTitle || e.exercise.name} ${e.sets.length}×${reps}${load}`;
+    })
+    .join(', ');
 }
 
 /**

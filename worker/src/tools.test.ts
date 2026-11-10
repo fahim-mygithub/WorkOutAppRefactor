@@ -6,9 +6,9 @@ describe('tool catalog', () => {
   it('exposes exactly the applied tools', () => {
     expect(buildToolDefs().map((t) => t.name).sort()).toEqual([
       'addExercise', 'addExerciseToWorkout', 'addSets', 'addTrackedLift', 'adjustSet',
-      'createWorkout', 'editPastWorkout', 'logPastWorkout', 'logSet', 'planWorkout',
+      'createWorkout', 'editPastWorkout', 'loadIntoBuild', 'logPastWorkout', 'logSet', 'openTab', 'planWorkout',
       'removeExerciseFromWorkout', 'removeOpenSets', 'removeTrackedLift', 'setExerciseNote',
-      'swapExercise', 'updateBenchmark', 'updateProfile', 'updateWorkout',
+      'startWorkout', 'swapExercise', 'updateBenchmark', 'updateProfile', 'updateWorkout',
     ]);
   });
   it('validates adjustSet', () => {
@@ -172,5 +172,72 @@ describe('addExercise', () => {
     expect(toolValidators.addExercise.safeParse(ok).success).toBe(true);
     expect(toolValidators.addExercise.safeParse({ ...ok, muscleGroups: [] }).success).toBe(false);
     expect(toolValidators.addExercise.safeParse({ ...ok, defaultSets: { sets: 30, reps: 10 } }).success).toBe(false);
+  });
+});
+
+describe('app-control tools', () => {
+  const props = (name: string) =>
+    buildToolDefs().find((t) => t.name === name)!.input_schema as {
+      properties: Record<string, Record<string, unknown>>;
+      required?: string[];
+      additionalProperties?: boolean;
+    };
+
+  it('openTab takes one of the five tabs and nothing else', () => {
+    const v = toolValidators.openTab;
+    for (const tab of ['today', 'workout', 'build', 'library', 'profile']) {
+      expect(v.safeParse({ tab }).success).toBe(true);
+    }
+    expect(v.safeParse({ tab: 'settings' }).success).toBe(false);
+    expect(v.safeParse({}).success).toBe(false);
+    expect(v.safeParse({ tab: 'build', selector: '#start' }).success).toBe(false);
+    expect(props('openTab').properties.tab).toMatchObject({ enum: ['today', 'workout', 'build', 'library', 'profile'] });
+    expect(props('openTab').required).toEqual(['tab']);
+  });
+
+  it('startWorkout needs exactly one of workoutId, planId or today', () => {
+    const v = toolValidators.startWorkout;
+    expect(v.safeParse({ workoutId: 'w1' }).success).toBe(true);
+    expect(v.safeParse({ planId: 'p1' }).success).toBe(true);
+    expect(v.safeParse({ today: true }).success).toBe(true);
+    expect(v.safeParse({}).success).toBe(false);
+    expect(v.safeParse({ today: false }).success).toBe(false);
+    expect(v.safeParse({ workoutId: 'w1', planId: 'p1' }).success).toBe(false);
+    expect(v.safeParse({ workoutId: 'w1', script: 'click()' }).success).toBe(false);
+  });
+
+  it('startWorkout overrides name one exercise and change something, within bounds', () => {
+    const v = toolValidators.startWorkout;
+    const ok = (o: Record<string, unknown>) => v.safeParse({ workoutId: 'w1', overrides: [o] }).success;
+    expect(ok({ exerciseName: 'Bench Press', weight: 185 })).toBe(true);
+    expect(ok({ index: 0, sets: 4, reps: 6 })).toBe(true);
+    expect(ok({ weight: 185 })).toBe(false); // which exercise?
+    expect(ok({ exerciseName: 'Bench Press', index: 0, weight: 185 })).toBe(false);
+    expect(ok({ exerciseName: 'Bench Press' })).toBe(false); // nothing to change
+    expect(ok({ index: 0, sets: 11 })).toBe(false);
+    expect(ok({ index: 0, weight: -5 })).toBe(false);
+    expect(ok({ index: 0, reps: 2.5 })).toBe(false);
+    expect(ok({ index: 0, weight: 100, rpe: 8 })).toBe(false);
+  });
+
+  it('emits the refined schemas as plain objects for the model', () => {
+    const start = props('startWorkout');
+    expect(start.additionalProperties).toBe(false);
+    expect(Object.keys(start.properties).sort()).toEqual(['overrides', 'planId', 'reason', 'today', 'workoutId']);
+    const item = (start.properties.overrides as { items: { type: string; properties: Record<string, unknown> } }).items;
+    expect(item.type).toBe('object');
+    expect(Object.keys(item.properties).sort()).toEqual(['exerciseName', 'index', 'reps', 'sets', 'weight']);
+    expect(Object.keys(props('loadIntoBuild').properties).sort()).toEqual(['exercises', 'name', 'reason', 'workoutId']);
+  });
+
+  it('loadIntoBuild takes a saved workout or an exercise list, not both', () => {
+    const v = toolValidators.loadIntoBuild;
+    const list = [{ name: 'Barbell Bench Press', sets: 3, reps: 8, repsMax: 12, weight: 135, unit: 'lbs' }];
+    expect(v.safeParse({ workoutId: 'w1' }).success).toBe(true);
+    expect(v.safeParse({ name: 'Push', exercises: list }).success).toBe(true);
+    expect(v.safeParse({ workoutId: 'w1', exercises: list }).success).toBe(false);
+    expect(v.safeParse({ name: 'Push' }).success).toBe(false);
+    expect(v.safeParse({ exercises: [] }).success).toBe(false);
+    expect(v.safeParse({ exercises: [{ name: 'Bench', sets: 0, reps: 8 }] }).success).toBe(false);
   });
 });

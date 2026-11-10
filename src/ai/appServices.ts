@@ -80,6 +80,8 @@ export const historyService: HistoryService = {
 
 export const appServices: EffectServices & {
   listSavedWorkouts: (userId: string) => Promise<SavedWorkoutRef[]>;
+  /** Counts a start of a saved workout, as starting it from Profile does. */
+  markWorkoutPerformed?: (userId: string, workoutId: string) => Promise<void>;
 } = {
   saveWorkout: (userId, w: SavedWorkoutDraft) =>
     WorkoutStorageService.saveWorkout(userId, {
@@ -110,5 +112,6 @@ export const appServices: EffectServices & {
       workoutText: w.workoutText ?? '',
       parsedWorkout: w.parsedWorkout,
     })),
+  markWorkoutPerformed: (userId, workoutId) => WorkoutStorageService.markWorkoutPerformed(userId, workoutId),
   history: historyService,
 };

@@ -14,6 +14,10 @@
 //     only reads Applied once it succeeds.
 //   - When no client is available it shows a graceful state and still offers
 //     the on-device WorkoutParser (freeform text -> sets) via onFallbackParse.
+//   - The transcript is either the sheet's own (uncontrolled) or the host's
+//     (`messages` + `onMessageAdded`, kept in the store so it outlives the
+//     sheet). "New chat" in the header starts an empty conversation; a reply
+//     still in flight for the old one is dropped (`chatKey` changed).
 //
 // Isolation / security:
 //   - This component NEVER imports @anthropic-ai/sdk and NEVER sees the API key.
@@ -29,7 +33,7 @@ import {
   SheetTitle,
   SheetDescription,
 } from '@/components/ui/sheet';
-import { ArrowUp, Camera, Check, CircleSlash, X } from 'lucide-react';
+import { ArrowUp, Camera, Check, CircleSlash, SquarePen, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { IconButton } from '@/components/ui/icon-button';
 import { Textarea } from '@/components/ui/textarea';
@@ -43,6 +47,7 @@ import type {
   AiImage,
   AiNotice,
   AiToolProposal,
+  AiTranscriptMessage,
   AiVisualization,
 } from '@/ai/types';
 import { compressImage, ImageTooLargeError } from '@/ai/image';
@@ -78,16 +83,8 @@ export interface AiChatClient {
 
 export type AiChatRole = 'user' | 'assistant';
 
-export interface AiChatMessage {
-  id: string;
-  role: AiChatRole;
-  text: string;
-  /** A photo the user attached to this turn. */
-  image?: AiImage;
-  proposals?: AiToolProposal[];
-  visualizations?: AiVisualization[];
-  notices?: AiNotice[];
-}
+/** One transcript message (a photo is never persisted). */
+export type AiChatMessage = AiTranscriptMessage;
 
 export interface AiChatSheetProps {
   open: boolean;
@@ -143,6 +140,17 @@ export interface AiChatSheetProps {
   overlay?: React.ReactNode;
   /** Shrinks a picked photo for the Worker. Defaults to `compressImage`. */
   prepareImage?: (file: File) => Promise<AiImage>;
+  /**
+   * Controlled transcript (e.g. from the store). With it, new messages go to
+   * `onMessageAdded` instead of the sheet's own state.
+   */
+  messages?: AiChatMessage[];
+  /** Appends a message to the conversation `chatKey` it was sent in. */
+  onMessageAdded?: (message: AiChatMessage, chatKey: string) => void;
+  /** Identifies the controlled conversation; a reply for an older key is dropped. */
+  chatKey?: string;
+  /** New chat (controlled): the host clears the conversation. */
+  onNewChat?: () => void;
   className?: string;
 }
 
@@ -197,13 +205,32 @@ export function AiChatSheet({
   initialMessage,
   overlay,
   prepareImage = compressImage,
+  messages: controlledMessages,
+  onMessageAdded,
+  chatKey,
+  onNewChat,
   className,
 }: AiChatSheetProps) {
   const isAvailable = available ?? client != null;
   // On iPhone the keyboard covers a bottom-fixed sheet; lift it above the keyboard.
   const { inset: keyboardInset, visibleHeight } = useKeyboardInset(open);
 
-  const [messages, setMessages] = React.useState<AiChatMessage[]>([]);
+  const controlled = controlledMessages !== undefined;
+  const [localMessages, setLocalMessages] = React.useState<AiChatMessage[]>([]);
+  const [localKey, setLocalKey] = React.useState(0);
+  const messages = controlled ? controlledMessages : localMessages;
+  const currentKey = controlled ? chatKey ?? '' : `local-${localKey}`;
+  // Read by in-flight requests: a reply for an older conversation is dropped.
+  const keyRef = React.useRef(currentKey);
+  keyRef.current = currentKey;
+  const appendMessage = React.useCallback(
+    (message: AiChatMessage, key: string) => {
+      if (key !== keyRef.current) return;
+      if (controlled) onMessageAdded?.(message, key);
+      else setLocalMessages((prev) => [...prev, message]);
+    },
+    [controlled, onMessageAdded],
+  );
   const [draft, setDraft] = React.useState('');
   const [pending, setPending] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
@@ -318,6 +345,7 @@ export function AiChatSheet({
   const sendToBackend = React.useCallback(
     async (text: string, image?: AiImage) => {
       if (!client) return;
+      const key = keyRef.current;
       const userMsg: AiChatMessage = {
         id: nextId('user'),
         role: 'user',
@@ -325,7 +353,7 @@ export function AiChatSheet({
         ...(image ? { image } : {}),
       };
       const history = [...messages, userMsg];
-      setMessages(history);
+      appendMessage(userMsg, key);
       setDraft('');
       setAttached(null);
       setPending(true);
@@ -341,33 +369,58 @@ export function AiChatSheet({
             messages: attachNotes(toBackendHistory(history), sentNotes),
           });
         } catch (err) {
-          pendingNotes.current = capNotes([...sentNotes, ...pendingNotes.current]);
+          if (key === keyRef.current) {
+            pendingNotes.current = capNotes([...sentNotes, ...pendingNotes.current]);
+          }
           throw err;
         }
-        setMessages((prev) => [
-          ...prev,
+        appendMessage(
           {
             id: nextId('assistant'),
             role: 'assistant',
             text: turn.text,
-            proposals: turn.proposals,
-            visualizations: turn.visualizations,
-            notices: turn.notices,
+            ...(turn.proposals ? { proposals: turn.proposals } : {}),
+            ...(turn.visualizations ? { visualizations: turn.visualizations } : {}),
+            ...(turn.notices ? { notices: turn.notices } : {}),
           },
-        ]);
-      } catch (err) {
-        setError(
-          err instanceof Error ? err.message : 'The AI request failed.',
+          key,
         );
+      } catch (err) {
+        if (key === keyRef.current) {
+          setError(err instanceof Error ? err.message : 'The AI request failed.');
+        }
       } finally {
-        setPending(false);
+        if (key === keyRef.current) setPending(false);
       }
     },
-    [client, messages],
+    [client, messages, appendMessage],
   );
 
-  // Send the seed once per opening. The ref guards StrictMode's double effect;
-  // it resets on close so a later opening with a fresh transcript can seed.
+  // A new conversation (New chat, or another user's): nothing of the old one
+  // carries over: no spinner, error, notes or card locks.
+  const shownKey = React.useRef(currentKey);
+  React.useEffect(() => {
+    if (shownKey.current === currentKey) return;
+    shownKey.current = currentKey;
+    pendingNotes.current = [];
+    setPending(false);
+    setError(null);
+    setApplying({});
+    setInternalDecisions({});
+  }, [currentKey]);
+
+  const handleNewChat = React.useCallback(() => {
+    if (controlled) {
+      onNewChat?.();
+    } else {
+      setLocalMessages([]);
+      setLocalKey((k) => k + 1);
+    }
+  }, [controlled, onNewChat]);
+
+  // Send the seed once per opening, after whatever the conversation already
+  // holds. The ref guards StrictMode's double effect; it resets on close so a
+  // later opening can seed again.
   const seedSentRef = React.useRef(false);
   React.useEffect(() => {
     if (!open) {
@@ -376,10 +429,9 @@ export function AiChatSheet({
     }
     const seed = initialMessage?.trim();
     if (seedSentRef.current || !seed || !isAvailable || !client) return;
-    if (messages.length > 0) return;
     seedSentRef.current = true;
     void sendToBackend(seed);
-  }, [open, initialMessage, isAvailable, client, messages.length, sendToBackend]);
+  }, [open, initialMessage, isAvailable, client, sendToBackend]);
 
   const runFallbackParse = React.useCallback(
     (text: string) => {
@@ -414,6 +466,7 @@ export function AiChatSheet({
   );
 
   const canAttach = isAvailable && client != null;
+  const canStartNewChat = isAvailable && (!controlled || onNewChat != null);
   const canSubmit =
     !pending &&
     !readingPhoto &&
@@ -434,7 +487,21 @@ export function AiChatSheet({
             : undefined
         }
       >
-        <SheetTitle className="text-title">AI assistant</SheetTitle>
+        <div className="flex items-center justify-between gap-3">
+          <SheetTitle className="text-title">AI assistant</SheetTitle>
+          {canStartNewChat ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={handleNewChat}
+              disabled={messages.length === 0 && !pending}
+            >
+              <SquarePen size={16} aria-hidden="true" />
+              New chat
+            </Button>
+          ) : null}
+        </div>
         <SheetDescription>
           {isAvailable
             ? 'Ask about your training, or describe a workout to log.'

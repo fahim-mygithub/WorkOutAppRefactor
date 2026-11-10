@@ -204,3 +204,16 @@ describe('ApplyRejectCard', () => {
     expect(screen.queryByRole('button', { name: /undo/i })).not.toBeInTheDocument();
   });
 });
+
+describe('ApplyRejectCard — expired', () => {
+  it('shows an expired card without Apply, Reject or Undo', () => {
+    render(
+      <ApplyRejectCard proposal={proposal} onApply={() => {}} onReject={() => {}} onUndo={() => {}} decision="expired" />,
+    );
+    expect(screen.getByTestId('apply-reject-card')).toHaveAttribute('data-decision', 'expired');
+    expect(screen.getByRole('status')).toHaveTextContent(/Expired/);
+    for (const name of ['Apply', 'Reject', 'Undo']) {
+      expect(screen.queryByRole('button', { name })).not.toBeInTheDocument();
+    }
+  });
+});

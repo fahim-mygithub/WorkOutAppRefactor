@@ -594,3 +594,47 @@ describe('AiChatSheet — outcome notes for the model', () => {
     expect(lastUserText(client, 2)).toContain('rejected.');
   });
 });
+
+describe('AiChatSheet — New chat', () => {
+  it('clears its own transcript', async () => {
+    const u = userEvent.setup();
+    render(<AiChatSheet open onOpenChange={() => {}} client={makeClient({ text: 'Sure.' })} />);
+    expect(screen.getByRole('button', { name: 'New chat' })).toBeDisabled();
+    await u.type(screen.getByLabelText('Message'), 'hello');
+    await u.click(screen.getByRole('button', { name: 'Send' }));
+    expect(await screen.findByText('Sure.')).toBeInTheDocument();
+    await u.click(screen.getByRole('button', { name: 'New chat' }));
+    expect(screen.queryByText('Sure.')).not.toBeInTheDocument();
+    expect(screen.queryByText('hello')).not.toBeInTheDocument();
+  });
+
+  it('hands a controlled transcript to the host', async () => {
+    const u = userEvent.setup();
+    const onNewChat = vi.fn();
+    const onMessageAdded = vi.fn();
+    render(
+      <AiChatSheet
+        open
+        onOpenChange={() => {}}
+        client={makeClient({ text: 'Sure.' })}
+        messages={[{ id: 'm1', role: 'user', text: 'kept from before' }]}
+        chatKey="c1"
+        onMessageAdded={onMessageAdded}
+        onNewChat={onNewChat}
+      />,
+    );
+    expect(screen.getByText('kept from before')).toBeInTheDocument();
+    await u.type(screen.getByLabelText('Message'), 'next');
+    await u.click(screen.getByRole('button', { name: 'Send' }));
+    await waitFor(() => expect(onMessageAdded).toHaveBeenCalledTimes(2));
+    expect(onMessageAdded.mock.calls[0]).toEqual([expect.objectContaining({ role: 'user', text: 'next' }), 'c1']);
+    expect(onMessageAdded.mock.calls[1]).toEqual([expect.objectContaining({ role: 'assistant', text: 'Sure.' }), 'c1']);
+    await u.click(screen.getByRole('button', { name: 'New chat' }));
+    expect(onNewChat).toHaveBeenCalledTimes(1);
+  });
+
+  it('offers no New chat without AI', () => {
+    render(<AiChatSheet open onOpenChange={() => {}} />);
+    expect(screen.queryByRole('button', { name: 'New chat' })).not.toBeInTheDocument();
+  });
+});
