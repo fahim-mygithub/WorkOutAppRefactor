@@ -2,6 +2,8 @@ import { useState, useEffect, type ReactNode } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { ChevronRight, Edit3, Plus, Search, Trash2, X } from 'lucide-react';
 import { useAppSelector, useAppDispatch } from '../store/hooks';
+import { usePublishScreen } from '../ai/useScreenSnapshot';
+import { libraryScreen } from '../ai/screenSummaries';
 import {
   searchExercises,
   filterByMuscleGroup,
@@ -194,6 +196,18 @@ export default function ExercisesPage() {
 
   const visibleExercises = filteredExercises.slice(0, visibleCount);
   const remaining = filteredExercises.length - visibleExercises.length;
+
+  // The assistant sees the open search and filters and the names on screen.
+  usePublishScreen(
+    'library',
+    libraryScreen({
+      search: searchTerm,
+      muscle: activeMuscle,
+      mineOnly: isMyExercisesFilter,
+      visibleNames: (isMyExercisesFilter ? filteredCustomExercises : visibleExercises).map((e) => e.name),
+      total: isMyExercisesFilter ? filteredCustomExercises.length : filteredExercises.length,
+    }),
+  );
 
   if (error) {
     return (

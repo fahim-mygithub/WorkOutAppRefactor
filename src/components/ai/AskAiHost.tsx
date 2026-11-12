@@ -18,6 +18,12 @@
 // navigating loses nothing; "New chat" clears it. App-control tools: openTab
 // navigates at once; startWorkout and loadIntoBuild navigate (and close the
 // sheet) once applied.
+//
+// Screen awareness: each turn carries the snapshot the mounted screen
+// published (`ai.screen`: tab, title, summary, a little data), and the Build
+// edit tools plan against the Build page's draft (`ai.buildDraft`). They apply
+// at once through the store; the page consumes the edit, so its own state
+// stays the source of truth.
 import * as React from 'react';
 import { useStore } from 'react-redux';
 import { useLocation, useNavigate } from 'react-router-dom';
@@ -259,6 +265,7 @@ export function AskAiHost() {
       plannedWorkouts: now.plannedWorkouts?.plans ?? [],
       defaultGoal: now.trackedLifts.lastGoal ?? 'volume',
       buildHasDraft: now.ai.buildHasDraft,
+      buildDraft: now.ai.buildDraft,
     });
   }, [store]);
 
@@ -304,6 +311,7 @@ export function AskAiHost() {
         today: todayKey,
         tab: tabOfPath(here),
         todayPlans: selectPlansForToday(s, todayKey),
+        screenSnapshot: s.ai.screen,
       });
       let res;
       try {

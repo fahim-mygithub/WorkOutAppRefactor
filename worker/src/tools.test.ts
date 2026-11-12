@@ -5,9 +5,9 @@ import { buildToolDefs, toolValidators } from './tools';
 describe('tool catalog', () => {
   it('exposes exactly the applied tools', () => {
     expect(buildToolDefs().map((t) => t.name).sort()).toEqual([
-      'addExercise', 'addExerciseToWorkout', 'addSets', 'addTrackedLift', 'adjustSet',
-      'createWorkout', 'editPastWorkout', 'loadIntoBuild', 'logPastWorkout', 'logSet', 'openTab', 'planWorkout',
-      'removeExerciseFromWorkout', 'removeOpenSets', 'removeTrackedLift', 'setExerciseNote',
+      'addBuildExercise', 'addExercise', 'addExerciseToWorkout', 'addSets', 'addTrackedLift', 'adjustSet',
+      'createWorkout', 'editBuildExercise', 'editPastWorkout', 'loadIntoBuild', 'logPastWorkout', 'logSet', 'openTab', 'planWorkout',
+      'removeBuildExercise', 'removeExerciseFromWorkout', 'removeOpenSets', 'removeTrackedLift', 'setBuildName', 'setExerciseNote',
       'startWorkout', 'swapExercise', 'updateBenchmark', 'updateProfile', 'updateWorkout',
     ]);
   });
@@ -239,5 +239,48 @@ describe('app-control tools', () => {
     expect(v.safeParse({ name: 'Push' }).success).toBe(false);
     expect(v.safeParse({ exercises: [] }).success).toBe(false);
     expect(v.safeParse({ exercises: [{ name: 'Bench', sets: 0, reps: 8 }] }).success).toBe(false);
+  });
+});
+
+describe('Build screen edit tools', () => {
+  it('setBuildName takes one name and nothing else', () => {
+    const v = toolValidators.setBuildName;
+    expect(v.safeParse({ name: 'Push day' }).success).toBe(true);
+    expect(v.safeParse({}).success).toBe(false);
+    expect(v.safeParse({ name: '' }).success).toBe(false);
+    expect(v.safeParse({ name: 'x'.repeat(81) }).success).toBe(false);
+    expect(v.safeParse({ name: 'Push', selector: '#name' }).success).toBe(false);
+  });
+
+  it('editBuildExercise names an exercise and changes at least one thing, within bounds', () => {
+    const v = toolValidators.editBuildExercise;
+    expect(v.safeParse({ exerciseName: 'Bench Press', sets: 4 }).success).toBe(true);
+    expect(v.safeParse({ exerciseName: 'Bench Press', reps: 8, repsMax: 12, weight: 135, unit: 'lbs' }).success).toBe(true);
+    expect(v.safeParse({ exerciseName: 'Bench Press', weight: 0 }).success).toBe(true); // clears the load
+    expect(v.safeParse({ exerciseName: 'Bench Press' }).success).toBe(false); // nothing to change
+    expect(v.safeParse({ sets: 4 }).success).toBe(false); // which exercise?
+    expect(v.safeParse({ exerciseName: 'Bench Press', sets: 11 }).success).toBe(false);
+    expect(v.safeParse({ exerciseName: 'Bench Press', weight: -5 }).success).toBe(false);
+    expect(v.safeParse({ exerciseName: 'Bench Press', repsMax: 12 }).success).toBe(false); // a range needs reps
+    expect(v.safeParse({ exerciseName: 'Bench Press', reps: 12, repsMax: 8 }).success).toBe(false);
+    expect(v.safeParse({ exerciseName: 'Bench Press', unit: 'stone' }).success).toBe(false);
+    expect(v.safeParse({ exerciseName: 'Bench Press', sets: 3, script: 'x' }).success).toBe(false);
+  });
+
+  it('addBuildExercise and removeBuildExercise take a name', () => {
+    expect(toolValidators.addBuildExercise.safeParse({ exerciseName: 'Barbell Row' }).success).toBe(true);
+    expect(toolValidators.addBuildExercise.safeParse({ exerciseName: 'Barbell Row', sets: 3, reps: 10, weight: 95 }).success).toBe(true);
+    expect(toolValidators.addBuildExercise.safeParse({}).success).toBe(false);
+    expect(toolValidators.removeBuildExercise.safeParse({ exerciseName: 'Barbell Row' }).success).toBe(true);
+    expect(toolValidators.removeBuildExercise.safeParse({ exerciseName: 'Barbell Row', sets: 3 }).success).toBe(false);
+  });
+
+  it('emits plain object schemas with the name required', () => {
+    const def = (n: string) => buildToolDefs().find((t) => t.name === n)!.input_schema;
+    expect(def('editBuildExercise').required).toEqual(['exerciseName']);
+    expect(Object.keys(def('editBuildExercise').properties as object).sort()).toEqual(
+      ['exerciseName', 'reps', 'repsMax', 'sets', 'unit', 'weight'],
+    );
+    expect(def('setBuildName').required).toEqual(['name']);
   });
 });

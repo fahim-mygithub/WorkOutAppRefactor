@@ -17,6 +17,7 @@ import type { SessionGoal, TrackedLift, TrackedSetLog, WeightUnit } from '../typ
 import { currentEstimate, prescribe, progressionStatus, roundLoad } from '../lib/trackedLiftProgression';
 import { formatLoad, formatTarget } from '../lib/trackedLifts';
 import { swapAlternatives } from './alternatives';
+import type { ScreenSnapshot } from './screenSnapshot';
 import type { AiChatContext } from './types';
 
 /** Sessions of a lift's log sent along (the engine keeps up to 6). */
@@ -122,6 +123,8 @@ export function buildAiContext(input: {
   tab?: AiChatContext['tab'];
   /** Today's planned workouts not yet done; only id and name are sent (at most 3). */
   todayPlans?: readonly { id: string; name: string }[];
+  /** What the mounted screen published; sent as `screen` in place of the bare word. */
+  screenSnapshot?: ScreenSnapshot;
 }): AiContext {
   const { activeWorkout, library = [], profile } = input;
   const alternativesFor = (e: ActiveWorkout['exercises'][number]) => {
@@ -129,7 +132,7 @@ export function buildAiContext(input: {
     return names.length ? { alternatives: names } : {};
   };
   const ctx: AiContext = {
-    screen: input.screen,
+    screen: input.screenSnapshot ?? input.screen,
     units: input.units,
     ...(input.focusExerciseId ? { focusExerciseId: input.focusExerciseId } : {}),
     ...(input.today ? { today: input.today } : {}),

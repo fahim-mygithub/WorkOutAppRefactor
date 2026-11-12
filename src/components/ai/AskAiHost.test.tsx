@@ -9,7 +9,7 @@ import trackedLifts, { trackedLiftsHydrated, liftUpdated } from '../../store/sli
 import exercise, { setExercises } from '../../store/slices/exerciseSlice';
 import customExercise from '../../store/slices/customExerciseSlice';
 import user from '../../store/slices/userSlice';
-import ai, { askAiOpened, askAiClosed, aiChatRestored, buildDraftChanged } from '../../store/slices/aiSlice';
+import ai, { askAiOpened, askAiClosed, aiChatRestored, buildDraftChanged, buildEditConsumed, screenPublished } from '../../store/slices/aiSlice';
 import * as aiClient from '../../ai/aiClient';
 import type { AiContext } from '../../ai/context';
 import type { WorkoutExercise, Exercise } from '../../types/exercise';
@@ -892,3 +892,104 @@ describe('AskAiHost — app control', () => {
     expect(card).toHaveTextContent(/Expired/);
   });
 });
+
+describe('AskAiHost screen awareness', () => {
+  const draft = { name: 'Push', text: '3x8 Barbell Bench Press @135lbs' };
+  const buildScreen = {
+    tab: 'build' as const, title: 'Build workout', summary: 'Draft "Push", 1 exercise, text tab',
+    data: { name: 'Push', exercises: [{ name: 'Barbell Bench Press', sets: 3, reps: '8', weight: 135, unit: 'lbs' }] },
+  };
+  /** The Build page open on /build/custom, as its snapshot would be published. */
+  function renderOnBuild() {
+    const store = makeStore();
+    store.dispatch(setExercises([bench, dbBench]));
+    store.dispatch(screenPublished({ ...buildScreen, draft }));
+    renderHost(store, '/build/custom');
+    return store;
+  }
+
+  it('sends the published screen with each turn, in place of the bare word', async () => {
+    const chat = vi.spyOn(aiClient, 'chat').mockResolvedValue(reply('Three sets of bench.'));
+    renderOnBuild();
+    await send('what am I looking at?');
+    await screen.findByText('Three sets of bench.');
+    expect(chat.mock.calls[0][0].context).toMatchObject({ tab: 'build', screen: buildScreen });
+  });
+
+  it('sends the bare screen word when the screen published nothing', async () => {
+    const chat = vi.spyOn(aiClient, 'chat').mockResolvedValue(reply('ok'));
+    renderHost(makeStore(), '/build');
+    await send('hi');
+    await screen.findByText('ok');
+    expect(chat.mock.calls[0][0].context).toMatchObject({ screen: 'build' });
+  });
+
+  it('applies editBuildExercise at once with an Undo that restores the text', async () => {
+    vi.spyOn(aiClient, 'chat').mockResolvedValue({
+      reply: 'Bumped bench to 5 sets.', source: 'backend',
+      toolCalls: [{ id: 'b1', name: 'editBuildExercise', input: { exerciseName: 'Bench Press', sets: 5 } }],
+    });
+    const store = renderOnBuild();
+    const u = await send('make bench 5 sets');
+    expect(await screen.findByRole('status')).toHaveTextContent('Changed Barbell Bench Press on Build to 5x8 Barbell Bench Press @135lbs');
+    expect(store.getState().ai.buildEdit?.text).toBe('5x8 Barbell Bench Press @135lbs');
+    expect(store.getState().ai.buildDraft?.text).toBe('5x8 Barbell Bench Press @135lbs');
+    // The page applies it and clears the request.
+    act(() => {
+      store.dispatch(buildEditConsumed('build-b1'));
+    });
+    await u.click(screen.getByRole('button', { name: 'Undo' }));
+    expect(store.getState().ai.buildDraft?.text).toBe(draft.text);
+    expect(store.getState().ai.buildEdit?.text).toBe(draft.text);
+  });
+
+  it('plans two Build edits in one turn against each other', async () => {
+    vi.spyOn(aiClient, 'chat').mockResolvedValue({
+      reply: 'Done.', source: 'backend',
+      toolCalls: [
+        { id: 'b1', name: 'editBuildExercise', input: { exerciseName: 'Bench Press', sets: 5 } },
+        { id: 'b2', name: 'addBuildExercise', input: { exerciseName: 'Dumbbell Bench Press', sets: 3, reps: 12 } },
+        { id: 'b3', name: 'setBuildName', input: { name: 'Chest day' } },
+      ],
+    });
+    const store = renderOnBuild();
+    await send('rework this');
+    await screen.findByText('Done.');
+    expect(store.getState().ai.buildDraft).toEqual({
+      name: 'Chest day', text: '5x8 Barbell Bench Press @135lbs' + String.fromCharCode(10) + '3x12 Dumbbell Bench Press',
+    });
+  });
+
+  it('discards a Build edit when the Build screen is not open', async () => {
+    vi.spyOn(aiClient, 'chat').mockResolvedValue({
+      reply: 'Tried.', source: 'backend',
+      toolCalls: [{ id: 'b1', name: 'editBuildExercise', input: { exerciseName: 'Bench Press', sets: 5 } }],
+    });
+    const store = renderHost(makeStore(), '/');
+    await send('make bench 5 sets');
+    expect(await screen.findByText(/Suggestion discarded: The Build screen is not open/)).toBeInTheDocument();
+    expect(store.getState().ai.buildEdit).toBeUndefined();
+  });
+
+  it('discards an edit for an exercise that is not in the draft', async () => {
+    vi.spyOn(aiClient, 'chat').mockResolvedValue({
+      reply: 'Tried.', source: 'backend',
+      toolCalls: [{ id: 'b1', name: 'editBuildExercise', input: { exerciseName: 'Deadlift', sets: 5 } }],
+    });
+    const store = renderOnBuild();
+    await send('make deadlift 5 sets');
+    expect(await screen.findByText('Suggestion discarded: "Deadlift" is not in the Build draft.')).toBeInTheDocument();
+    expect(store.getState().ai.buildDraft?.text).toBe(draft.text);
+  });
+
+  it('a restored edit card from an earlier session reads as expired, and keeps no screen', () => {
+    const store = makeStore();
+    store.dispatch(aiChatRestored({
+      uid: 'u1',
+      messages: [{ id: 'm1', role: 'assistant', text: 'Changed.', proposals: [{ id: 'p1', tool: 'editBuildExercise', summary: 'Changed bench' }] }],
+    }));
+    expect(store.getState().ai.chat.decisions.p1).toBe('expired');
+    expect(store.getState().ai.screen).toBeUndefined();
+  });
+});
+

@@ -1,4 +1,7 @@
 import { useState } from 'react';
+import { useAppSelector } from '../store/hooks';
+import { usePublishScreen } from '../ai/useScreenSnapshot';
+import { todayScreen } from '../ai/screenSummaries';
 import { WelcomeHero } from '../components/home/WelcomeHero';
 import { WorkoutCalendar } from '../components/home/WorkoutCalendar';
 import { TodayWorkout } from '../components/home/TodayWorkout';
@@ -21,6 +24,9 @@ export default function HomePage() {
   const [selectedDay, setSelectedDay] = useState<WorkoutCalendarDay | null>(null);
   const muscleHeat = useMuscleHeat();
   const [isModalOpen, setIsModalOpen] = useState(false);
+  // The assistant sees today's plans and the planned week.
+  const plans = useAppSelector((state) => state.plannedWorkouts?.plans);
+  usePublishScreen('today', todayScreen(plans ?? []));
 
   const {
     calendarData,

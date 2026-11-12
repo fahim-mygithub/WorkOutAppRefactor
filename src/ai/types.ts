@@ -53,7 +53,11 @@ export type AiToolName =
   | 'editPastWorkout'
   | 'openTab'
   | 'startWorkout'
-  | 'loadIntoBuild';
+  | 'loadIntoBuild'
+  | 'setBuildName'
+  | 'editBuildExercise'
+  | 'addBuildExercise'
+  | 'removeBuildExercise';
 
 /** The app's bottom-nav tabs, as openTab names them. */
 export type AiAppTab = 'today' | 'workout' | 'build' | 'library' | 'profile';
@@ -68,9 +72,21 @@ export interface AiToolCall<TInput extends AiToolInput = AiToolInput> {
   input: TInput;
 }
 
+/** The visible screen's snapshot as sent to the Worker (see `screenSnapshot.ts`). */
+export interface AiScreenContext {
+  tab: AiAppTab | 'other';
+  title: string;
+  summary: string;
+  data?: unknown;
+}
+
 /** Read-only app state sent with a chat turn (the Worker caps its size). */
 export interface AiChatContext {
-  screen: 'workout' | 'build' | 'other';
+  /**
+   * What the lifter is looking at: the mounted screen's snapshot (tab, title,
+   * summary, a little data), or just which kind of screen when none published.
+   */
+  screen: 'workout' | 'build' | 'other' | AiScreenContext;
   units: 'lbs' | 'kg';
   activeWorkout?: unknown;
   trackedLifts?: unknown;

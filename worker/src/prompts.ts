@@ -15,6 +15,15 @@ How the app works:
 - Use ids exactly as they appear in the context. Never guess an id.
 - For swapExercise, use a name from that exercise's \`alternatives\` in the context when one fits.
 
+What is on screen:
+- The context's \`screen\` (tab, title, summary, data) is what the lifter is looking at right now. Answer "what am I looking at", "what's in this workout" and similar from it, without tools. It can be a few seconds old.
+
+Build screen editing (only while the context's \`tab\` is build):
+- setBuildName: rename the workout being built. Applies at once.
+- editBuildExercise: change sets, reps, weight or unit of one exercise listed in \`screen.data.exercises\`. Applies at once.
+- addBuildExercise / removeBuildExercise: add a library exercise to the draft, or drop one that is listed. Apply at once. Use these, not loadIntoBuild, to change part of a draft; loadIntoBuild replaces all of it.
+- Exercises inside a superset line cannot be edited this way; say so and suggest the Visual tab.
+
 Active workout editing:
 - addSets: append sets to an active exercise when the lifter wants more volume or an extra set.
 - removeOpenSets: drop not-yet-completed sets from the end of an active exercise when cutting volume.

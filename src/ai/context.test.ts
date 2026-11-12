@@ -250,3 +250,37 @@ describe('buildAiContext — tab and today plans', () => {
     expect(ctx).not.toHaveProperty('todayPlans');
   });
 });
+
+describe('buildAiContext screen block', () => {
+  const snapshot = {
+    tab: 'build' as const,
+    title: 'Build workout',
+    summary: 'Draft "Push", 2 exercises, text tab',
+    data: { name: 'Push', exercises: [{ name: 'Bench Press', sets: 3, reps: '8' }] },
+  };
+
+  it('sends the published screen as screen {tab, title, summary, data}', () => {
+    const ctx = buildAiContext({ screen: 'build', units: 'lbs', activeWorkout: null, trackedLifts: [], tab: 'build', screenSnapshot: snapshot });
+    expect(ctx.screen).toEqual(snapshot);
+    expect(ctx.tab).toBe('build');
+  });
+
+  it('falls back to the bare word when no screen published', () => {
+    const ctx = buildAiContext({ screen: 'other', units: 'lbs', activeWorkout: null, trackedLifts: [] });
+    expect(ctx.screen).toBe('other');
+  });
+
+  it('keeps the screen block even when other lifts are trimmed to fit the budget', () => {
+    const lifts = Array.from({ length: 120 }, (_, k): TrackedLift => ({
+      id: `l${k}`, name: `Lift number ${k}`, category: 'Push', progression: true,
+      load: { kind: 'weight', value: 100 + k, unit: 'lb' }, target: { kind: 'reps', min: 5 },
+      sessions: Array.from({ length: 6 }, (_, n) => ({
+        date: new Date(Date.now() - (n + 1) * 7 * 86_400_000).toISOString().slice(0, 10), goal: 'volume' as const,
+        sets: [{ reps: 5, weight: 100 + k }, { reps: 5, weight: 100 + k }, { reps: 5, weight: 100 + k }],
+      })),
+    }) as TrackedLift);
+    const ctx = buildAiContext({ screen: 'build', units: 'lbs', activeWorkout: null, trackedLifts: lifts, screenSnapshot: snapshot });
+    expect(JSON.stringify(ctx).length).toBeLessThanOrEqual(CONTEXT_BUDGET);
+    expect(ctx.screen).toEqual(snapshot);
+  });
+});

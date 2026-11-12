@@ -98,3 +98,25 @@ describe('CHAT_SYSTEM_PROMPT app-control tools', () => {
     expect(CHAT_SYSTEM_PROMPT).toContain("After a live edit, call openTab with tab workout only when the context's `tab` is not already workout.");
   });
 });
+
+describe('CHAT_SYSTEM_PROMPT screen awareness', () => {
+  const line = (tool: string) => CHAT_SYSTEM_PROMPT.split('\n').filter((l) => l.startsWith(`- ${tool}:`));
+  it('answers what is on screen from the screen block, without tools', () => {
+    expect(CHAT_SYSTEM_PROMPT).toContain('`screen`');
+    expect(CHAT_SYSTEM_PROMPT).toContain('without tools');
+  });
+  it('gives each Build edit tool a line, scoped to the Build tab', () => {
+    expect(line('setBuildName')).toHaveLength(1);
+    expect(line('editBuildExercise')).toHaveLength(1);
+    expect(line('addBuildExercise / removeBuildExercise')).toHaveLength(1);
+    expect(CHAT_SYSTEM_PROMPT).toContain("only while the context's `tab` is build");
+    expect(CHAT_SYSTEM_PROMPT).toContain('loadIntoBuild replaces all of it');
+  });
+  it('keeps the live-workout tools for the workout tab', () => {
+    expect(CHAT_SYSTEM_PROMPT).toContain('Active workout editing:');
+    expect(line('addSets')).toHaveLength(1);
+  });
+  it('stays byte-stable: no per-request values in the prompt', () => {
+    expect(CHAT_SYSTEM_PROMPT).not.toMatch(/\d{4}-\d{2}-\d{2}/);
+  });
+});

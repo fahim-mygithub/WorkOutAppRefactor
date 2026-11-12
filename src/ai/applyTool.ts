@@ -30,7 +30,7 @@ import {
   type SetPatch,
 } from '../store/slices/workoutSlice';
 import { planAdded, planRemoved, type PlannedWorkout } from '../store/slices/plannedWorkoutsSlice';
-import { buildPresetSet } from '../store/slices/aiSlice';
+import { buildEditRequested, buildPresetSet } from '../store/slices/aiSlice';
 import type { SavedWorkout } from '../services/workoutStorageService';
 import type { ActivePlanContext } from '../lib/workoutSession';
 import { preparePlannedWorkoutForExecution } from '../lib/planWorkout';
@@ -56,6 +56,14 @@ import type {
   SavedWorkoutDraft,
 } from './effects';
 import { workoutText } from './workoutText';
+import {
+  addDraftExercise,
+  editDraftExercise,
+  removeDraftExercise,
+  type DraftChange,
+  type DraftEdit,
+} from './buildDraft';
+import type { BuildDraftState } from './screenSnapshot';
 import type { AiAppTab, AiAssistantTurn, AiToolCall } from './types';
 
 /** Tool call shape consumed by the planner (mirrors AiToolCall with open tool names). */
@@ -91,6 +99,8 @@ export interface PlanContext {
   defaultGoal?: SessionGoal;
   /** Whether the Build screen holds unsaved content (loadIntoBuild replaces it). */
   buildHasDraft?: boolean;
+  /** The Build page's draft while it is open (the Build edit tools plan against it). */
+  buildDraft?: BuildDraftState;
 }
 
 /** What the host does once a confirm plan is applied (outside the store). */
@@ -1157,6 +1167,57 @@ export function planToolCall(call: ToolCallForPlan | AiToolCall, ctx: PlanContex
       };
     }
 
+    case 'setBuildName': {
+      const draft = ctx.buildDraft;
+      if (!draft) return reject(NO_BUILD);
+      const name = str(i.name);
+      if (!name || name.length > 80) return reject('That name is not valid.');
+      if (name === draft.name.trim()) return reject(`The workout is already named "${name}".`);
+      return {
+        kind: 'auto', id, summary: `Named the workout "${name}"`,
+        apply: [buildEditRequested({ id: `build-${id}`, name })],
+        undo: [buildEditRequested({ id: `build-undo-${id}`, name: draft.name })],
+      };
+    }
+
+    case 'editBuildExercise':
+    case 'addBuildExercise':
+    case 'removeBuildExercise': {
+      const draft = ctx.buildDraft;
+      if (!draft) return reject(NO_BUILD);
+      const asked = str(i.exerciseName);
+      if (!asked) return reject('No exercise was named.');
+      const same = (a: string, b: string): boolean => {
+        const x = libraryMatch(ctx, a);
+        return !!x && x.id === libraryMatch(ctx, b)?.id;
+      };
+      const unit: 'lbs' | 'kg' = ctx.units ?? 'lbs';
+      let edit: DraftEdit;
+      let summary = '';
+      if (call.name === 'removeBuildExercise') {
+        edit = removeDraftExercise(draft.text, asked, { same });
+        if (edit.ok) summary = `Removed ${edit.name} from Build`;
+      } else {
+        const change = readBuildChange(i, unit);
+        if (typeof change === 'string') return reject(change);
+        if (call.name === 'editBuildExercise') {
+          edit = editDraftExercise(draft.text, asked, change, { same, defaultUnit: unit });
+          if (edit.ok) summary = `Changed ${edit.name} on Build to ${edit.line}`;
+        } else {
+          const matched = libraryMatch(ctx, asked);
+          if (!matched) return reject(`"${asked}" is not in the exercise library.`);
+          edit = addDraftExercise(draft.text, matched.name, change, { same, defaultUnit: unit });
+          if (edit.ok) summary = `Added ${edit.line} to Build`;
+        }
+      }
+      if (!edit.ok) return reject(edit.reason);
+      return {
+        kind: 'auto', id, summary,
+        apply: [buildEditRequested({ id: `build-${id}`, text: edit.text })],
+        undo: [buildEditRequested({ id: `build-undo-${id}`, text: draft.text })],
+      };
+    }
+
     default:
       return reject(`Unknown tool ${String((call as { name: unknown }).name)}.`);
   }
@@ -1165,6 +1226,44 @@ export function planToolCall(call: ToolCallForPlan | AiToolCall, ctx: PlanContex
 // ---------------------------------------------------------------------------
 // App-control helpers (openTab, startWorkout, loadIntoBuild)
 // ---------------------------------------------------------------------------
+
+const NO_BUILD = 'The Build screen is not open, so there is no draft to edit. Open Build first.';
+
+/** sets / reps / repsMax / weight / unit of a Build tool call, checked; or the reason it is not valid. */
+function readBuildChange(i: Record<string, unknown>, defaultUnit: 'lbs' | 'kg'): DraftChange | string {
+  const change: DraftChange = {};
+  if (i.sets !== undefined) {
+    const n = index(i.sets);
+    if (!n || n > 10) return 'Sets must be 1–10.';
+    change.sets = n;
+  }
+  if (i.reps !== undefined) {
+    const n = index(i.reps);
+    if (!n || n > 100) return 'Reps must be 1–100.';
+    change.reps = n;
+  }
+  if (i.repsMax !== undefined) {
+    const n = index(i.repsMax);
+    if (!n || n > 100 || change.reps === undefined || n <= change.reps) return 'The top of a rep range must be above reps.';
+    change.repsMax = n;
+  }
+  if (i.unit !== undefined) {
+    if (i.unit !== 'lbs' && i.unit !== 'kg') return 'Unit must be lbs or kg.';
+    change.unit = i.unit;
+  }
+  if (i.weight !== undefined) {
+    const w = num(i.weight);
+    if (w === undefined || w < 0) return 'Load must be zero or more.';
+    if (w > 2_000) return 'That load is not realistic.';
+    if (w > 0) {
+      const unit = change.unit ?? defaultUnit;
+      const check = checkProposedLoad(w, null, unit === 'kg' ? 'kg' : 'lb');
+      if (!check.ok) return check.reason;
+      change.weight = check.value;
+    } else change.weight = 0;
+  }
+  return change;
+}
 
 const TABS: readonly AiAppTab[] = ['today', 'workout', 'build', 'library', 'profile'];
 const isTab = (v: unknown): v is AiAppTab => TABS.includes(v as AiAppTab);

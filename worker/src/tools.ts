@@ -362,11 +362,56 @@ export const appToolSchemas = {
 } as const;
 
 // ---------------------------------------------------------------------------
+// Build screen edit tools: change the draft the lifter is typing, one line at a time
+// ---------------------------------------------------------------------------
+
+const buildExerciseName = z.string().min(1).max(120).describe('Exercise as named in the Build draft (or the library for an add).');
+const buildLoadFields = {
+  sets: z.number().int().min(1).max(10).optional().describe('Number of sets.'),
+  reps: z.number().int().min(1).max(100).optional().describe('Reps per set (the low end of a range).'),
+  repsMax: z.number().int().min(1).max(100).optional().describe('Top of a rep range; needs reps.'),
+  weight: z.number().min(0).finite().optional().describe('Load per set; 0 clears it.'),
+  unit: z.enum(['lbs', 'kg']).optional().describe('Unit of weight.'),
+};
+const repsMaxNeedsReps = (i: { reps?: number; repsMax?: number }) => i.repsMax === undefined || i.reps !== undefined;
+const repsMaxAboveReps = (i: { reps?: number; repsMax?: number }) =>
+  i.repsMax === undefined || i.reps === undefined || i.repsMax > i.reps;
+
+export const buildScreenToolSchemas = {
+  setBuildName: z
+    .object({ name: z.string().min(1).max(80).describe('New workout name.') })
+    .strict()
+    .describe('Rename the workout on the Build screen. Only while the lifter is on Build. Applies at once.'),
+
+  editBuildExercise: z
+    .object({ exerciseName: buildExerciseName, ...buildLoadFields })
+    .strict()
+    .refine((i) => i.sets !== undefined || i.reps !== undefined || i.weight !== undefined || i.unit !== undefined, {
+      message: 'Change at least one of sets, reps, weight or unit.',
+    })
+    .refine(repsMaxNeedsReps, { message: 'repsMax needs reps.' })
+    .refine(repsMaxAboveReps, { message: 'repsMax must be above reps.' })
+    .describe('Change sets / reps / weight / unit of one exercise already in the Build draft. Only while the lifter is on Build. Applies at once.'),
+
+  addBuildExercise: z
+    .object({ exerciseName: buildExerciseName, ...buildLoadFields })
+    .strict()
+    .refine(repsMaxNeedsReps, { message: 'repsMax needs reps.' })
+    .refine(repsMaxAboveReps, { message: 'repsMax must be above reps.' })
+    .describe('Add a library exercise to the end of the Build draft. Only while the lifter is on Build. Applies at once.'),
+
+  removeBuildExercise: z
+    .object({ exerciseName: buildExerciseName })
+    .strict()
+    .describe('Remove one exercise from the Build draft. Only while the lifter is on Build. Applies at once.'),
+} as const;
+
+// ---------------------------------------------------------------------------
 // Assembly: Zod -> Anthropic tool definitions
 // ---------------------------------------------------------------------------
 
 /** Per-tool human descriptions surface in the API tool list via `.describe()`. */
-const allToolSchemas = { ...mutationToolSchemas, ...buildToolSchemas, ...appToolSchemas } as const;
+const allToolSchemas = { ...mutationToolSchemas, ...buildToolSchemas, ...appToolSchemas, ...buildScreenToolSchemas } as const;
 
 export type ToolName = keyof typeof allToolSchemas;
 

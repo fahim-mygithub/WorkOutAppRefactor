@@ -45,9 +45,29 @@ export type ChatMessage = z.infer<typeof chatMessageSchema>;
  * active workout and tracked lifts without us hard-coding shapes. Kept
  * permissive; the handler caps its serialized size.
  */
+/** Most characters of the serialized `screen` block (the client caps to the same). */
+export const MAX_SCREEN_CHARS = 3_500;
+
+/**
+ * What the visible screen shows: a short title and summary, and a little data
+ * (the Build draft, the exercise being done, the visible library names).
+ * Older clients send only the legacy 'workout' | 'build' | 'other' word.
+ */
+export const screenContextSchema = z.union([
+  z.enum(['workout', 'build', 'other']),
+  z
+    .object({
+      tab: z.enum(['today', 'workout', 'build', 'library', 'profile', 'other']),
+      title: z.string().max(120),
+      summary: z.string().max(1_200),
+      data: z.unknown().optional(),
+    })
+    .refine((s) => JSON.stringify(s).length <= MAX_SCREEN_CHARS, { message: 'Screen too large.' }),
+]);
+
 export const chatContextSchema = z
   .object({
-    screen: z.enum(['workout', 'build', 'other']).optional(),
+    screen: screenContextSchema.optional(),
     units: WeightUnit.optional(),
     activeWorkout: z.unknown().optional(),
     trackedLifts: z.unknown().optional(),
