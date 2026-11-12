@@ -275,7 +275,7 @@ describe('buildAiContext screen block', () => {
       id: `l${k}`, name: `Lift number ${k}`, category: 'Push', progression: true,
       load: { kind: 'weight', value: 100 + k, unit: 'lb' }, target: { kind: 'reps', min: 5 },
       sessions: Array.from({ length: 6 }, (_, n) => ({
-        date: `2026-0${(n % 9) + 1}-10`, goal: 'volume' as const,
+        date: new Date(Date.now() - (n + 1) * 7 * 86_400_000).toISOString().slice(0, 10), goal: 'volume' as const,
         sets: [{ reps: 5, weight: 100 + k }, { reps: 5, weight: 100 + k }, { reps: 5, weight: 100 + k }],
       })),
     }) as TrackedLift);

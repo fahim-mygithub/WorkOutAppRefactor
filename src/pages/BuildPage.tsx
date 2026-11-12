@@ -884,10 +884,17 @@ export default function BuildPage() {
   const draftText = useMemo(() => {
     const onVisual = activeTab === 'visual' || !workoutText.trim();
     if (!onVisual || !visualWorkout) return workoutText;
-    const plain = (visualWorkout.exercises ?? []).filter((e: any) => !e.isSuperset && Array.isArray(e.sets));
-    const supersets = (visualWorkout.exercises ?? [])
-      .filter((e: any) => e.isSuperset && Array.isArray(e.supersetExercises))
-      .map((e: any) => e.supersetExercises);
+    // Text-parsed supersets arrive as one combined entry; Visual-tab pairings
+    // are plain exercises sharing a supersetGroup (grouped as the player does).
+    const all: any[] = visualWorkout.exercises ?? [];
+    const plain: any[] = [];
+    const supersets: any[][] = all
+      .filter((e) => e.isSuperset && Array.isArray(e.supersetExercises))
+      .map((e) => e.supersetExercises);
+    orderForWorkout<any>(all.filter((e) => !e.isSuperset && Array.isArray(e.sets))).forEach((unit) => {
+      if (Array.isArray(unit) && unit.length > 1) supersets.push(unit);
+      else plain.push(...(Array.isArray(unit) ? unit : [unit]));
+    });
     return aiWorkoutText({ exercises: plain, supersets });
   }, [activeTab, workoutText, visualWorkout]);
   const draftReading = useMemo(() => readDraft(draftText), [draftText]);

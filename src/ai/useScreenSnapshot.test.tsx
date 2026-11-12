@@ -39,6 +39,23 @@ describe('usePublishScreen', () => {
     expect(store.getState().ai.screen).toBeUndefined();
   });
 
+  it('clears what it published when the mounted screen has nothing to show any more', () => {
+    const store = mk();
+    const { rerender } = render(wrap(store, snap('a shared workout')));
+    expect(store.getState().ai.screen?.summary).toBe('a shared workout');
+    rerender(wrap(store, null));
+    expect(store.getState().ai.screen).toBeUndefined();
+    rerender(wrap(store, snap('back')));
+    expect(store.getState().ai.screen?.summary).toBe('back');
+  });
+
+  it('a screen with nothing to show does not clear a different screen that published', () => {
+    const store = mk();
+    store.dispatch({ type: 'ai/screenPublished', payload: { tab: 'today', title: 'Today', summary: 'now' } });
+    render(wrap(store, null));
+    expect(store.getState().ai.screen?.tab).toBe('today');
+  });
+
   it('does not republish an unchanged snapshot', () => {
     const store = mk();
     const states: unknown[] = [];

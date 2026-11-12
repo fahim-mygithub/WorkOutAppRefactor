@@ -23,7 +23,9 @@ export function usePublishScreen(tab: AiAppTab, snapshot: PublishedScreen | null
   const key = snapshot ? JSON.stringify(snapshot) : '';
   useEffect(() => {
     if (latest.current) dispatch(screenPublished(latest.current));
-  }, [key, dispatch]);
+    // The screen stays mounted but has nothing to show now: drop what it said.
+    else dispatch(screenCleared(tab));
+  }, [key, tab, dispatch]);
   useEffect(() => () => {
     dispatch(screenCleared(tab));
   }, [tab, dispatch]);
