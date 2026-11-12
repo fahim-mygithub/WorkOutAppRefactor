@@ -1,6 +1,8 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAppSelector, useAppDispatch } from '../store/hooks';
+import { usePublishScreen } from '../ai/useScreenSnapshot';
+import { profileScreen } from '../ai/screenSummaries';
 import { useAuth } from '../contexts/AuthContext';
 import { setWeightUnit, setUnitSystem, setDefaultRestTime, toggleAutoStartTimer, setDefaultProgressionRate, toggleKeyboardShortcuts, toggleKeyboardShortcutsDisplay, updateNotificationPreferences } from '../store/slices/userSlice';
 import { loadWorkoutHistory } from '../store/slices/exerciseHistorySlice';
@@ -248,6 +250,17 @@ export default function ProfilePage() {
       loadCompletedWorkouts();
     }
   }, [dispatch, user?.uid]);
+
+  // The assistant sees the section open and the lifter's own saved workouts.
+  usePublishScreen(
+    'profile',
+    profileScreen({
+      displayName: profile?.displayName || user?.displayName || 'Profile',
+      section: activeTab,
+      savedWorkoutNames: savedWorkouts.map((w) => w.name),
+      completedCount: completedWorkouts.length,
+    }),
+  );
 
   // Guard against a null auth user (e.g. sign-out while the profile is mounted).
   // Everything below dereferences `user.uid`, so narrow it here.

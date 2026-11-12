@@ -9,6 +9,7 @@ import { createSlice, type PayloadAction, type UnknownAction } from '@reduxjs/to
 import type { AiProposalDecision, AiToolCall, AiTranscriptMessage } from '../../ai/types';
 import type { AiEffect } from '../../ai/effects';
 import type { SavedWorkoutDraft } from '../../ai/effects';
+import { capScreen, type BuildDraftState, type ScreenSnapshot } from '../../ai/screenSnapshot';
 
 /** Most transcript messages kept (and persisted). */
 export const MAX_CHAT_MESSAGES_KEPT = 60;
@@ -36,6 +37,18 @@ export interface BuildPreset {
   workout: SavedWorkoutDraft;
 }
 
+/**
+ * A change the assistant made to the Build draft, waiting for the Build page to
+ * apply it to its own state (the page stays the single source of truth).
+ */
+export interface BuildEdit {
+  id: string;
+  /** New workout name, when the edit changes it. */
+  name?: string;
+  /** New draft text, when the edit changes it (Build re-parses it). */
+  text?: string;
+}
+
 export interface AiState {
   open: boolean;
   /** A first message to send when the sheet opens (e.g. from Ask coach). */
@@ -51,6 +64,15 @@ export interface AiState {
   buildPreset?: BuildPreset;
   /** Whether the Build screen has content the lifter has not saved. */
   buildHasDraft: boolean;
+  /**
+   * What the mounted screen shows, published by the screen and cleared when it
+   * unmounts. Capped; sent with each chat turn; never persisted with the chat.
+   */
+  screen?: ScreenSnapshot;
+  /** The Build page's draft, for planning the Build edit tools. Never sent as is. */
+  buildDraft?: BuildDraftState;
+  /** An assistant edit the Build page has yet to apply, then clears. */
+  buildEdit?: BuildEdit;
 }
 
 let chatSeq = 0;
@@ -154,6 +176,51 @@ const aiSlice = createSlice({
     buildDraftChanged(state, action: PayloadAction<boolean>) {
       state.buildHasDraft = action.payload;
     },
+
+    /**
+     * The visible screen's snapshot (capped here, whatever the publisher sent).
+     * On Build the page's draft rides along; an assistant edit the page has not
+     * applied yet wins over the page's older state, so a second edit in the same
+     * turn plans against the first one's result.
+     */
+    screenPublished(state, action: PayloadAction<ScreenSnapshot & { draft?: BuildDraftState }>) {
+      const { draft, ...snapshot } = action.payload;
+      state.screen = capScreen(snapshot);
+      if (snapshot.tab !== 'build' || !draft) {
+        state.buildDraft = undefined;
+        return;
+      }
+      const pending = state.buildEdit;
+      state.buildDraft = {
+        name: pending?.name ?? draft.name,
+        text: pending?.text ?? draft.text,
+      };
+    },
+    /** The screen of `tab` went away. Ignored when another screen has published since. */
+    screenCleared(state, action: PayloadAction<ScreenSnapshot['tab']>) {
+      if (state.screen && state.screen.tab !== action.payload) return;
+      state.screen = undefined;
+      state.buildDraft = undefined;
+      state.buildEdit = undefined;
+    },
+    /** An assistant edit of the Build draft; ignored while Build is not showing. */
+    buildEditRequested(state, action: PayloadAction<BuildEdit>) {
+      if (!state.buildDraft) return;
+      const { id, name, text } = action.payload;
+      const merged: BuildEdit = {
+        id,
+        ...((name ?? state.buildEdit?.name) !== undefined ? { name: name ?? state.buildEdit?.name } : {}),
+        ...((text ?? state.buildEdit?.text) !== undefined ? { text: text ?? state.buildEdit?.text } : {}),
+      };
+      state.buildEdit = merged;
+      state.buildDraft = {
+        name: merged.name ?? state.buildDraft.name,
+        text: merged.text ?? state.buildDraft.text,
+      };
+    },
+    buildEditConsumed(state, action: PayloadAction<string>) {
+      if (state.buildEdit?.id === action.payload) state.buildEdit = undefined;
+    },
   },
 });
 
@@ -170,5 +237,9 @@ export const {
   buildPresetSet,
   buildPresetConsumed,
   buildDraftChanged,
+  screenPublished,
+  screenCleared,
+  buildEditRequested,
+  buildEditConsumed,
 } = aiSlice.actions;
 export default aiSlice.reducer;

@@ -295,3 +295,42 @@ describe('handleChat app-control tools', () => {
     expect(create.mock.calls[0][0].messages[0].content).toContain('"todayPlans":[{"id":"p1","name":"Push"}]');
   });
 });
+
+describe('chat context screen block', () => {
+  const screen = {
+    tab: 'build',
+    title: 'Build',
+    summary: 'Draft Push, 2 exercises.',
+    data: { name: 'Push', exercises: [{ name: 'Bench Press', sets: 3, reps: '8' }] },
+  };
+  const request = async (context: unknown) => {
+    const { chatRequestSchema } = await import('./schemas');
+    return chatRequestSchema.safeParse({ action: 'chat', messages: [{ role: 'user', content: 'hi' }], context });
+  };
+
+  it('keeps the screen block and sends it to the model', async () => {
+    const parsed = await request({ tab: 'build', screen });
+    expect(parsed.success).toBe(true);
+    const { client, create } = fakeClient([{ type: 'text', text: 'ok' }]);
+    await handleChat(client, [{ role: 'user', content: 'what is this?' }], parsed.success ? parsed.data.context : undefined);
+    expect(create.mock.calls[0][0].messages[0].content).toContain('"summary":"Draft Push, 2 exercises."');
+  });
+
+  it('still accepts the legacy one-word screen, and refuses an unknown tab or an oversized block', async () => {
+    expect((await request({ screen: 'build' })).success).toBe(true);
+    expect((await request({ screen: { ...screen, tab: 'settings' } })).success).toBe(false);
+    expect((await request({ screen: { ...screen, data: { text: 'x'.repeat(3_600) } } })).success).toBe(false);
+  });
+
+  it('validates the Build edit tool calls the model emits', async () => {
+    const { client } = fakeClient([
+      { type: 'tool_use', id: 'b1', name: 'editBuildExercise', input: { exerciseName: 'Bench Press', sets: 4 } },
+      { type: 'tool_use', id: 'b2', name: 'editBuildExercise', input: { exerciseName: 'Bench Press' } },
+      { type: 'tool_use', id: 'b3', name: 'setBuildName', input: { name: 'Pull day' } },
+      { type: 'tool_use', id: 'b4', name: 'removeBuildExercise', input: { exerciseName: 'Row', sets: 2 } },
+      { type: 'tool_use', id: 'b5', name: 'addBuildExercise', input: { exerciseName: 'Barbell Row', sets: 3, reps: 10 } },
+    ], 'tool_use');
+    const r = await handleChat(client, [{ role: 'user', content: 'edit' }], { tab: 'build' });
+    expect(r.toolCalls.map((c) => c.id)).toEqual(['b1', 'b3', 'b5']);
+  });
+});

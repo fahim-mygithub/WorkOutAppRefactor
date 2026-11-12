@@ -28,6 +28,10 @@ import {
   aiPendingSet,
   buildPresetConsumed,
   buildPresetSet,
+  buildEditConsumed,
+  buildEditRequested,
+  screenCleared,
+  screenPublished,
   MAX_CHAT_MESSAGES_KEPT,
 } from './aiSlice';
 import type { AiTranscriptMessage } from '../../ai/types';
@@ -84,3 +88,59 @@ describe('aiSlice — the conversation', () => {
     expect(s.buildPreset).toBeUndefined();
   });
 });
+
+describe('screen snapshot', () => {
+  const build = { tab: 'build' as const, title: 'Build workout', summary: 'Draft "Push"', data: { name: 'Push' } };
+  const draft = { name: 'Push', text: '3x8 Squat' };
+
+  it('holds what the screen published, and clears it when that screen goes', () => {
+    let s = reducer(undefined, screenPublished({ ...build, draft }));
+    expect(s.screen).toEqual(build);
+    expect(s.buildDraft).toEqual(draft);
+    s = reducer(s, screenCleared('build'));
+    expect(s.screen).toBeUndefined();
+    expect(s.buildDraft).toBeUndefined();
+  });
+
+  it('a screen that unmounts after the next one published does not clear the next one', () => {
+    let s = reducer(undefined, screenPublished({ ...build, draft }));
+    s = reducer(s, screenPublished({ tab: 'library', title: 'Library', summary: '3 exercises' }));
+    s = reducer(s, screenCleared('build'));
+    expect(s.screen?.tab).toBe('library');
+  });
+
+  it('caps what is published, whatever the publisher sent', () => {
+    const s = reducer(undefined, screenPublished({
+      tab: 'library', title: 'x'.repeat(300), summary: 'y'.repeat(3_000), data: { names: Array.from({ length: 500 }, (_, k) => `Exercise ${k}`) },
+    }));
+    expect(JSON.stringify(s.screen).length).toBeLessThanOrEqual(3_000);
+    expect(s.screen?.title).toHaveLength(80);
+  });
+
+  it('keeps the draft only for Build', () => {
+    const s = reducer(undefined, screenPublished({ tab: 'today', title: 'Today', summary: 's', draft }));
+    expect(s.buildDraft).toBeUndefined();
+  });
+
+  it('ignores a Build edit while Build is not showing, and merges edits until the page consumes them', () => {
+    let s = reducer(undefined, buildEditRequested({ id: 'e0', name: 'Nope' }));
+    expect(s.buildEdit).toBeUndefined();
+    s = reducer(undefined, screenPublished({ ...build, draft }));
+    s = reducer(s, buildEditRequested({ id: 'e1', name: 'Pull' }));
+    s = reducer(s, buildEditRequested({ id: 'e2', text: '3x8 Row' }));
+    expect(s.buildEdit).toEqual({ id: 'e2', name: 'Pull', text: '3x8 Row' });
+    expect(s.buildDraft).toEqual({ name: 'Pull', text: '3x8 Row' });
+    s = reducer(s, buildEditConsumed('e1'));
+    expect(s.buildEdit?.id).toBe('e2');
+    s = reducer(s, buildEditConsumed('e2'));
+    expect(s.buildEdit).toBeUndefined();
+  });
+
+  it('leaving Build drops an edit the page never applied', () => {
+    let s = reducer(undefined, screenPublished({ ...build, draft }));
+    s = reducer(s, buildEditRequested({ id: 'e1', name: 'Pull' }));
+    s = reducer(s, screenCleared('build'));
+    expect(s.buildEdit).toBeUndefined();
+  });
+});
+

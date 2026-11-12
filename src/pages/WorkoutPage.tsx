@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { Navigate, useNavigate, useParams } from 'react-router-dom';
 import { useAppDispatch, useAppSelector } from '../store/hooks';
+import { usePublishScreen } from '../ai/useScreenSnapshot';
+import { workoutScreen } from '../ai/screenSummaries';
 import { useAuth } from '../contexts/AuthContext';
 import { useWakeLock } from '../hooks/useWakeLock';
 import { SharedWorkoutLoader } from '../components/SharedWorkoutLoader';
@@ -163,6 +165,8 @@ export default function WorkoutPage() {
   const { previousPerformances } = useAppSelector((state) => state.exerciseHistory);
   const trackedLifts = useAppSelector((state) => state.trackedLifts.lifts);
   const aiDisabledReason = useAppSelector((state) => state.ai.disabledReason);
+  // The assistant sees which exercise and set is current, and whether you are resting.
+  usePublishScreen('workout', workoutScreen(activeWorkout, restTimer));
   // "Change exercise": the library, and which exercise is being swapped.
   const { exercises: exerciseLibrary } = useExercises();
   const [swapExerciseId, setSwapExerciseId] = useState<string | null>(null);

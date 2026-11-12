@@ -7,7 +7,9 @@ import ai, {
   aiNewChat,
   askAiClosed,
   askAiOpened,
+  buildEditRequested,
   MAX_CHAT_MESSAGES_KEPT,
+  screenPublished,
 } from '../store/slices/aiSlice';
 import type { StorageLike } from '../lib/workoutSession';
 import { chatStorageKey, initChatPersistence, loadChat } from './chatPersistence';
@@ -137,3 +139,31 @@ describe('chat persistence', () => {
     expect(boot(b, 'u1').getState().ai.chat.messages).toEqual([{ id: 'photo', role: 'user', text: 'what is this' }]);
   });
 });
+
+describe('chat persistence and the screen snapshot', () => {
+  it('never stores the screen snapshot or the Build draft with the chat', () => {
+    const storage = memoryStorage();
+    const store = boot(storage, 'u1');
+    store.dispatch(screenPublished({
+      tab: 'build', title: 'Build workout', summary: 'SECRET-SUMMARY', data: { text: 'SECRET-TEXT' },
+      draft: { name: 'SECRET-NAME', text: 'SECRET-DRAFT' },
+    }));
+    store.dispatch(buildEditRequested({ id: 'e1', text: 'SECRET-EDIT' }));
+    say(store, { id: 'm1', role: 'user', text: 'hello' });
+    const stored = storage.data.get(chatStorageKey('u1')) ?? '';
+    expect(stored).toContain('hello');
+    expect(stored).not.toContain('SECRET');
+  });
+
+  it('a reload brings the chat back without any screen, and an undecided edit card expired', () => {
+    const storage = memoryStorage();
+    const first = boot(storage, 'u1');
+    say(first, { id: 'm1', role: 'assistant', text: 'Done', proposals: [{ id: 'p1', tool: 'editBuildExercise', summary: 'Changed Bench on Build' }] });
+    first.dispatch(screenPublished({ tab: 'build', title: 'Build workout', summary: 's' }));
+    const second = boot(storage, 'u1');
+    expect(second.getState().ai.chat.messages).toHaveLength(1);
+    expect(second.getState().ai.screen).toBeUndefined();
+    expect(second.getState().ai.chat.decisions.p1).toBe('expired');
+  });
+});
+

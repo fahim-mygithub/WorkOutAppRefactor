@@ -3,7 +3,10 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { useAppDispatch, useAppSelector } from '../store/hooks';
 import { useAuth } from '../contexts/AuthContext';
 import { startWorkout } from '../store/slices/workoutSlice';
-import { buildDraftChanged, buildPresetConsumed } from '../store/slices/aiSlice';
+import { buildDraftChanged, buildEditConsumed, buildPresetConsumed } from '../store/slices/aiSlice';
+import { usePublishScreen } from '../ai/useScreenSnapshot';
+import { draftTextForAi, readDraft } from '../ai/buildDraft';
+import { workoutText as aiWorkoutText } from '../ai/workoutText';
 import { WorkoutStorageService } from '../services/workoutStorageService';
 
 // Debug: Verify WorkoutStorageService is properly imported
@@ -874,6 +877,77 @@ export default function BuildPage() {
     editedWorkout ||
     (parseResult?.success && parseResult.workout ? prepareWorkoutForConfigurator(parseResult.workout) : null);
   const showConfiguration = (visualWorkout?.exercises?.length ?? 0) > 0;
+
+  // The assistant reads this screen: the draft as the lifter sees it (the
+  // Visual list on Visual, else the typed text), as text the parser reads, and
+  // its exercises. Published while Build is open, cleared when it closes.
+  const draftText = useMemo(() => {
+    const onVisual = activeTab === 'visual' || !workoutText.trim();
+    if (!onVisual || !visualWorkout) return workoutText;
+    const plain = (visualWorkout.exercises ?? []).filter((e: any) => !e.isSuperset && Array.isArray(e.sets));
+    const supersets = (visualWorkout.exercises ?? [])
+      .filter((e: any) => e.isSuperset && Array.isArray(e.supersetExercises))
+      .map((e: any) => e.supersetExercises);
+    return aiWorkoutText({ exercises: plain, supersets });
+  }, [activeTab, workoutText, visualWorkout]);
+  const draftReading = useMemo(() => readDraft(draftText), [draftText]);
+  usePublishScreen(
+    'build',
+    isViewingSharedWorkout
+      ? null
+      : {
+          tab: 'build',
+          title: 'Build workout',
+          summary: [
+            workoutName.trim() ? `Draft "${workoutName.trim().slice(0, 60)}"` : 'Unnamed draft',
+            draftReading.exercises.length
+              ? `${draftReading.exercises.length} exercise${draftReading.exercises.length === 1 ? '' : 's'}`
+              : 'empty',
+            `${activeTab} tab`,
+          ].join(', '),
+          data: {
+            name: workoutName,
+            view: activeTab,
+            text: draftTextForAi(draftText),
+            exercises: draftReading.exercises.slice(0, 25),
+            ...(draftReading.issues.length ? { issues: draftReading.issues } : {}),
+          },
+          draft: { name: workoutName, text: draftText },
+        },
+  );
+
+  // An edit the assistant made (setBuildName, editBuildExercise, ...): apply
+  // it to this page's own state. The text goes through the same history as the
+  // lifter's typing and is parsed at once, so the preview shows it.
+  const buildEdit = useAppSelector((s) => s.ai.buildEdit);
+  useEffect(() => {
+    if (!buildEdit || isViewingSharedWorkout) return;
+    if (debounceTimeoutRef.current) {
+      clearTimeout(debounceTimeoutRef.current);
+      debounceTimeoutRef.current = null;
+    }
+    if (buildEdit.name !== undefined) {
+      setWorkoutName(buildEdit.name);
+      setWorkoutNameError('');
+    }
+    if (buildEdit.text !== undefined) {
+      const text = buildEdit.text;
+      setWorkoutText(text);
+      const result = text.trim() ? parser.parse(text) : null;
+      if (result?.success && result.workout) {
+        if (exerciseDatabase.length > 0) {
+          const all = [...result.workout.exercises, ...result.workout.supersets.flat()];
+          result.warnings = [...result.warnings, ...parser.validateExerciseNames(all, exerciseDatabase)];
+        }
+        setParseResult(result);
+        setEditedWorkout(prepareWorkoutForConfigurator(result.workout));
+      } else {
+        setParseResult(null);
+        setEditedWorkout(null);
+      }
+    }
+    dispatch(buildEditConsumed(buildEdit.id));
+  }, [buildEdit, isViewingSharedWorkout, parser, exerciseDatabase, setWorkoutText, prepareWorkoutForConfigurator, dispatch]);
 
   // Visual's "Add an exercise": append to whatever is on the board (or start one).
   const handleVisualAdd = useCallback((exercise: Exercise) => {
