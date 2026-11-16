@@ -142,4 +142,31 @@ describe('PlannedWorkoutsSection', () => {
     const missed = store.getState().plannedWorkouts.plans.find((p) => p.id === 'plan-missed');
     expect(missed?.status).toBe('skipped');
   });
+
+  it('opens PlanEditSheet when tapping a today plan card and saves edits', () => {
+    const { store } = setup();
+
+    const editTrigger = screen.getByRole('button', { name: /edit push day today/i });
+    fireEvent.click(editTrigger);
+
+    const nameInput = screen.getByLabelText(/workout name/i) as HTMLInputElement;
+    expect(nameInput.value).toBe('Push Day Today');
+
+    fireEvent.change(nameInput, { target: { value: 'Push Day Edited' } });
+    fireEvent.click(screen.getByRole('button', { name: /save/i }));
+
+    const updated = store.getState().plannedWorkouts.plans.find((p) => p.id === 'plan-today');
+    expect(updated?.name).toBe('Push Day Edited');
+    expect(screen.getByText('Push Day Edited')).toBeInTheDocument();
+  });
+
+  it('opens PlanEditSheet when tapping an upcoming plan row', () => {
+    setup();
+
+    const editTrigger = screen.getByRole('button', { name: /edit pull day tomorrow/i });
+    fireEvent.click(editTrigger);
+
+    const nameInput = screen.getByLabelText(/workout name/i) as HTMLInputElement;
+    expect(nameInput.value).toBe('Pull Day Tomorrow');
+  });
 });

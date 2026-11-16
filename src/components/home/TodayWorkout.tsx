@@ -5,6 +5,10 @@ import type { WorkoutSummary } from '../../types/exerciseHistory';
 import { getMuscleGroupMeta, MUSCLE_GROUP_META } from './muscleGroup';
 import { usePlannedSchedule } from '../../hooks/usePlannedSchedule';
 import { useStartPlannedDay } from '../../hooks/useStartPlannedDay';
+import { useStartPlannedWorkout } from '../../hooks/useStartPlannedWorkout';
+import { useAppSelector } from '../../store/hooks';
+import { selectPlansForToday, type PlannedWorkout } from '../../store/slices/plannedWorkoutsSlice';
+import { toDateKey } from '../../lib/dateKey';
 import type { PlannedDay } from '../../types/schedule';
 import { Button } from '../ui/button';
 import { Skeleton } from '../ui/skeleton';
@@ -43,6 +47,8 @@ const formatVolume = (num: number): string => {
 export function TodayWorkout({ workoutHistory, isLoading }: TodayWorkoutProps) {
   const { getPlannedDay } = usePlannedSchedule();
   const startPlannedDay = useStartPlannedDay();
+  const startPlannedWorkout = useStartPlannedWorkout();
+  const plannedWorkoutsState = useAppSelector((state) => state.plannedWorkouts);
 
   if (isLoading) {
     return (
@@ -61,14 +67,24 @@ export function TodayWorkout({ workoutHistory, isLoading }: TodayWorkoutProps) {
     return !isSameDay(d, now) && d < now && daysBetween(d, now) <= 3;
   });
 
+  const todayKey = toDateKey(now);
+  const calendarPlansToday = selectPlansForToday({ plannedWorkouts: plannedWorkoutsState }, todayKey);
+  const calendarPlanToday = calendarPlansToday[0] ?? null;
+
   const plannedToday = getPlannedDay(now);
-  const showPlanned = !todays && plannedToday != null && plannedToday.status === 'planned';
+  const showScheduled = !todays && !calendarPlanToday && plannedToday != null && plannedToday.status === 'planned';
 
   return (
     <section aria-label="Today">
       {todays ? (
         <LoggedWorkout workout={todays} />
-      ) : showPlanned && plannedToday ? (
+      ) : calendarPlanToday ? (
+        <PlannedCalendarToday
+          plan={calendarPlanToday}
+          extraCount={calendarPlansToday.length - 1}
+          onStart={() => startPlannedWorkout(calendarPlanToday)}
+        />
+      ) : showScheduled && plannedToday ? (
         <PlannedToday planned={plannedToday} onStart={() => startPlannedDay(plannedToday)} />
       ) : trainedRecently ? (
         <RestDay />
@@ -82,6 +98,33 @@ export function TodayWorkout({ workoutHistory, isLoading }: TodayWorkoutProps) {
 function HeroTitle({ children }: { children: ReactNode }) {
   return (
     <h1 className="mt-1 break-words font-display text-display-lg text-ink">{children}</h1>
+  );
+}
+
+function PlannedCalendarToday({
+  plan,
+  extraCount,
+  onStart,
+}: {
+  plan: PlannedWorkout;
+  extraCount: number;
+  onStart: () => void;
+}) {
+  const count = plan.exercises.length;
+  const exerciseText = `${count} exercise${count === 1 ? '' : 's'}`;
+  return (
+    <div>
+      <p className="text-body-sm text-ink-muted">Planned for today</p>
+      <HeroTitle>{plan.name}</HeroTitle>
+      <p className="mt-3 max-w-[34ch] text-body text-ink-muted">
+        {exerciseText}
+        {extraCount > 0 ? ` · +${extraCount} more planned today` : ''}
+      </p>
+      <Button variant="primary" size="xl" className="mt-6" onClick={onStart}>
+        <Play size={20} fill="currentColor" aria-hidden="true" />
+        <span>Start workout</span>
+      </Button>
+    </div>
   );
 }
 
