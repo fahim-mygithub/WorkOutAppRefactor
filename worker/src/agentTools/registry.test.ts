@@ -1581,3 +1581,170 @@ describe('log_workout with exercise id', () => {
     expect(exercises[0].exerciseName).toBe('My Custom Belt Squat Loaded 3000');
   });
 });
+
+describe('per-exercise emphasis (volume | strength)', () => {
+  const relDate = (offsetDays: number) =>
+    new Date(NOW.getTime() + offsetDays * 86_400_000).toISOString().slice(0, 10);
+
+  it('create_workout and get_workout round-trip emphasis and omit when unset', async () => {
+    const created = await ok('create_workout', {
+      workouts: [
+        {
+          name: 'Emphasis Push',
+          exercises: [
+            { name: 'Barbell Bench Press', sets: 4, reps: 5, weight: 225, emphasis: 'strength' },
+            { name: 'Cable Fly', sets: 3, reps: 15, weight: 30, emphasis: 'volume' },
+            { name: 'Push Up', sets: 3, reps: 12 },
+          ],
+          supersets: [[
+            { name: 'Tricep Pushdown', sets: 3, reps: 12, emphasis: 'volume' },
+            { name: 'Overhead Extension', sets: 3, reps: 12 },
+          ]],
+        },
+      ],
+    });
+    const id = (created.created as { id: string }[])[0].id;
+    const got = await ok('get_workout', { workoutId: id });
+    const exs = got.exercises as Record<string, unknown>[];
+    const ss = got.supersets as Record<string, unknown>[][];
+    expect(exs[0].emphasis).toBe('strength');
+    expect(exs[1].emphasis).toBe('volume');
+    expect('emphasis' in exs[2]).toBe(false);
+    expect(ss[0][0].emphasis).toBe('volume');
+    expect('emphasis' in ss[0][1]).toBe(false);
+  });
+
+  it('update_workout updates emphasis and rejects invalid values', async () => {
+    const created = await ok('create_workout', {
+      workouts: [{ name: 'Updatable', exercises: [{ name: 'Squat', sets: 3, reps: 8 }] }],
+    });
+    const id = (created.created as { id: string }[])[0].id;
+    const updated = await ok('update_workout', {
+      workoutId: id,
+      exercises: [{ name: 'Squat', sets: 3, reps: 5, emphasis: 'strength' }],
+    });
+    const exs = updated.exercises as Record<string, unknown>[];
+    expect(exs[0].emphasis).toBe('strength');
+
+    const invalid = await run('update_workout', {
+      workoutId: id,
+      exercises: [{ name: 'Squat', sets: 3, reps: 5, emphasis: 'hypertrophy' }],
+    });
+    expect(invalid.ok).toBe(false);
+  });
+
+  it('plan_workout and list_plans round-trip emphasis and omit when unset', async () => {
+    const dateKey = relDate(2);
+    await ok('plan_workout', {
+      dateKey,
+      name: 'Planned Emphasis',
+      exercises: [
+        { name: 'Deadlift', sets: 3, reps: 3, weight: 315, emphasis: 'strength' },
+        { name: 'Hamstring Curl', sets: 3, reps: 12 },
+      ],
+    });
+    const { plans } = (await ok('list_plans', { from: dateKey, to: dateKey })) as {
+      plans: Array<{ exercises: Record<string, unknown>[] }>;
+    };
+    expect(plans).toHaveLength(1);
+    expect(plans[0].exercises[0].emphasis).toBe('strength');
+    expect('emphasis' in plans[0].exercises[1]).toBe(false);
+  });
+
+  it('log_workout and get_history_entry round-trip emphasis and omit when unset', async () => {
+    const date = relDate(-2);
+    const logged = await ok('log_workout', {
+      date,
+      name: 'Logged Emphasis',
+      exercises: [
+        { name: 'Barbell Bench Press', sets: [{ reps: 5, weight: 225 }], emphasis: 'strength' },
+        { name: 'Lateral Raise', sets: [{ reps: 15, weight: 20 }], emphasis: 'volume' },
+        { name: 'Face Pull', sets: [{ reps: 15, weight: 30 }] },
+      ],
+    });
+    const history = await ok('get_history_entry', { workoutId: logged.workoutId });
+    const exs = history.exercises as Record<string, unknown>[];
+    expect(exs[0].emphasis).toBe('strength');
+    expect(exs[1].emphasis).toBe('volume');
+    expect('emphasis' in exs[2]).toBe(false);
+  });
+
+  it('rejects invalid emphasis values on create_workout, plan_workout and log_workout', async () => {
+    const futureDate = relDate(3);
+    const pastDate = relDate(-1);
+    for (const [tool, input] of [
+      ['create_workout', { workouts: [{ name: 'Bad', exercises: [{ name: 'Squat', sets: 3, reps: 5, emphasis: 'checkpoint' }] }] }],
+      ['plan_workout', { dateKey: futureDate, name: 'Bad', exercises: [{ name: 'Squat', sets: 3, reps: 5, emphasis: 'power' }] }],
+      ['log_workout', { date: pastDate, exercises: [{ name: 'Squat', sets: [{ reps: 5 }], emphasis: 'hypertrophy' }] }],
+    ] as const) {
+      const r = await run(tool, input);
+      expect(r.ok, `${tool} should reject invalid emphasis`).toBe(false);
+    }
+  });
+
+  it('reads existing saved workout, plan and history docs without emphasis unchanged', async () => {
+    const futureDate = relDate(4);
+    const pastDate = relDate(-3);
+    fs.put(['users', UID, 'savedWorkouts', 'legacySw'], {
+      userId: UID,
+      name: 'Legacy Workout',
+      workoutText: '3x8 Bench Press @135lbs',
+      parsedWorkout: {
+        _dataFormat: 'serialized_v1',
+        exercises: [{ name: 'Bench Press', sets: [{ reps: 8, weight: 135, unit: 'lbs' }] }],
+        supersets_serialized: '[]',
+      },
+      tags: [],
+      performanceCount: 0,
+    });
+    fs.put(['users', UID, 'schedule', 'plannedWorkouts'], {
+      plans: [
+        {
+          id: 'legacyPlan',
+          dateKey: futureDate,
+          name: 'Legacy Plan',
+          status: 'planned',
+          createdAt: NOW.toISOString(),
+          exercises: [{ id: 'ex1', exercise: { id: 'f1', name: 'Bench Press' }, sets: [{ id: 's1', reps: 8, completed: false }] }],
+        },
+      ],
+      schemaVersion: 1,
+      updatedAt: NOW.toISOString(),
+    });
+    fs.put(['users', UID, 'workout_history', 'legacyWh'], {
+      userId: UID,
+      name: 'Legacy History',
+      workoutId: 'legacyWh',
+      startTime: new Date(`${pastDate}T12:00:00.000Z`),
+      endTime: new Date(`${pastDate}T12:45:00.000Z`),
+      duration: 45,
+      totalExercises: 1,
+      totalSets: 1,
+      totalReps: 8,
+      totalVolume: 1080,
+      exercisesSummary: [{ exerciseId: 'f1', exerciseName: 'Bench Press', sets: 1, reps: 8, volume: 1080 }],
+    });
+    fs.put(['users', UID, 'exercise_history', 'legacyEh'], {
+      userId: UID,
+      workoutId: 'legacyWh',
+      exerciseId: 'f1',
+      exerciseName: 'Bench Press',
+      configuration: '1x8',
+      totalVolume: 1080,
+      sets: [{ setNumber: 1, targetReps: 8, actualReps: 8, weight: 135, unit: 'lbs', completed: true }],
+      muscleGroups: ['Chest'],
+      equipment: 'Barbell',
+    });
+
+    const sw = await ok('get_workout', { workoutId: 'legacySw' });
+    expect('emphasis' in (sw.exercises as Record<string, unknown>[])[0]).toBe(false);
+
+    const plans = (await ok('list_plans', { from: futureDate, to: futureDate })) as {
+      plans: Array<{ exercises: Record<string, unknown>[] }>;
+    };
+    expect('emphasis' in plans.plans[0].exercises[0]).toBe(false);
+
+    const hist = await ok('get_history_entry', { workoutId: 'legacyWh' });
+    expect('emphasis' in (hist.exercises as Record<string, unknown>[])[0]).toBe(false);
+  });
+});

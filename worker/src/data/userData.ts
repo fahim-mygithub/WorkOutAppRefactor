@@ -36,6 +36,7 @@ import {
   generateConfigurationString,
   isFutureDate,
   mergePlan,
+  readEmphasis,
   readExerciseHistory,
   readPlans,
   readProfile,
@@ -401,6 +402,7 @@ export class UserData {
 
     const exercises = allExDocs.map((d) => {
       const dData = data(d);
+      const emp = readEmphasis(dData.emphasis);
       return {
         id: docId(d),
         exerciseId: String(dData.exerciseId ?? ''),
@@ -413,6 +415,7 @@ export class UserData {
         ...(dData.notes ? { notes: String(dData.notes) } : {}),
         ...(dData.customTitle ? { customTitle: String(dData.customTitle) } : {}),
         ...(dData.personalRecords ? { personalRecords: dData.personalRecords as Record<string, unknown> } : {}),
+        ...(emp ? { emphasis: emp } : {}),
       };
     });
 
