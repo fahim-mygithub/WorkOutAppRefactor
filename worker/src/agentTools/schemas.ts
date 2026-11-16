@@ -7,6 +7,10 @@ import { z } from 'zod';
 
 const unit = z.enum(['lbs', 'kg']).describe('Weight unit. Defaults to lbs.');
 
+const emphasis = z
+  .enum(['volume', 'strength'])
+  .describe("volume or strength emphasis for this exercise (the lifter's training intent; leave unset when unknown).");
+
 /** Firestore auto-id style: letters, digits, `_` and `-` only. */
 const docId = (what: string) =>
   z
@@ -40,6 +44,7 @@ export const exerciseInput = z
     unit: unit.optional(),
     notes: z.string().max(500).optional().describe('Cues or notes for this exercise.'),
     restSeconds: z.number().int().min(0).max(900).optional().describe('Rest between sets in seconds.'),
+    emphasis: emphasis.optional(),
   })
   .strict();
 
@@ -180,6 +185,7 @@ export const exerciseHistoryInput = z
     sets: z.array(performedSetInput).min(1).max(30).describe('Sets completed, in order.'),
     notes: z.string().max(500).optional().describe('Notes for this exercise.'),
     customTitle: z.string().trim().max(120).optional().describe('Optional custom variation display name.'),
+    emphasis: emphasis.optional(),
   })
   .strict()
   .refine((d) => Boolean(d.id || d.name), {

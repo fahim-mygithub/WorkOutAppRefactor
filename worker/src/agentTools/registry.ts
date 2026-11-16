@@ -84,7 +84,7 @@ export const agentTools: readonly AgentTool[] = [
   define({
     name: 'get_workout',
     title: 'Get a saved workout',
-    description: 'Read one saved workout in full: every exercise with its sets, reps, weights, rest and notes.',
+    description: 'Read one saved workout in full: every exercise with its sets, reps, weights, rest, notes and optional emphasis.',
     input: getWorkoutInput,
     readOnly: true,
     run: (input, { data }) => data.getWorkout(input.workoutId),

@@ -10,6 +10,12 @@
 // ---- App types (copied from src/parser/types.ts, src/types/exercise.ts, src/store/slices) ----
 
 export type Unit = 'lbs' | 'kg';
+export type Emphasis = 'volume' | 'strength';
+
+export function readEmphasis(v: unknown): Emphasis | undefined {
+  return v === 'volume' || v === 'strength' ? v : undefined;
+}
+
 export interface ParsedSet {
   reps: number | { min: number; max: number };
   weight?: number;
@@ -18,7 +24,7 @@ export interface ParsedSet {
   time?: number;
   distance?: number;
 }
-export interface ParsedExercise { name: string; sets: ParsedSet[]; notes?: string; restTime?: number }
+export interface ParsedExercise { name: string; sets: ParsedSet[]; notes?: string; restTime?: number; emphasis?: Emphasis }
 export interface ParsedWorkout { exercises: ParsedExercise[]; supersets: ParsedExercise[][] }
 
 export type Category = 'Strength' | 'Cardio' | 'Flexibility' | 'Sports' | 'Other';
@@ -55,6 +61,7 @@ export interface AppWorkoutExercise {
   sets: AppWorkoutSet[];
   restTime?: number;
   notes?: string;
+  emphasis?: Emphasis;
   isSuperset?: boolean;
   supersetId?: string;
   supersetIndex?: number;
@@ -82,6 +89,7 @@ export interface ExerciseInput {
   unit?: Unit;
   notes?: string;
   restSeconds?: number;
+  emphasis?: Emphasis;
 }
 export interface WorkoutInput {
   name: string;
@@ -108,6 +116,8 @@ export function toParsedExercise(e: ExerciseInput): ParsedExercise {
   const out: ParsedExercise = { name: oneLine(e.name), sets: Array.from({ length: e.sets }, () => ({ ...set })) };
   if (e.notes?.trim()) out.notes = e.notes.trim();
   if (e.restSeconds !== undefined) out.restTime = e.restSeconds;
+  const emp = readEmphasis(e.emphasis);
+  if (emp) out.emphasis = emp;
   return out;
 }
 
@@ -147,6 +157,16 @@ export function serializeParsedWorkout(w: ParsedWorkout) {
   return { exercises: w.exercises, supersets_serialized: JSON.stringify(w.supersets), _dataFormat: 'serialized_v1' };
 }
 
+function sanitizeParsedExercise(ex: ParsedExercise): ParsedExercise {
+  const emp = readEmphasis(ex.emphasis);
+  if (emp) return ex.emphasis === emp ? ex : { ...ex, emphasis: emp };
+  if ('emphasis' in ex) {
+    const { emphasis: _dropped, ...rest } = ex;
+    return rest;
+  }
+  return ex;
+}
+
 /** WorkoutStorageService.deserializeWorkoutFromFirestore */
 export function deserializeParsedWorkout(raw: unknown): ParsedWorkout {
   const r = (raw ?? {}) as Record<string, unknown>;
@@ -176,14 +196,16 @@ export function deserializeParsedWorkout(raw: unknown): ParsedWorkout {
   // 1. Objects marked isSuperset or with supersetExercises
   // 2. Objects whose name matches the combined superset name ("A + B")
   const supersetCombinedNames = new Set(supersets.map((group) => group.map((e) => e.name).join(' + ')));
-  const exercises = rawExercises.filter((ex) => {
-    const anyEx = ex as unknown as Record<string, unknown>;
-    if (anyEx.isSuperset || Array.isArray(anyEx.supersetExercises)) return false;
-    if (supersetCombinedNames.has(ex.name)) return false;
-    return true;
-  });
+  const exercises = rawExercises
+    .filter((ex) => {
+      const anyEx = ex as unknown as Record<string, unknown>;
+      if (anyEx.isSuperset || Array.isArray(anyEx.supersetExercises)) return false;
+      if (supersetCombinedNames.has(ex.name)) return false;
+      return true;
+    })
+    .map(sanitizeParsedExercise);
 
-  return { exercises, supersets };
+  return { exercises, supersets: supersets.map((group) => group.map(sanitizeParsedExercise)) };
 }
 
 /** `users/{uid}/savedWorkouts/{id}` as WorkoutStorageService.saveWorkout writes it. */
@@ -336,25 +358,33 @@ function toWorkoutSets(e: ParsedExercise, prefix: string): AppWorkoutSet[] {
 
 /** workoutConversion.convertSavedWorkoutToExercises (library matching aside: names become fallback exercises). */
 export function toWorkoutExercises(w: ParsedWorkout, nowIso: string, stamp: string): AppWorkoutExercise[] {
-  const out: AppWorkoutExercise[] = w.exercises.map((e, i) => ({
-    id: `exercise-${stamp}-${i}`,
-    exercise: fallbackExercise(e.name, nowIso),
-    sets: toWorkoutSets(e, `set-${stamp}-${i}`),
-    restTime: e.restTime || 120,
-    ...(e.notes ? { notes: e.notes } : {}),
-  }));
+  const out: AppWorkoutExercise[] = w.exercises.map((e, i) => {
+    const emp = readEmphasis(e.emphasis);
+    return {
+      id: `exercise-${stamp}-${i}`,
+      exercise: fallbackExercise(e.name, nowIso),
+      sets: toWorkoutSets(e, `set-${stamp}-${i}`),
+      restTime: e.restTime || 120,
+      ...(e.notes ? { notes: e.notes } : {}),
+      ...(emp ? { emphasis: emp } : {}),
+    };
+  });
   w.supersets.forEach((group, si) => {
     const supersetId = `superset-${stamp}-${si}`;
-    const members: AppWorkoutExercise[] = group.map((e, ei) => ({
-      id: `exercise-superset-${stamp}-${si}-${ei}`,
-      exercise: fallbackExercise(e.name, nowIso),
-      sets: toWorkoutSets(e, `set-superset-${stamp}-${si}-${ei}`),
-      restTime: e.restTime || 90,
-      isSuperset: true,
-      supersetId,
-      supersetIndex: ei,
-      notes: `Superset ${si + 1}${group.length > 1 ? ` (${ei + 1}/${group.length})` : ''}`,
-    }));
+    const members: AppWorkoutExercise[] = group.map((e, ei) => {
+      const emp = readEmphasis(e.emphasis);
+      return {
+        id: `exercise-superset-${stamp}-${si}-${ei}`,
+        exercise: fallbackExercise(e.name, nowIso),
+        sets: toWorkoutSets(e, `set-superset-${stamp}-${si}-${ei}`),
+        restTime: e.restTime || 90,
+        isSuperset: true,
+        supersetId,
+        supersetIndex: ei,
+        notes: `Superset ${si + 1}${group.length > 1 ? ` (${ei + 1}/${group.length})` : ''}`,
+        ...(emp ? { emphasis: emp } : {}),
+      };
+    });
     if (members.length > 0) members[0].supersetExerciseIds = members.map((m) => m.id);
     out.push(...members);
   });
@@ -391,8 +421,23 @@ export function buildPlansDoc(plans: PlannedWorkout[], nowIso: string): Record<s
   return { plans, schemaVersion: PLANS_SCHEMA_VERSION, updatedAt: nowIso };
 }
 
+function sanitizeWorkoutExercise(ex: AppWorkoutExercise): AppWorkoutExercise {
+  const emp = readEmphasis(ex.emphasis);
+  if (emp) return ex.emphasis === emp ? ex : { ...ex, emphasis: emp };
+  if ('emphasis' in ex) {
+    const { emphasis: _dropped, ...rest } = ex;
+    return rest;
+  }
+  return ex;
+}
+
 export function readPlans(d: Record<string, unknown> | null): PlannedWorkout[] {
-  return d && Array.isArray(d.plans) ? (d.plans as PlannedWorkout[]) : [];
+  if (!d || !Array.isArray(d.plans)) return [];
+  return (d.plans as PlannedWorkout[]).map((plan) => {
+    if (!Array.isArray(plan.exercises)) return plan;
+    const exercises = plan.exercises.map(sanitizeWorkoutExercise);
+    return exercises.some((ex, i) => ex !== plan.exercises[i]) ? { ...plan, exercises } : plan;
+  });
 }
 
 // ---- Custom exercises: users/{uid}/customExercises/{id} ----
@@ -548,6 +593,7 @@ export function readWorkoutSummary(id: string, d: Record<string, unknown>) {
 }
 
 export function readExerciseHistory(id: string, d: Record<string, unknown>) {
+  const emp = readEmphasis(d.emphasis);
   return {
     id,
     exerciseId: d.exerciseId,
@@ -563,6 +609,7 @@ export function readExerciseHistory(id: string, d: Record<string, unknown>) {
     ...(d.personalRecords ? { personalRecords: d.personalRecords } : {}),
     ...(d.workoutId ? { workoutId: d.workoutId } : {}),
     ...(d.notes ? { notes: d.notes } : {}),
+    ...(emp ? { emphasis: emp } : {}),
   };
 }
 
@@ -585,6 +632,7 @@ export interface ExerciseHistoryInput {
   sets: PerformedSetInput[];
   notes?: string;
   customTitle?: string;
+  emphasis?: Emphasis;
 }
 
 export interface LogWorkoutInput {
@@ -794,6 +842,8 @@ export function buildExerciseHistoryDoc(
     resolved?.muscleGroups && resolved.muscleGroups.length > 0 ? resolved.muscleGroups : ['Unknown'];
   const equipment = resolved?.equipment || 'Unknown';
 
+  const emp = readEmphasis(exercise.emphasis);
+
   return {
     userId: uid,
     exerciseId,
@@ -810,6 +860,7 @@ export function buildExerciseHistoryDoc(
     workoutName: workoutName.trim(),
     ...(exercise.notes?.trim() ? { notes: exercise.notes.trim() } : {}),
     ...(exercise.customTitle?.trim() ? { customTitle: exercise.customTitle.trim() } : {}),
+    ...(emp ? { emphasis: emp } : {}),
   };
 }
 

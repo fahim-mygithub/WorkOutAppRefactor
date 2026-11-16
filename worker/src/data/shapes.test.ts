@@ -20,6 +20,8 @@ import {
   fallbackExerciseId,
   formatWorkoutText,
   mergePlan,
+  readExerciseHistory,
+  readPlans,
   readProfile,
   readSavedWorkout,
   toParsedWorkout,
@@ -529,5 +531,148 @@ describe('superset counting (Pull Day Seal Row Oct 1 fixture)', () => {
     expect(view.supersets).toHaveLength(3);
     expect(view.workoutText).not.toContain(' + ');
     expect(view.workoutText).toContain(' ss ');
+  });
+});
+
+describe('per-exercise emphasis (volume | strength)', () => {
+  it('stores emphasis on saved workouts only when set and drops unknown values on read/write', () => {
+    const input: WorkoutInput = {
+      name: 'Upper',
+      exercises: [
+        { name: 'Bench Press', sets: 3, reps: 5, weight: 225, emphasis: 'strength' },
+        { name: 'Lateral Raise', sets: 4, reps: 15, weight: 20, emphasis: 'volume' },
+        { name: 'Pull Up', sets: 3, reps: 10 },
+      ],
+      supersets: [[
+        { name: 'Cable Fly', sets: 3, reps: 12, emphasis: 'volume' },
+        { name: 'Face Pull', sets: 3, reps: 15 },
+      ]],
+    };
+    const doc = buildSavedWorkoutDoc('uid1', input, NOW);
+    const pw = doc.parsedWorkout as { exercises: Record<string, unknown>[]; supersets_serialized: string };
+    expect(pw.exercises[0].emphasis).toBe('strength');
+    expect(pw.exercises[1].emphasis).toBe('volume');
+    expect('emphasis' in pw.exercises[2]).toBe(false);
+
+    const view = readSavedWorkout('sw-emp', {
+      name: 'Upper',
+      parsedWorkout: pw,
+      workoutText: doc.workoutText,
+    });
+    expect(view.exercises[0].emphasis).toBe('strength');
+    expect(view.exercises[1].emphasis).toBe('volume');
+    expect('emphasis' in view.exercises[2]).toBe(false);
+    expect(view.supersets[0][0].emphasis).toBe('volume');
+    expect('emphasis' in view.supersets[0][1]).toBe(false);
+
+    // Unknown emphasis values on write or read are dropped, never guessed.
+    const dirtyInput = {
+      name: 'Dirty',
+      exercises: [
+        { name: 'Squat', sets: 3, reps: 5, emphasis: 'checkpoint' as unknown as 'strength' },
+      ],
+    };
+    const dirtyParsed = toParsedWorkout(dirtyInput);
+    expect('emphasis' in dirtyParsed.exercises[0]).toBe(false);
+
+    const dirtyRead = deserializeParsedWorkout({
+      _dataFormat: 'serialized_v1',
+      exercises: [
+        { name: 'Squat', sets: [{ reps: 5 }], emphasis: 'hypertrophy' },
+        { name: 'Bench', sets: [{ reps: 5 }], emphasis: 'strength' },
+        { name: 'Row', sets: [{ reps: 8 }] },
+      ],
+      supersets_serialized: JSON.stringify([[
+        { name: 'Curl', sets: [{ reps: 12 }], emphasis: null },
+        { name: 'Pushdown', sets: [{ reps: 12 }], emphasis: 'volume' },
+      ]]),
+    });
+    expect('emphasis' in dirtyRead.exercises[0]).toBe(false);
+    expect(dirtyRead.exercises[1].emphasis).toBe('strength');
+    expect('emphasis' in dirtyRead.exercises[2]).toBe(false);
+    expect('emphasis' in dirtyRead.supersets[0][0]).toBe(false);
+    expect(dirtyRead.supersets[0][1].emphasis).toBe('volume');
+  });
+
+  it('carries emphasis onto planned workout exercises only when set and drops unknown on readPlans', () => {
+    const parsed = toParsedWorkout({
+      exercises: [
+        { name: 'Squat', sets: 3, reps: 5, emphasis: 'strength' },
+        { name: 'Leg Extension', sets: 3, reps: 15 },
+      ],
+      supersets: [[
+        { name: 'Leg Curl', sets: 3, reps: 12, emphasis: 'volume' },
+        { name: 'Calf Raise', sets: 3, reps: 15 },
+      ]],
+    });
+    const ex = toWorkoutExercises(parsed, NOW.toISOString(), 's');
+    expect(ex[0].emphasis).toBe('strength');
+    expect('emphasis' in ex[1]).toBe(false);
+    expect(ex[2].emphasis).toBe('volume');
+    expect('emphasis' in ex[3]).toBe(false);
+
+    const plans = readPlans({
+      plans: [
+        {
+          id: 'p1',
+          dateKey: '2026-11-01',
+          name: 'Legs',
+          status: 'planned',
+          createdAt: NOW.toISOString(),
+          exercises: [
+            { ...ex[0] },
+            { ...ex[1], emphasis: 'invalid' as unknown as 'volume' },
+            { ...ex[1] },
+          ],
+        },
+      ],
+    });
+    expect(plans[0].exercises[0].emphasis).toBe('strength');
+    expect('emphasis' in plans[0].exercises[1]).toBe(false);
+    expect('emphasis' in plans[0].exercises[2]).toBe(false);
+  });
+
+  it('stores emphasis on exercise_history only when set and drops unknown values', () => {
+    const withEmp = buildExerciseHistoryDoc(
+      'uid1',
+      'wh1',
+      'Push',
+      NOW,
+      { name: 'Bench Press', sets: [{ reps: 5, weight: 225 }], emphasis: 'strength' },
+      {},
+      NOW,
+    );
+    expect(withEmp.emphasis).toBe('strength');
+
+    const withoutEmp = buildExerciseHistoryDoc(
+      'uid1',
+      'wh1',
+      'Push',
+      NOW,
+      { name: 'Bench Press', sets: [{ reps: 5, weight: 225 }] },
+      {},
+      NOW,
+    );
+    expect('emphasis' in withoutEmp).toBe(false);
+
+    const dirtyWrite = buildExerciseHistoryDoc(
+      'uid1',
+      'wh1',
+      'Push',
+      NOW,
+      { name: 'Bench Press', sets: [{ reps: 5, weight: 225 }], emphasis: 'checkpoint' as unknown as 'volume' },
+      {},
+      NOW,
+    );
+    expect('emphasis' in dirtyWrite).toBe(false);
+
+    const readValid = readExerciseHistory('eh1', { ...withEmp });
+    expect(readValid.emphasis).toBe('strength');
+
+    const readMissing = readExerciseHistory('eh2', { ...withoutEmp });
+    expect('emphasis' in readMissing).toBe(false);
+
+    const readUnknown = readExerciseHistory('eh3', { ...withoutEmp, emphasis: 'power' });
+    expect('emphasis' in readUnknown).toBe(false);
   });
 });

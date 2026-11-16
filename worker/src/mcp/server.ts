@@ -16,7 +16,8 @@ const INSTRUCTIONS =
   "Tools for the user's WorkoutApp account: their profile, saved workouts, planned calendar, finished-workout history and custom exercises. " +
   'Read before you write: list or get a workout before updating it. Writes show up in the app the next time it loads. ' +
   'Weights are in the unit the user uses (get_profile shows weightUnit). Dates are YYYY-MM-DD in the user\'s local calendar. ' +
-  'When the user asks for a workout \"for Monday\" / \"this week\" / \"on my calendar\", make sure it is placed on the calendar, one plan per day; when they say only \"create a workout\", save it and ask or offer to schedule it.';
+  'When the user asks for a workout \"for Monday\" / \"this week\" / \"on my calendar\", make sure it is placed on the calendar, one plan per day; when they say only \"create a workout\", save it and ask or offer to schedule it.\n' +
+  'When the user says an exercise is for volume or for strength, set `emphasis`.';
 
 export function buildMcpServer(data: UserData, mediaQuota?: MediaQuota): McpServer {
   const server = new McpServer(SERVER_INFO, {

@@ -324,6 +324,8 @@ describe('MCP round trip (OAuth token + SDK client + mocked Firestore)', () => {
       }),
     );
 
+    expect(c.getInstructions()).toContain('emphasis');
+
     await c.close();
   });
 
