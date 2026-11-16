@@ -9,7 +9,9 @@ import trackedLifts, { trackedLiftsHydrated, liftUpdated } from '../../store/sli
 import exercise, { setExercises } from '../../store/slices/exerciseSlice';
 import customExercise from '../../store/slices/customExerciseSlice';
 import user from '../../store/slices/userSlice';
-import ai, { askAiOpened, askAiClosed, aiChatRestored, buildDraftChanged, buildEditConsumed, screenPublished } from '../../store/slices/aiSlice';
+import ai, { askAiOpened, askAiClosed, aiChatRestored, buildDraftChanged, buildEditConsumed, planEditConsumed, screenPublished } from '../../store/slices/aiSlice';
+import { planEditorScreen, toPlanDraftExercises } from '../../ai/planDraft';
+import { toDateKey } from '../../lib/dateKey';
 import * as aiClient from '../../ai/aiClient';
 import type { AiContext } from '../../ai/context';
 import type { WorkoutExercise, Exercise } from '../../types/exercise';
@@ -990,6 +992,75 @@ describe('AskAiHost screen awareness', () => {
     }));
     expect(store.getState().ai.chat.decisions.p1).toBe('expired');
     expect(store.getState().ai.screen).toBeUndefined();
+  });
+
+  describe('plan editor awareness', () => {
+    function renderOnPlanEdit() {
+      const today = toDateKey(new Date());
+      const store = makeStore();
+      store.dispatch(setExercises([bench, dbBench]));
+      const exercises = toPlanDraftExercises(
+        [
+          {
+            id: 'pe-1',
+            exercise: bench,
+            sets: [
+              { id: 's1', reps: 8, weight: 135, unit: 'lbs', completed: false },
+              { id: 's2', reps: 8, weight: 135, unit: 'lbs', completed: false },
+              { id: 's3', reps: 8, weight: 135, unit: 'lbs', completed: false },
+            ],
+            restTime: 120,
+          },
+        ],
+        'lbs',
+      );
+      const published = planEditorScreen({ planId: 'plan-1', date: today, name: 'Push', exercises });
+      store.dispatch(screenPublished(published));
+      renderHost(store, '/');
+      return { store, today, exercises };
+    }
+
+    it('sends the plan-edit screen snapshot and auto-applies editPlanExercise with Undo', async () => {
+      const chat = vi.spyOn(aiClient, 'chat').mockResolvedValue({
+        reply: 'Updated bench to 5 sets at 155 lbs.',
+        source: 'backend',
+        toolCalls: [{ id: 'pe1', name: 'editPlanExercise', input: { exerciseName: 'Bench Press', sets: 5, weight: 155 } }],
+      });
+      const { store, today } = renderOnPlanEdit();
+      const u = await send('bump bench to 5 sets at 155');
+      expect(await screen.findByRole('status')).toHaveTextContent(/Barbell Bench Press/);
+      expect(chat.mock.calls[0][0].context).toMatchObject({
+        tab: 'today',
+        screen: {
+          tab: 'plan-edit',
+          title: 'Plan editor',
+          data: {
+            planId: 'plan-1',
+            name: 'Push',
+            date: today,
+            exercises: [{ name: 'Barbell Bench Press', sets: 3, reps: 8, weight: 135, unit: 'lbs' }],
+          },
+        },
+      });
+      expect(store.getState().ai.planDraft?.exercises[0]).toMatchObject({ setsCount: '5', weight: '155' });
+      act(() => {
+        store.dispatch(planEditConsumed('plan-pe1'));
+      });
+      await u.click(screen.getByRole('button', { name: 'Undo' }));
+      expect(store.getState().ai.planDraft?.exercises[0]).toMatchObject({ setsCount: '3', weight: '135' });
+    });
+
+    it('discards a plan edit when the plan editor is not open, saying open the plan first', async () => {
+      vi.spyOn(aiClient, 'chat').mockResolvedValue({
+        reply: 'Tried.',
+        source: 'backend',
+        toolCalls: [{ id: 'pe1', name: 'editPlanExercise', input: { exerciseName: 'Bench Press', sets: 5 } }],
+      });
+      const store = renderHost(makeStore(), '/');
+      await send('make bench 5 sets');
+      expect(await screen.findByText(/Suggestion discarded:.*open the plan first/i)).toBeInTheDocument();
+      expect(store.getState().ai.planEdit).toBeUndefined();
+    });
   });
 });
 

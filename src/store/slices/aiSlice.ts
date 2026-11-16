@@ -9,6 +9,7 @@ import { createSlice, type PayloadAction, type UnknownAction } from '@reduxjs/to
 import type { AiProposalDecision, AiToolCall, AiTranscriptMessage } from '../../ai/types';
 import type { AiEffect } from '../../ai/effects';
 import type { SavedWorkoutDraft } from '../../ai/effects';
+import type { PlanDraftExercise, PlanDraftState } from '../../ai/planDraft';
 import { capScreen, type BuildDraftState, type ScreenSnapshot } from '../../ai/screenSnapshot';
 
 /** Most transcript messages kept (and persisted). */
@@ -49,6 +50,19 @@ export interface BuildEdit {
   text?: string;
 }
 
+/**
+ * A change the assistant made to the open PlanEditSheet draft, waiting for the
+ * sheet to apply it to its own local state.
+ */
+export interface PlanEdit {
+  id: string;
+  planId: string;
+  /** New planned workout name, when the edit changes it. */
+  name?: string;
+  /** New draft exercises, when the edit changes them. */
+  exercises?: PlanDraftExercise[];
+}
+
 export interface AiState {
   open: boolean;
   /** A first message to send when the sheet opens (e.g. from Ask coach). */
@@ -69,10 +83,16 @@ export interface AiState {
    * unmounts. Capped; sent with each chat turn; never persisted with the chat.
    */
   screen?: ScreenSnapshot;
+  /** Latest non-modal tab screen, restored when a modal sheet (plan-edit) closes. */
+  underneathScreen?: ScreenSnapshot;
   /** The Build page's draft, for planning the Build edit tools. Never sent as is. */
   buildDraft?: BuildDraftState;
   /** An assistant edit the Build page has yet to apply, then clears. */
   buildEdit?: BuildEdit;
+  /** The PlanEditSheet's draft while open, for planning plan edit tools. Never sent as is. */
+  planDraft?: PlanDraftState;
+  /** An assistant edit PlanEditSheet has yet to apply, then clears. */
+  planEdit?: PlanEdit;
 }
 
 let chatSeq = 0;
@@ -183,9 +203,46 @@ const aiSlice = createSlice({
      * applied yet wins over the page's older state, so a second edit in the same
      * turn plans against the first one's result.
      */
-    screenPublished(state, action: PayloadAction<ScreenSnapshot & { draft?: BuildDraftState }>) {
-      const { draft, ...snapshot } = action.payload;
-      state.screen = capScreen(snapshot);
+    screenPublished(
+      state,
+      action: PayloadAction<
+        ScreenSnapshot & { draft?: BuildDraftState; planDraft?: PlanDraftState }
+      >,
+    ) {
+      const { draft, planDraft, ...snapshot } = action.payload;
+      const capped = capScreen(snapshot);
+
+      if (snapshot.tab === 'plan-edit') {
+        state.screen = capped;
+        state.buildDraft = undefined;
+        if (!planDraft) {
+          state.planDraft = undefined;
+          state.planEdit = undefined;
+          return;
+        }
+        if (state.planEdit && state.planEdit.planId !== planDraft.planId) {
+          state.planEdit = undefined;
+        }
+        const pending = state.planEdit;
+        state.planDraft = {
+          planId: planDraft.planId,
+          date: planDraft.date,
+          name: pending?.name ?? planDraft.name,
+          exercises: pending?.exercises ?? planDraft.exercises,
+        };
+        return;
+      }
+
+      state.underneathScreen = capped;
+      // PlanEditSheet is a modal over Today: Today re-publishing updates the
+      // underlying screen without replacing the open modal's snapshot.
+      if (state.screen?.tab === 'plan-edit' && snapshot.tab === 'today') {
+        return;
+      }
+
+      state.screen = capped;
+      state.planDraft = undefined;
+      state.planEdit = undefined;
       if (snapshot.tab !== 'build' || !draft) {
         state.buildDraft = undefined;
         return;
@@ -198,6 +255,17 @@ const aiSlice = createSlice({
     },
     /** The screen of `tab` went away. Ignored when another screen has published since. */
     screenCleared(state, action: PayloadAction<ScreenSnapshot['tab']>) {
+      if (action.payload === 'plan-edit') {
+        state.planDraft = undefined;
+        state.planEdit = undefined;
+        if (state.screen?.tab === 'plan-edit') {
+          state.screen = state.underneathScreen;
+        }
+        return;
+      }
+      if (state.underneathScreen?.tab === action.payload) {
+        state.underneathScreen = undefined;
+      }
       if (state.screen && state.screen.tab !== action.payload) return;
       state.screen = undefined;
       state.buildDraft = undefined;
@@ -221,6 +289,28 @@ const aiSlice = createSlice({
     buildEditConsumed(state, action: PayloadAction<string>) {
       if (state.buildEdit?.id === action.payload) state.buildEdit = undefined;
     },
+    /** An assistant edit of the open PlanEditSheet draft; ignored while closed or for another plan. */
+    planEditRequested(state, action: PayloadAction<PlanEdit>) {
+      if (!state.planDraft || state.planDraft.planId !== action.payload.planId) return;
+      const { id, planId, name, exercises } = action.payload;
+      const merged: PlanEdit = {
+        id,
+        planId,
+        ...((name ?? state.planEdit?.name) !== undefined ? { name: name ?? state.planEdit?.name } : {}),
+        ...((exercises ?? state.planEdit?.exercises) !== undefined
+          ? { exercises: exercises ?? state.planEdit?.exercises }
+          : {}),
+      };
+      state.planEdit = merged;
+      state.planDraft = {
+        ...state.planDraft,
+        name: merged.name ?? state.planDraft.name,
+        exercises: merged.exercises ?? state.planDraft.exercises,
+      };
+    },
+    planEditConsumed(state, action: PayloadAction<string>) {
+      if (state.planEdit?.id === action.payload) state.planEdit = undefined;
+    },
   },
 });
 
@@ -241,5 +331,7 @@ export const {
   screenCleared,
   buildEditRequested,
   buildEditConsumed,
+  planEditRequested,
+  planEditConsumed,
 } = aiSlice.actions;
 export default aiSlice.reducer;

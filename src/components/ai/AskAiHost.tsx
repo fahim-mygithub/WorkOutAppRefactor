@@ -266,6 +266,7 @@ export function AskAiHost() {
       defaultGoal: now.trackedLifts.lastGoal ?? 'volume',
       buildHasDraft: now.ai.buildHasDraft,
       buildDraft: now.ai.buildDraft,
+      planDraft: now.ai.planDraft,
     });
   }, [store]);
 
