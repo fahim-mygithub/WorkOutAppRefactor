@@ -199,8 +199,11 @@ export function reuseWorkoutExercises(
 
 /**
  * Prepares planned workout exercises for live execution:
- * For tracked lifts with progression, progression is freshly computed/prescribed.
- * For other exercises, the copied weights, reps, set counts, and emphasis are preserved.
+ * Progression is freshly prescribed only for exercises explicitly linked to a
+ * tracked lift (`ex.tracked.liftId`). A name-only match keeps the plan's sets,
+ * reps, and weights, and attaches `tracked` (with `unflagged: true` when no
+ * emphasis was set) so finished sets count toward its cycle without inventing
+ * an emphasis chip.
  */
 export function preparePlannedWorkoutForExecution(
   planned: PlannedWorkout,
@@ -208,18 +211,16 @@ export function preparePlannedWorkoutForExecution(
   defaultGoal: SessionGoal = 'volume',
 ): WorkoutExercise[] {
   return planned.exercises.map((ex, exIdx) => {
-    const lift = trackedLifts.find(
-      (l) =>
-        l.id === ex.tracked?.liftId ||
-        l.name.trim().toLowerCase() === ex.exercise.name.trim().toLowerCase(),
-    );
+    const linkedLift = ex.tracked?.liftId
+      ? trackedLifts.find((l) => l.id === ex.tracked!.liftId)
+      : undefined;
 
-    if (lift && lift.progression) {
+    if (linkedLift && linkedLift.progression) {
       const goal: SessionGoal =
         ex.tracked?.goal === 'checkpoint'
           ? 'checkpoint'
           : (effectiveEmphasis(ex) ?? ex.tracked?.goal ?? defaultGoal);
-      const prescribed = prescribe(lift, goal);
+      const prescribed = prescribe(linkedLift, goal);
       const sets: WorkoutSet[] = prescribed.sets.map((set, sIdx) => ({
         id: `set-${planned.id}-${exIdx}-${sIdx}`,
         reps: typeof set.reps === 'number' ? set.reps : set.reps.min,
@@ -236,16 +237,24 @@ export function preparePlannedWorkoutForExecution(
         sets,
         restTime: prescribed.restTime || ex.restTime || 120,
         notes: prescribed.notes || ex.notes,
-        tracked: { liftId: lift.id, goal },
+        tracked: { liftId: linkedLift.id, goal },
         ...(emphasis ? { emphasis } : { emphasis: undefined }),
       };
     }
 
-    // Non-progression lift or accessory: keep exact sets/weights/reps/emphasis as planned
+    const nameMatchedLift = !ex.tracked
+      ? trackedLifts.find(
+          (l) => l.name.trim().toLowerCase() === ex.exercise.name.trim().toLowerCase(),
+        )
+      : undefined;
+
+    // Non-progression lift, name-only match, or accessory: keep exact sets/weights/reps/emphasis as planned
     return syncExerciseEmphasis({
       ...ex,
-      ...(lift && !ex.tracked && {
-        tracked: { liftId: lift.id, goal: ex.emphasis ?? defaultGoal },
+      ...(nameMatchedLift && {
+        tracked: ex.emphasis
+          ? { liftId: nameMatchedLift.id, goal: ex.emphasis }
+          : { liftId: nameMatchedLift.id, goal: nameMatchedLift.lastGoal ?? 'volume', unflagged: true },
       }),
     });
   });

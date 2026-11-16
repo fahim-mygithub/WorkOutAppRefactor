@@ -690,3 +690,45 @@ describe('toAssistantTurn', () => {
     ]);
   });
 });
+
+describe('startWorkout preserves explicit plan and saved weights', () => {
+  it('keeps explicit plan weights and no emphasis when a tracked lift matches only by name', () => {
+    const dbBenchLift = {
+      id: 'l-db-bench',
+      name: 'Dumbbell Bench Press',
+      category: 'Push' as const,
+      progression: true,
+      load: { kind: 'weight' as const, value: 100, unit: 'lb' as const },
+      target: { kind: 'reps' as const, min: 8, max: 12 },
+    };
+    const planned = {
+      id: 'plan-db',
+      dateKey: '2026-11-16',
+      name: 'Chest + Shoulders',
+      status: 'planned' as const,
+      createdAt: '',
+      exercises: [
+        {
+          id: 'pe-db',
+          exercise: { id: 'x-db', name: 'Dumbbell Bench Press' },
+          sets: [0, 1, 2, 3].map((k) => ({ id: `ps-${k}`, reps: 8, weight: 90, unit: 'lbs' as const, completed: false })),
+        } as unknown as WorkoutExercise,
+      ],
+    };
+    const startCtx: PlanContext = {
+      activeWorkout: null,
+      trackedLifts: [dbBenchLift],
+      library: [{ id: 'x-db', name: 'Dumbbell Bench Press' }] as never,
+      plannedWorkouts: [planned],
+      todayKey: '2026-11-16',
+      defaultGoal: 'volume',
+    };
+
+    const plan = confirm(planToolCall({ id: 'sw-1', name: 'startWorkout', input: { today: true } }, startCtx));
+    const state = run(reducer(undefined, { type: '@@init' }), plan.apply);
+    const ex = state.activeWorkout!.exercises[0];
+    expect(ex.sets).toHaveLength(4);
+    expect(ex.sets.every((s) => s.reps === 8 && s.weight === 90)).toBe(true);
+    expect(ex.emphasis).toBeUndefined();
+  });
+});
