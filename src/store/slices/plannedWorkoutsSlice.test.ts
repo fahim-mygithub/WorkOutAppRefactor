@@ -7,6 +7,7 @@ import reducer, {
   planSkipped,
   plansMerged,
   plannedWorkoutsHydrated,
+  updatePlanned,
   selectOverduePlans,
   selectPlansForToday,
   selectUpcomingPlans,
@@ -83,6 +84,56 @@ describe('plannedWorkoutsSlice', () => {
     };
     const next = reducer(initial, planSkipped('plan-1'));
     expect(next.plans[0].status).toBe('skipped');
+  });
+
+  it('updates an existing plan name and exercises and refreshes updatedAt', () => {
+    const initial: PlannedWorkoutsState = {
+      status: 'ready',
+      plans: [{ ...samplePlan, updatedAt: '2026-10-22T10:00:00.000Z' }],
+    };
+    const nextExercises = [
+      {
+        id: 'ex-1',
+        exercise: {
+          id: 'squat',
+          name: 'Back Squat',
+          muscleGroup: 'Legs',
+          muscleGroups: ['Legs'],
+          equipment: 'Barbell',
+          videoLinks: [],
+          instructions: [],
+          difficulty: 'Intermediate' as const,
+          force: null,
+          grips: null,
+          mechanic: null,
+          searchKeywords: [],
+          createdAt: '',
+          updatedAt: '',
+        },
+        sets: [{ id: 's-1', reps: 5, weight: 225, unit: 'lbs' as const, completed: false }],
+        restTime: 180,
+      },
+    ];
+    const next = reducer(
+      initial,
+      updatePlanned({
+        id: 'plan-1',
+        name: 'Lower Strength',
+        exercises: nextExercises,
+      }),
+    );
+    expect(next.plans[0].name).toBe('Lower Strength');
+    expect(next.plans[0].exercises).toEqual(nextExercises);
+    expect(next.plans[0].updatedAt).not.toBe('2026-10-22T10:00:00.000Z');
+  });
+
+  it('ignores updatePlanned for unknown plan id', () => {
+    const initial: PlannedWorkoutsState = {
+      status: 'ready',
+      plans: [samplePlan],
+    };
+    const next = reducer(initial, updatePlanned({ id: 'missing', name: 'Nope' }));
+    expect(next.plans).toEqual([samplePlan]);
   });
 
   describe('plansMerged', () => {

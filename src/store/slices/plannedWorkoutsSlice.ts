@@ -121,6 +121,29 @@ export const plannedWorkoutsSlice = createSlice({
       }
     },
 
+    updatePlanned(
+      state,
+      action: PayloadAction<{
+        id: string;
+        name?: string;
+        exercises?: WorkoutExercise[];
+        dateKey?: DateKey;
+      }>,
+    ) {
+      const plan = state.plans.find((p) => p.id === action.payload.id);
+      if (!plan) return;
+      if (action.payload.name !== undefined) {
+        plan.name = action.payload.name;
+      }
+      if (action.payload.exercises !== undefined) {
+        plan.exercises = action.payload.exercises;
+      }
+      if (action.payload.dateKey !== undefined) {
+        plan.dateKey = action.payload.dateKey;
+      }
+      plan.updatedAt = new Date().toISOString();
+    },
+
     plannedWorkoutsReset() {
       return { ...initialState };
     },
@@ -135,6 +158,7 @@ export const {
   planRemoved,
   planMarkedDone,
   planSkipped,
+  updatePlanned,
   plannedWorkoutsReset,
 } = plannedWorkoutsSlice.actions;
 

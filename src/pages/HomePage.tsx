@@ -72,7 +72,7 @@ export default function HomePage() {
   }
 
   return (
-    <div className="mx-auto flex max-w-xl flex-col gap-8 px-4 pb-10 pt-5">
+    <div className="mx-auto flex max-w-xl flex-col gap-8 overflow-x-hidden px-4 pb-28 pt-5">
       <WelcomeHero />
 
       <TodayWorkout workoutHistory={workoutHistory} isLoading={isCalendarLoading} />
