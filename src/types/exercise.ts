@@ -18,23 +18,24 @@ export function emphasisOfGoal(goal: SessionGoal | undefined): ExerciseEmphasis 
  */
 export function effectiveEmphasis(ex: {
   emphasis?: unknown;
-  tracked?: { goal?: SessionGoal };
+  tracked?: { goal?: SessionGoal; unflagged?: boolean };
 }): ExerciseEmphasis | undefined {
   if (ex.tracked?.goal === 'checkpoint') return undefined;
   if (ex.emphasis === 'volume' || ex.emphasis === 'strength') return ex.emphasis;
+  if (ex.tracked?.unflagged) return undefined;
   return emphasisOfGoal(ex.tracked?.goal);
 }
 
 /**
  * Keeps `emphasis` and `tracked.goal` in sync on any exercise object:
  * - `checkpoint` goals drop `emphasis`
- * - setting `emphasis` updates `tracked.goal` when `tracked` is present
- * - a `tracked.goal` of `'volume' | 'strength'` populates `emphasis` when unset
+ * - setting `emphasis` updates `tracked.goal` when `tracked` is present (and clears `unflagged`)
+ * - a `tracked.goal` of `'volume' | 'strength'` populates `emphasis` when unset, unless `unflagged`
  */
 export function syncExerciseEmphasis<
   T extends {
     emphasis?: ExerciseEmphasis;
-    tracked?: { liftId: string; goal: SessionGoal };
+    tracked?: { liftId: string; goal: SessionGoal; unflagged?: boolean };
   },
 >(ex: T): T {
   if (ex.tracked?.goal === 'checkpoint') {
@@ -43,8 +44,11 @@ export function syncExerciseEmphasis<
     return rest as T;
   }
   const emp = effectiveEmphasis(ex);
-  const nextTracked =
-    ex.tracked && emp && ex.tracked.goal !== emp ? { ...ex.tracked, goal: emp } : ex.tracked;
+  let nextTracked = ex.tracked;
+  if (ex.tracked && emp && (ex.tracked.goal !== emp || ex.tracked.unflagged)) {
+    const { unflagged: _dropped, ...restTracked } = ex.tracked;
+    nextTracked = { ...restTracked, goal: emp };
+  }
   if (ex.emphasis === emp && nextTracked === ex.tracked) return ex;
   const out = { ...ex } as T;
   if (emp) out.emphasis = emp;
@@ -109,8 +113,8 @@ export interface WorkoutExercise {
   supersetId?: string;
   supersetIndex?: number; // Index within the superset (0, 1, 2...)
   supersetExerciseIds?: string[]; // Only populated for the first exercise in superset
-  /** Built from a tracked lift (Build page); finished sets count toward its cycle. */
-  tracked?: { liftId: string; goal: 'volume' | 'strength' | 'checkpoint' };
+  /** Built from a tracked lift (Build page) or matched by name at start; finished sets count toward its cycle. `unflagged` suppresses chip inference when auto-linked without an emphasis. */
+  tracked?: { liftId: string; goal: 'volume' | 'strength' | 'checkpoint'; unflagged?: boolean };
   /** Per-exercise Volume / Strength training emphasis ('volume' | 'strength'). */
   emphasis?: ExerciseEmphasis;
 }

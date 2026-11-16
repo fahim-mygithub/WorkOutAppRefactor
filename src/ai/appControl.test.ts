@@ -134,21 +134,37 @@ describe('startWorkout', () => {
     expect(plan.detail).toContain('Changed: Barbell Bench Press 185 lb, Barbell Row 4 sets × 6 reps');
   });
 
-  it('lets the prescription logic set a tracked lift, unless the lifter named a weight', () => {
+  it('keeps saved weights for unlinked exercises, and lets progression prescribe linked lifts unless overridden', () => {
     const lift: TrackedLift = {
       id: 'l-bench', name: 'Barbell Bench Press', category: 'Push', progression: true,
       load: { kind: 'weight', value: 265, unit: 'lb' }, target: { kind: 'repMax', reps: 1 },
     };
     const withLift = { ...ctx, trackedLifts: [lift], defaultGoal: 'volume' as const };
-    const engine = prescribe(lift, 'volume').sets.map((s) => s.weight);
     const own = started(planToolCall({ id: 's4', name: 'startWorkout', input: { workoutId: 'w-push' } }, withLift));
-    expect(own.exercises[0].tracked).toEqual({ liftId: 'l-bench', goal: 'volume' });
-    expect(own.exercises[0].sets.map((s) => s.weight)).toEqual(engine);
+    expect(own.exercises[0].tracked).toEqual({ liftId: 'l-bench', goal: 'volume', unflagged: true });
+    expect(own.exercises[0].emphasis).toBeUndefined();
+    expect(own.exercises[0].sets.map((s) => s.weight)).toEqual([135, 135, 135]);
+
+    const linkedPlan: PlannedWorkout = {
+      ...planned,
+      id: 'plan-linked',
+      exercises: [{
+        id: 'pe-linked',
+        exercise: bench,
+        tracked: { liftId: 'l-bench', goal: 'volume' },
+        sets: [{ id: 'ps0', reps: 8, weight: 135, unit: 'lbs', completed: false }],
+      } as WorkoutExercise],
+    };
+    const withLinked = { ...withLift, plannedWorkouts: [linkedPlan] };
+    const engine = prescribe(lift, 'volume').sets.map((s) => s.weight);
+    const linked = started(planToolCall({ id: 's4b', name: 'startWorkout', input: { planId: 'plan-linked' } }, withLinked));
+    expect(linked.exercises[0].tracked).toEqual({ liftId: 'l-bench', goal: 'volume' });
+    expect(linked.exercises[0].sets.map((s) => s.weight)).toEqual(engine);
     expect(engine).not.toContain(135);
 
     const named = started(planToolCall({
-      id: 's5', name: 'startWorkout', input: { workoutId: 'w-push', overrides: [{ exerciseName: 'Barbell Bench Press', weight: 200 }] },
-    }, withLift));
+      id: 's5', name: 'startWorkout', input: { planId: 'plan-linked', overrides: [{ exerciseName: 'Barbell Bench Press', weight: 200 }] },
+    }, withLinked));
     expect(named.exercises[0].sets.every((s) => s.weight === 200)).toBe(true);
     expect(named.exercises[0].tracked?.liftId).toBe('l-bench');
   });

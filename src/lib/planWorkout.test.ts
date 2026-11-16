@@ -124,4 +124,90 @@ describe('planWorkout helper', () => {
     expect(curl.sets[0].weight).toBe(30);
     expect(curl.sets[0].reps).toBe(12);
   });
+
+  it('keeps explicit plan weights and no emphasis when a name-matched tracked lift has no tracked link', () => {
+    const dbBenchLift: TrackedLift = {
+      id: 'lift-db-bench',
+      name: 'Dumbbell Bench Press',
+      category: 'Push',
+      load: { kind: 'weight', value: 100, unit: 'lb' },
+      target: { kind: 'reps', min: 8, max: 12 },
+      progression: true,
+      lastGoal: 'strength',
+      cycle: { volume: 0, strength: 0 },
+    };
+
+    const planned: PlannedWorkout = {
+      id: 'p-explicit',
+      dateKey: '2026-11-16',
+      name: 'Chest + Shoulders',
+      status: 'planned',
+      createdAt: '2026-11-16',
+      exercises: [
+        {
+          id: 'ex-1',
+          exercise: {
+            id: 'db-bench',
+            name: 'Dumbbell Bench Press',
+            muscleGroup: 'Chest',
+            muscleGroups: ['Chest'],
+            equipment: 'Dumbbell',
+            videoLinks: [],
+            instructions: [],
+            difficulty: 'Intermediate',
+            force: null,
+            grips: null,
+            mechanic: null,
+            searchKeywords: [],
+            createdAt: '',
+            updatedAt: '',
+          },
+          sets: [0, 1, 2, 3].map((k) => ({
+            id: `s-${k}`,
+            reps: 8,
+            weight: 90,
+            unit: 'lbs' as const,
+            completed: false,
+          })),
+        },
+        {
+          id: 'ex-2',
+          exercise: {
+            id: 'incline-db',
+            name: 'Incline Dumbbell Press',
+            muscleGroup: 'Chest',
+            muscleGroups: ['Chest'],
+            equipment: 'Dumbbell',
+            videoLinks: [],
+            instructions: [],
+            difficulty: 'Intermediate',
+            force: null,
+            grips: null,
+            mechanic: null,
+            searchKeywords: [],
+            createdAt: '',
+            updatedAt: '',
+          },
+          emphasis: 'strength',
+          sets: [0, 1, 2].map((k) => ({
+            id: `s2-${k}`,
+            reps: 6,
+            weight: 80,
+            unit: 'lbs' as const,
+            completed: false,
+          })),
+        },
+      ],
+    };
+
+    const ready = preparePlannedWorkoutForExecution(planned, [dbBenchLift], 'volume');
+    const dbBench = ready[0];
+    expect(dbBench.sets).toHaveLength(4);
+    expect(dbBench.sets.every((s) => s.reps === 8 && s.weight === 90)).toBe(true);
+    expect(dbBench.emphasis).toBeUndefined();
+
+    const incline = ready[1];
+    expect(incline.emphasis).toBe('strength');
+    expect(incline.sets.every((s) => s.reps === 6 && s.weight === 80)).toBe(true);
+  });
 });
