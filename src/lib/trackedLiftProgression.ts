@@ -13,7 +13,7 @@
 import { estimateOneRepMax } from './oneRepMax';
 import { smoothedSessionE1RM } from './progression';
 import type { ParsedExercise, ParsedSet } from '../parser/types';
-import type { WorkoutExercise } from '../types/exercise';
+import { effectiveEmphasis, emphasisOfGoal, type WorkoutExercise } from '../types/exercise';
 import type {
   PendingBest,
   SessionGoal,
@@ -176,7 +176,12 @@ const ATTEMPT_FRACTION = 1.02;
  */
 export function prescribe(lift: TrackedLift, goal: SessionGoal): TrackedParsedExercise {
   const tracked = { liftId: lift.id, goal };
-  const base = { name: lift.name, tracked };
+  const emphasis = emphasisOfGoal(goal);
+  const base: { name: string; tracked: { liftId: string; goal: SessionGoal }; emphasis?: TrainingGoal } = {
+    name: lift.name,
+    tracked,
+    ...(emphasis ? { emphasis } : {}),
+  };
   const { load, target } = lift;
 
   if (load.kind === 'weight') {
@@ -402,9 +407,11 @@ export function trackedSessionsFromWorkout(
         return log;
       });
     if (sets.length === 0) continue;
+    const sessionGoal: SessionGoal =
+      ex.tracked.goal === 'checkpoint' ? 'checkpoint' : (effectiveEmphasis(ex) ?? ex.tracked.goal);
     const entry = byLift.get(lift.id);
     if (entry) entry.sets.push(...sets);
-    else byLift.set(lift.id, { liftId: lift.id, goal: ex.tracked.goal, sets });
+    else byLift.set(lift.id, { liftId: lift.id, goal: sessionGoal, sets });
   }
   return [...byLift.values()];
 }

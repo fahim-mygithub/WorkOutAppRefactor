@@ -18,6 +18,7 @@ import { useToast } from '../../hooks/useToast';
 import { ToastContainer } from '../Toast';
 import { cn } from '../../lib/utils';
 import { formatDateTime, formatDuration, formatShortDate } from './historyFormat';
+import { EmphasisChip } from '../plan/EmphasisChip';
 
 interface CompletedWorkoutCardProps {
   workout: WorkoutSummary;
@@ -259,7 +260,10 @@ export const CompletedWorkoutCard: React.FC<CompletedWorkoutCardProps> = ({
                     className={cn('flex items-center gap-4 px-4 py-3', index > 0 && 'border-t border-hairline')}
                   >
                     <span className="min-w-0 flex-1">
-                      <span className="block truncate text-body-sm font-semibold text-ink">{exercise.exerciseName}</span>
+                      <span className="flex flex-wrap items-center gap-2">
+                        <span className="truncate text-body-sm font-semibold text-ink">{exercise.exerciseName}</span>
+                        <EmphasisChip emphasis={exercise.emphasis} />
+                      </span>
                       <span className="block text-caption text-ink-muted">
                         {exercise.sets} sets · {Math.round(exercise.reps / exercise.sets)} reps avg
                       </span>

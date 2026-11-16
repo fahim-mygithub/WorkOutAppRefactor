@@ -9,10 +9,8 @@ import ai, {
   askAiOpened,
   buildEditRequested,
   MAX_CHAT_MESSAGES_KEPT,
-  planEditRequested,
   screenPublished,
 } from '../store/slices/aiSlice';
-import { toDateKey } from '../lib/dateKey';
 import type { StorageLike } from '../lib/workoutSession';
 import { chatStorageKey, initChatPersistence, loadChat } from './chatPersistence';
 import type { AiTranscriptMessage } from './types';
@@ -166,36 +164,6 @@ describe('chat persistence and the screen snapshot', () => {
     expect(second.getState().ai.chat.messages).toHaveLength(1);
     expect(second.getState().ai.screen).toBeUndefined();
     expect(second.getState().ai.chat.decisions.p1).toBe('expired');
-  });
-
-  it('never stores the plan-edit snapshot or plan draft edits, and expires undecided plan cards on reload', () => {
-    const today = toDateKey(new Date());
-    const storage = memoryStorage();
-    const store = boot(storage, 'u1');
-    store.dispatch(screenPublished({
-      tab: 'plan-edit',
-      title: 'Plan editor',
-      summary: 'SECRET-PLAN-SUMMARY',
-      data: { planId: 'SECRET-ID', name: 'SECRET-PLAN-NAME', date: today, exercises: [] },
-      planDraft: { planId: 'SECRET-ID', date: today, name: 'SECRET-DRAFT-NAME', exercises: [] },
-    }));
-    store.dispatch(planEditRequested({ id: 'pe1', planId: 'SECRET-ID', name: 'SECRET-PLAN-EDIT' }));
-    say(store, {
-      id: 'm1',
-      role: 'assistant',
-      text: 'Updated draft.',
-      proposals: [{ id: 'p-plan', tool: 'editPlanExercise', summary: 'Changed Bench on plan' }],
-    });
-    const stored = storage.data.get(chatStorageKey('u1')) ?? '';
-    expect(stored).toContain('Updated draft.');
-    expect(stored).not.toContain('SECRET');
-
-    const reloaded = boot(storage, 'u1');
-    expect(reloaded.getState().ai.chat.messages).toHaveLength(1);
-    expect(reloaded.getState().ai.screen).toBeUndefined();
-    expect(reloaded.getState().ai.planDraft).toBeUndefined();
-    expect(reloaded.getState().ai.planEdit).toBeUndefined();
-    expect(reloaded.getState().ai.chat.decisions['p-plan']).toBe('expired');
   });
 });
 

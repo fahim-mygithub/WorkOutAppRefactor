@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Navigate, useNavigate } from 'react-router-dom';
 import { LayoutTemplate, PersonStanding, PencilRuler, Dumbbell, Flag } from 'lucide-react';
 import { useAppDispatch, useAppSelector } from '../store/hooks';
 import { useExercises } from '../hooks/useExercises';
@@ -133,6 +133,7 @@ export default function BuildWizardPage() {
   // custom builder's Visual tab (BuildPage reads `location.state.trackedLifts`).
   const trackedLifts = useAppSelector((s) => s.trackedLifts.lifts);
   const goal: TrainingGoal = useAppSelector((s) => s.trackedLifts.lastGoal) ?? 'volume';
+  const buildPreset = useAppSelector((s) => s.ai?.buildPreset);
   const [selectedLiftIds, setSelectedLiftIds] = useState<string[]>([]);
   // Order follows the list, not click order; deleted lifts drop out.
   const selectedLifts = trackedLifts.filter((l) => selectedLiftIds.includes(l.id));
@@ -295,6 +296,10 @@ export default function BuildWizardPage() {
   };
 
   // -- render -----------------------------------------------------------------
+
+  if (buildPreset) {
+    return <Navigate to="/build/custom" replace />;
+  }
 
   if (screen === 'chooser') {
     return (

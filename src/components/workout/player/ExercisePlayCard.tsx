@@ -5,13 +5,14 @@
 import React, { useState } from 'react';
 import { useReducedMotion } from 'framer-motion';
 import { Pencil, BookOpen, Dumbbell, History, Link2, Check, Replace, MessageCircle } from 'lucide-react';
-import type { WorkoutExercise, WorkoutSet } from '../../../types/exercise';
+import { effectiveEmphasis, type WorkoutExercise, type WorkoutSet } from '../../../types/exercise';
 import type { ExerciseHistory } from '../../../types/exerciseHistory';
 import type { InSessionDecision } from '@/types/progression';
 import { formatRepRange } from '@/lib/progression/setPrescription';
 import { transformVideoUrl } from '../../../utils/videoHelpers';
 import { SetInput } from '../../SetInput';
 import { InSessionSuggestion } from './InSessionSuggestion';
+import { EmphasisChip } from '../../plan/EmphasisChip';
 import { IconButton } from '@/components/ui/icon-button';
 import { Modal, ModalContent, ModalTitle, ModalDescription } from '@/components/ui/modal';
 import { cn } from '@/lib/utils';
@@ -136,9 +137,12 @@ export const ExercisePlayCard: React.FC<ExercisePlayCardProps> = ({
           movement name in the display voice. */}
       <div className="flex shrink-0 items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="font-num font-tabular text-body-sm font-semibold text-accent-2">
-            Set {Math.min(currentSetIndex + 1, Math.max(sets.length, 1))} of {sets.length}
-          </p>
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="font-num font-tabular text-body-sm font-semibold text-accent-2">
+              Set {Math.min(currentSetIndex + 1, Math.max(sets.length, 1))} of {sets.length}
+            </p>
+            <EmphasisChip emphasis={effectiveEmphasis(exercise)} />
+          </div>
           <h2 className="mt-1 line-clamp-2 font-display text-[28px] leading-[1.05] text-ink">
             {title}
           </h2>

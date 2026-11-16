@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Play, Calendar, Trash2, CalendarPlus, SkipForward, ChevronRight } from 'lucide-react';
+import { Play, Calendar, Trash2, CalendarPlus, SkipForward, Pencil } from 'lucide-react';
 import { Card, CardBody } from '../ui/card';
 import { Button } from '../ui/button';
 import { IconButton } from '../ui/icon-button';
@@ -7,8 +7,10 @@ import { usePlannedWorkouts } from '../../hooks/usePlannedWorkouts';
 import { useAppSelector } from '../../store/hooks';
 import { generateWorkoutIcs, downloadIcsFile } from '../../lib/ics';
 import { toDateKey, dateKeyToDate } from '../../lib/dateKey';
+import { effectiveEmphasis } from '../../types/exercise';
 import { PlanDateModal } from './PlanDateModal';
-import { PlanEditSheet } from './PlanEditSheet';
+import { EmphasisChip } from './EmphasisChip';
+import { useEditPlannedWorkout } from './useEditPlannedWorkout';
 import type { PlannedWorkout } from '../../store/slices/plannedWorkoutsSlice';
 
 function formatPlanDate(dateKey: string): string {
@@ -22,6 +24,24 @@ function formatPlanDate(dateKey: string): string {
   } catch {
     return dateKey;
   }
+}
+
+function PlanExerciseEmphasisList({ plan }: { plan: PlannedWorkout }) {
+  const flagged = plan.exercises.filter((ex) => effectiveEmphasis(ex));
+  if (flagged.length === 0) return null;
+  return (
+    <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+      {flagged.map((ex) => (
+        <span
+          key={ex.id}
+          className="inline-flex max-w-full items-center gap-1 text-caption text-ink-muted"
+        >
+          <span className="truncate">{ex.customTitle || ex.exercise.name}</span>
+          <EmphasisChip emphasis={effectiveEmphasis(ex)} />
+        </span>
+      ))}
+    </div>
+  );
 }
 
 export const PlannedWorkoutsSection: React.FC = () => {
@@ -40,7 +60,7 @@ export const PlannedWorkoutsSection: React.FC = () => {
   );
 
   const [movingPlan, setMovingPlan] = useState<PlannedWorkout | null>(null);
-  const [editingPlan, setEditingPlan] = useState<PlannedWorkout | null>(null);
+  const { requestEditPlan, handlePlanCardClick, replaceDraftDialog } = useEditPlannedWorkout();
 
   const handleAddToCalendar = (plan: PlannedWorkout) => {
     const exerciseList = plan.exercises.map((e) => e.exercise.name).join(', ');
@@ -86,23 +106,20 @@ export const PlannedWorkoutsSection: React.FC = () => {
 
           <div className="flex flex-col gap-3">
             {todayPlans.map((plan) => (
-              <Card key={plan.id} className="border-accent/40 bg-surface-raised/40">
+              <Card
+                key={plan.id}
+                onClick={(e) => handlePlanCardClick(e, plan)}
+                className="cursor-pointer border-accent/40 bg-surface-raised/40"
+              >
                 <CardBody className="p-4">
                   <div className="flex flex-col gap-3">
-                    <button
-                      type="button"
-                      onClick={() => setEditingPlan(plan)}
-                      aria-label={`Edit ${plan.name}`}
-                      className="-mx-2 -mt-1 flex min-h-touch-min min-w-0 items-center justify-between gap-3 rounded-xl px-2 py-1.5 text-left transition-colors duration-snap hover:bg-surface-raised/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface"
-                    >
-                      <div className="min-w-0 flex-1">
-                        <h3 className="break-words text-title font-semibold text-ink">{plan.name}</h3>
-                        <p className="text-body-sm text-ink-muted">
-                          {plan.exercises.length} exercise{plan.exercises.length === 1 ? '' : 's'}
-                        </p>
-                      </div>
-                      <ChevronRight className="h-5 w-5 shrink-0 text-ink-muted" aria-hidden="true" />
-                    </button>
+                    <div className="min-w-0">
+                      <h3 className="break-words text-title font-semibold text-ink">{plan.name}</h3>
+                      <p className="text-body-sm text-ink-muted">
+                        {plan.exercises.length} exercise{plan.exercises.length === 1 ? '' : 's'}
+                      </p>
+                      <PlanExerciseEmphasisList plan={plan} />
+                    </div>
 
                     <div className="flex flex-wrap items-center gap-2">
                       <Button
@@ -112,6 +129,15 @@ export const PlannedWorkoutsSection: React.FC = () => {
                       >
                         <Play className="h-4 w-4" fill="currentColor" aria-hidden="true" />
                         Start
+                      </Button>
+                      <Button
+                        variant="secondary"
+                        size="md"
+                        onClick={() => requestEditPlan(plan)}
+                        aria-label={`Edit ${plan.name}`}
+                      >
+                        <Pencil className="h-4 w-4" aria-hidden="true" />
+                        Edit
                       </Button>
                       <Button
                         variant="secondary"
@@ -161,28 +187,25 @@ export const PlannedWorkoutsSection: React.FC = () => {
 
           <div className="flex flex-col gap-3">
             {overduePlans.map((plan) => (
-              <Card key={plan.id} className="border-danger/30 bg-surface-subtle">
+              <Card
+                key={plan.id}
+                onClick={(e) => handlePlanCardClick(e, plan)}
+                className="cursor-pointer border-danger/30 bg-surface-subtle"
+              >
                 <CardBody className="p-4">
                   <div className="flex flex-col gap-3">
-                    <button
-                      type="button"
-                      onClick={() => setEditingPlan(plan)}
-                      aria-label={`Edit ${plan.name}`}
-                      className="-mx-2 -mt-1 flex min-h-touch-min min-w-0 items-center justify-between gap-3 rounded-xl px-2 py-1.5 text-left transition-colors duration-snap hover:bg-surface-raised/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface"
-                    >
-                      <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-                          <h3 className="break-words text-body font-semibold text-ink">{plan.name}</h3>
-                          <span className="text-caption text-ink-muted">
-                            (Planned {formatPlanDate(plan.dateKey)})
-                          </span>
-                        </div>
-                        <p className="text-body-sm text-ink-muted">
-                          {plan.exercises.length} exercise{plan.exercises.length === 1 ? '' : 's'}
-                        </p>
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                        <h3 className="break-words text-body font-semibold text-ink">{plan.name}</h3>
+                        <span className="text-caption text-ink-muted">
+                          (Planned {formatPlanDate(plan.dateKey)})
+                        </span>
                       </div>
-                      <ChevronRight className="h-5 w-5 shrink-0 text-ink-muted" aria-hidden="true" />
-                    </button>
+                      <p className="text-body-sm text-ink-muted">
+                        {plan.exercises.length} exercise{plan.exercises.length === 1 ? '' : 's'}
+                      </p>
+                      <PlanExerciseEmphasisList plan={plan} />
+                    </div>
 
                     <div className="flex flex-wrap items-center gap-2">
                       <Button
@@ -192,6 +215,15 @@ export const PlannedWorkoutsSection: React.FC = () => {
                       >
                         <Play className="h-4 w-4" fill="currentColor" aria-hidden="true" />
                         Start today
+                      </Button>
+                      <Button
+                        variant="secondary"
+                        size="md"
+                        onClick={() => requestEditPlan(plan)}
+                        aria-label={`Edit ${plan.name}`}
+                      >
+                        <Pencil className="h-4 w-4" aria-hidden="true" />
+                        Edit
                       </Button>
                       <Button
                         variant="secondary"
@@ -227,25 +259,28 @@ export const PlannedWorkoutsSection: React.FC = () => {
             {upcomingPlans.map((plan) => (
               <div
                 key={plan.id}
-                className="flex items-center justify-between gap-2 rounded-xl border border-hairline bg-surface p-2 pl-3"
+                onClick={(e) => handlePlanCardClick(e, plan)}
+                className="flex cursor-pointer flex-wrap items-center justify-between gap-2 rounded-xl border border-hairline bg-surface p-2 pl-3"
               >
-                <button
-                  type="button"
-                  onClick={() => setEditingPlan(plan)}
-                  aria-label={`Edit ${plan.name}`}
-                  className="flex min-h-touch-min min-w-0 flex-1 items-center justify-between gap-2 rounded-lg px-1 py-1 text-left transition-colors duration-snap hover:bg-surface-raised/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface"
-                >
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-body-sm font-semibold text-ink">{plan.name}</p>
-                    <p className="truncate text-caption text-ink-muted">
-                      {formatPlanDate(plan.dateKey)} · {plan.exercises.length} exercise
-                      {plan.exercises.length === 1 ? '' : 's'}
-                    </p>
-                  </div>
-                  <ChevronRight className="h-4 w-4 shrink-0 text-ink-muted" aria-hidden="true" />
-                </button>
+                <div className="min-w-0 flex-1 py-1">
+                  <p className="truncate text-body-sm font-semibold text-ink">{plan.name}</p>
+                  <p className="truncate text-caption text-ink-muted">
+                    {formatPlanDate(plan.dateKey)} · {plan.exercises.length} exercise
+                    {plan.exercises.length === 1 ? '' : 's'}
+                  </p>
+                  <PlanExerciseEmphasisList plan={plan} />
+                </div>
 
                 <div className="flex shrink-0 items-center gap-0.5">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => requestEditPlan(plan)}
+                    aria-label={`Edit ${plan.name}`}
+                  >
+                    <Pencil className="h-3.5 w-3.5" aria-hidden="true" />
+                    Edit
+                  </Button>
                   <IconButton
                     variant="ghost"
                     size="md"
@@ -297,12 +332,7 @@ export const PlannedWorkoutsSection: React.FC = () => {
         />
       )}
 
-      {/* Edit Plan Sheet */}
-      <PlanEditSheet
-        plan={editingPlan}
-        open={!!editingPlan}
-        onOpenChange={(open) => !open && setEditingPlan(null)}
-      />
+      {replaceDraftDialog}
     </div>
   );
 };

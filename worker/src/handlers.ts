@@ -172,7 +172,8 @@ export async function handleChat(
       console.warn('model emitted unknown tool', name);
       return;
     }
-    const parsed = validator.safeParse(withoutNulls(block.input) ?? block.input);
+    const direct = validator.safeParse(block.input);
+    const parsed = direct.success ? direct : validator.safeParse(withoutNulls(block.input) ?? block.input);
     if (!parsed.success) {
       console.warn('tool input failed validation; dropping call', name, JSON.stringify(parsed.error.issues));
       return;

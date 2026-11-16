@@ -4,6 +4,7 @@ import { ParsedExercise } from '../../parser/types';
 import { useAppSelector } from '../../store/hooks';
 import { Card } from '../ui/card';
 import { IconButton } from '../ui/icon-button';
+import { EmphasisChip } from '../plan/EmphasisChip';
 import { Check, ChevronDown, Loader2 } from 'lucide-react';
 
 interface RealtimePreviewProps {
@@ -85,7 +86,10 @@ export const RealtimePreview: React.FC<RealtimePreviewProps> = ({
     return (
       <li key={`${exercise.name}-${index}`} className="py-3">
         <div className="flex items-baseline justify-between gap-3">
-          <span className="min-w-0 truncate text-body font-semibold text-ink">{exercise.name}</span>
+          <div className="flex min-w-0 items-center gap-2">
+            <span className="min-w-0 truncate text-body font-semibold text-ink">{exercise.name}</span>
+            <EmphasisChip emphasis={exercise.emphasis} />
+          </div>
           <span className="shrink-0 text-body-sm text-ink-muted">
             <span className="font-tabular">{sets.length}</span> set{sets.length !== 1 ? 's' : ''}
           </span>

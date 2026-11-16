@@ -17,7 +17,7 @@ import {
   readSharedSessionFlag,
   type ActivePlanContext,
 } from '../lib/workoutSession';
-import type { ActiveWorkout } from '../types/exercise';
+import { effectiveEmphasis, type ActiveWorkout } from '../types/exercise';
 import type { WorkoutSummary } from '../types/exerciseHistory';
 
 /**
@@ -38,7 +38,15 @@ export function buildLocalSummary(workout: ActiveWorkout, userId: string): Worko
     totalSets += sets;
     totalReps += reps;
     totalVolume += volume;
-    return { exerciseId: we.exercise.id, exerciseName: we.exercise.name, sets, reps, volume };
+    const emphasis = effectiveEmphasis(we);
+    return {
+      exerciseId: we.exercise.id,
+      exerciseName: we.exercise.name,
+      sets,
+      reps,
+      volume,
+      ...(emphasis ? { emphasis } : {}),
+    };
   });
   return {
     id: `local-${workout.id}`,

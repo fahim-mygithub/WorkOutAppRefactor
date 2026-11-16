@@ -23,7 +23,7 @@ console.log('🔍 WorkoutStorageService Firebase db check:', {
 });
 import { ParsedWorkout } from '../parser/types';
 import { CustomExercise } from './customExerciseService';
-import { ActiveWorkout } from '../types/exercise';
+import { ActiveWorkout, effectiveEmphasis } from '../types/exercise';
 import { ExerciseHistoryService } from './exerciseHistoryService';
 
 export interface SavedWorkout {
@@ -493,6 +493,7 @@ export class WorkoutStorageService {
         const completedSets = exercise.sets.filter(set => set.completed);
 
         if (completedSets.length > 0) {
+          const emphasis = effectiveEmphasis(exercise);
           return ExerciseHistoryService.saveExercisePerformance(userId, {
             exerciseId: exercise.exercise.id,
             exerciseName: exercise.exercise.name,
@@ -511,7 +512,8 @@ export class WorkoutStorageService {
             muscleGroups: exercise.exercise.muscleGroups || [],
             equipment: exercise.exercise.equipment || '',
             ...(exercise.notes && { notes: exercise.notes }),
-            ...(exercise.customTitle && { customTitle: exercise.customTitle })
+            ...(exercise.customTitle && { customTitle: exercise.customTitle }),
+            ...(emphasis && { emphasis }),
           });
         }
         return null;

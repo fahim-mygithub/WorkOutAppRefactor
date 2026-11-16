@@ -7,10 +7,11 @@
 // reply still in flight for the old conversation is dropped, not appended.
 import { createSlice, type PayloadAction, type UnknownAction } from '@reduxjs/toolkit';
 import type { AiProposalDecision, AiToolCall, AiTranscriptMessage } from '../../ai/types';
-import type { AiEffect } from '../../ai/effects';
-import type { SavedWorkoutDraft } from '../../ai/effects';
-import type { PlanDraftExercise, PlanDraftState } from '../../ai/planDraft';
+import type { AiEffect, SavedWorkoutDraft } from '../../ai/effects';
 import { capScreen, type BuildDraftState, type ScreenSnapshot } from '../../ai/screenSnapshot';
+import type { DateKey } from '../../lib/dateKey';
+import type { TrackedParsedExercise } from '../../lib/trackedLiftProgression';
+import type { ParsedExercise } from '../../parser/types';
 
 /** Most transcript messages kept (and persisted). */
 export const MAX_CHAT_MESSAGES_KEPT = 60;
@@ -31,11 +32,27 @@ export interface AiChatState {
   decisions: Record<string, AiProposalDecision>;
 }
 
-/** A workout the assistant put on the Build screen, waiting for Build to show it. */
+export interface BuildPlanEditTarget {
+  planId: string;
+  dateKey: DateKey;
+  exercises?: TrackedParsedExercise[];
+}
+
+/** A workout loaded onto the Build screen (from AI or from Edit on a planned workout). */
 export interface BuildPreset {
   id: string;
   name: string;
   workout: SavedWorkoutDraft;
+  planEdit?: BuildPlanEditTarget;
+}
+
+/** Unsaved Builder state kept in memory across route hops while buildHasDraft is true. */
+export interface StashedBuildDraft {
+  workoutName: string;
+  workoutText: string;
+  editedWorkout: { exercises: TrackedParsedExercise[]; supersets: ParsedExercise[][] } | null;
+  activeTab: string;
+  editingPlan: BuildPlanEditTarget | null;
 }
 
 /**
@@ -50,19 +67,6 @@ export interface BuildEdit {
   text?: string;
 }
 
-/**
- * A change the assistant made to the open PlanEditSheet draft, waiting for the
- * sheet to apply it to its own local state.
- */
-export interface PlanEdit {
-  id: string;
-  planId: string;
-  /** New planned workout name, when the edit changes it. */
-  name?: string;
-  /** New draft exercises, when the edit changes them. */
-  exercises?: PlanDraftExercise[];
-}
-
 export interface AiState {
   open: boolean;
   /** A first message to send when the sheet opens (e.g. from Ask coach). */
@@ -74,25 +78,21 @@ export interface AiState {
   chat: AiChatState;
   /** Confirm cards of this chat still applyable in this session, by proposal id. */
   pending: Record<string, AiPendingCall>;
-  /** Set by loadIntoBuild on Apply; Build shows it, then clears it. */
+  /** Set by loadIntoBuild or Edit on a planned workout; Build shows it, then clears it. */
   buildPreset?: BuildPreset;
   /** Whether the Build screen has content the lifter has not saved. */
   buildHasDraft: boolean;
+  /** Unsaved Builder state preserved across route switches until saved or cleared. */
+  stashedBuildDraft?: StashedBuildDraft;
   /**
    * What the mounted screen shows, published by the screen and cleared when it
    * unmounts. Capped; sent with each chat turn; never persisted with the chat.
    */
   screen?: ScreenSnapshot;
-  /** Latest non-modal tab screen, restored when a modal sheet (plan-edit) closes. */
-  underneathScreen?: ScreenSnapshot;
   /** The Build page's draft, for planning the Build edit tools. Never sent as is. */
   buildDraft?: BuildDraftState;
   /** An assistant edit the Build page has yet to apply, then clears. */
   buildEdit?: BuildEdit;
-  /** The PlanEditSheet's draft while open, for planning plan edit tools. Never sent as is. */
-  planDraft?: PlanDraftState;
-  /** An assistant edit PlanEditSheet has yet to apply, then clears. */
-  planEdit?: PlanEdit;
 }
 
 let chatSeq = 0;
@@ -189,12 +189,18 @@ const aiSlice = createSlice({
 
     buildPresetSet(state, action: PayloadAction<BuildPreset>) {
       state.buildPreset = action.payload;
+      state.stashedBuildDraft = undefined;
     },
     buildPresetConsumed(state, action: PayloadAction<string>) {
       if (state.buildPreset?.id === action.payload) state.buildPreset = undefined;
     },
     buildDraftChanged(state, action: PayloadAction<boolean>) {
       state.buildHasDraft = action.payload;
+      if (!action.payload) state.stashedBuildDraft = undefined;
+    },
+    buildDraftStashed(state, action: PayloadAction<StashedBuildDraft | null>) {
+      state.stashedBuildDraft = action.payload ?? undefined;
+      state.buildHasDraft = !!action.payload;
     },
 
     /**
@@ -205,44 +211,10 @@ const aiSlice = createSlice({
      */
     screenPublished(
       state,
-      action: PayloadAction<
-        ScreenSnapshot & { draft?: BuildDraftState; planDraft?: PlanDraftState }
-      >,
+      action: PayloadAction<ScreenSnapshot & { draft?: BuildDraftState }>,
     ) {
-      const { draft, planDraft, ...snapshot } = action.payload;
-      const capped = capScreen(snapshot);
-
-      if (snapshot.tab === 'plan-edit') {
-        state.screen = capped;
-        state.buildDraft = undefined;
-        if (!planDraft) {
-          state.planDraft = undefined;
-          state.planEdit = undefined;
-          return;
-        }
-        if (state.planEdit && state.planEdit.planId !== planDraft.planId) {
-          state.planEdit = undefined;
-        }
-        const pending = state.planEdit;
-        state.planDraft = {
-          planId: planDraft.planId,
-          date: planDraft.date,
-          name: pending?.name ?? planDraft.name,
-          exercises: pending?.exercises ?? planDraft.exercises,
-        };
-        return;
-      }
-
-      state.underneathScreen = capped;
-      // PlanEditSheet is a modal over Today: Today re-publishing updates the
-      // underlying screen without replacing the open modal's snapshot.
-      if (state.screen?.tab === 'plan-edit' && snapshot.tab === 'today') {
-        return;
-      }
-
-      state.screen = capped;
-      state.planDraft = undefined;
-      state.planEdit = undefined;
+      const { draft, ...snapshot } = action.payload;
+      state.screen = capScreen(snapshot);
       if (snapshot.tab !== 'build' || !draft) {
         state.buildDraft = undefined;
         return;
@@ -255,17 +227,6 @@ const aiSlice = createSlice({
     },
     /** The screen of `tab` went away. Ignored when another screen has published since. */
     screenCleared(state, action: PayloadAction<ScreenSnapshot['tab']>) {
-      if (action.payload === 'plan-edit') {
-        state.planDraft = undefined;
-        state.planEdit = undefined;
-        if (state.screen?.tab === 'plan-edit') {
-          state.screen = state.underneathScreen;
-        }
-        return;
-      }
-      if (state.underneathScreen?.tab === action.payload) {
-        state.underneathScreen = undefined;
-      }
       if (state.screen && state.screen.tab !== action.payload) return;
       state.screen = undefined;
       state.buildDraft = undefined;
@@ -289,28 +250,6 @@ const aiSlice = createSlice({
     buildEditConsumed(state, action: PayloadAction<string>) {
       if (state.buildEdit?.id === action.payload) state.buildEdit = undefined;
     },
-    /** An assistant edit of the open PlanEditSheet draft; ignored while closed or for another plan. */
-    planEditRequested(state, action: PayloadAction<PlanEdit>) {
-      if (!state.planDraft || state.planDraft.planId !== action.payload.planId) return;
-      const { id, planId, name, exercises } = action.payload;
-      const merged: PlanEdit = {
-        id,
-        planId,
-        ...((name ?? state.planEdit?.name) !== undefined ? { name: name ?? state.planEdit?.name } : {}),
-        ...((exercises ?? state.planEdit?.exercises) !== undefined
-          ? { exercises: exercises ?? state.planEdit?.exercises }
-          : {}),
-      };
-      state.planEdit = merged;
-      state.planDraft = {
-        ...state.planDraft,
-        name: merged.name ?? state.planDraft.name,
-        exercises: merged.exercises ?? state.planDraft.exercises,
-      };
-    },
-    planEditConsumed(state, action: PayloadAction<string>) {
-      if (state.planEdit?.id === action.payload) state.planEdit = undefined;
-    },
   },
 });
 
@@ -327,11 +266,10 @@ export const {
   buildPresetSet,
   buildPresetConsumed,
   buildDraftChanged,
+  buildDraftStashed,
   screenPublished,
   screenCleared,
   buildEditRequested,
   buildEditConsumed,
-  planEditRequested,
-  planEditConsumed,
 } = aiSlice.actions;
 export default aiSlice.reducer;

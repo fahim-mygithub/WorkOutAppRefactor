@@ -322,4 +322,18 @@ describe('buildTrackedWorkout per-lift goals', () => {
     expect(single.exercises[0]).toEqual(prescribe(bench, 'strength'));
     expect(buildTrackedWorkout([bench], null).exercises[0].tracked).toBeUndefined();
   });
+
+  it('syncs emphasis with tracked.goal for volume/strength and leaves checkpoint with no emphasis', () => {
+    const vol = prescribe(bench, 'volume');
+    expect(vol.tracked).toEqual({ liftId: 'bench', goal: 'volume' });
+    expect(vol.emphasis).toBe('volume');
+
+    const str = prescribe(bench, 'strength');
+    expect(str.tracked).toEqual({ liftId: 'bench', goal: 'strength' });
+    expect(str.emphasis).toBe('strength');
+
+    const cp = prescribe(bench, 'checkpoint');
+    expect(cp.tracked).toEqual({ liftId: 'bench', goal: 'checkpoint' });
+    expect(cp.emphasis).toBeUndefined();
+  });
 });

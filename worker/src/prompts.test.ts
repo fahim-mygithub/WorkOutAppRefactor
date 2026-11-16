@@ -105,23 +105,21 @@ describe('CHAT_SYSTEM_PROMPT screen awareness', () => {
     expect(CHAT_SYSTEM_PROMPT).toContain('`screen`');
     expect(CHAT_SYSTEM_PROMPT).toContain('without tools');
   });
-  it('gives each Build edit tool a line, scoped to the Build tab', () => {
+  it('gives each Build edit tool a line, scoped to the Build tab, including setBuildEmphasis', () => {
     expect(line('setBuildName')).toHaveLength(1);
     expect(line('editBuildExercise')).toHaveLength(1);
+    expect(line('setBuildEmphasis')).toHaveLength(1);
+    expect(CHAT_SYSTEM_PROMPT).toContain('to mark an exercise volume or strength use setBuildEmphasis');
     expect(line('addBuildExercise / removeBuildExercise')).toHaveLength(1);
     expect(CHAT_SYSTEM_PROMPT).toContain("only while the context's `tab` is build");
     expect(CHAT_SYSTEM_PROMPT).toContain('loadIntoBuild replaces all of it');
+    for (const retired of ['plan-edit', 'setPlanName', 'editPlanExercise', 'addPlanExercise', 'removePlanExercise']) {
+      expect(CHAT_SYSTEM_PROMPT).not.toContain(retired);
+    }
   });
   it('keeps the live-workout tools for the workout tab', () => {
     expect(CHAT_SYSTEM_PROMPT).toContain('Active workout editing:');
     expect(line('addSets')).toHaveLength(1);
-  });
-  it('gives each plan editor tool a single line, scoped to the plan editor screen', () => {
-    expect(CHAT_SYSTEM_PROMPT).toContain('plan-edit');
-    expect(CHAT_SYSTEM_PROMPT).toContain('plan editor');
-    for (const tool of ['setPlanName', 'editPlanExercise', 'addPlanExercise', 'removePlanExercise']) {
-      expect(line(tool)).toHaveLength(1);
-    }
   });
   it('stays byte-stable: no per-request values in the prompt', () => {
     expect(CHAT_SYSTEM_PROMPT).not.toMatch(/\d{4}-\d{2}-\d{2}/);

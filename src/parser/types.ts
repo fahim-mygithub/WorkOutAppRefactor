@@ -1,3 +1,5 @@
+import type { ExerciseEmphasis } from '../types/exercise';
+
 export interface ParsedSet {
   reps: number | { min: number; max: number };
   weight?: number;
@@ -12,6 +14,8 @@ export interface ParsedExercise {
   sets: ParsedSet[];
   notes?: string;
   restTime?: number;
+  emphasis?: ExerciseEmphasis;
+  supersetGroup?: number;
 }
 
 export interface ParsedWorkout {

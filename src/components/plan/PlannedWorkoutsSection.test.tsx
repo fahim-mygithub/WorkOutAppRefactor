@@ -7,6 +7,7 @@ import plannedWorkoutsReducer, { planAdded } from '../../store/slices/plannedWor
 import workoutReducer from '../../store/slices/workoutSlice';
 import userReducer from '../../store/slices/userSlice';
 import trackedLiftsReducer from '../../store/slices/trackedLiftsSlice';
+import aiReducer, { buildDraftChanged } from '../../store/slices/aiSlice';
 import { PlannedWorkoutsSection } from './PlannedWorkoutsSection';
 import { toDateKey, addDaysKey } from '../../lib/dateKey';
 import * as icsLib from '../../lib/ics';
@@ -32,6 +33,7 @@ describe('PlannedWorkoutsSection', () => {
         workout: workoutReducer,
         user: userReducer,
         trackedLifts: trackedLiftsReducer,
+        ai: aiReducer,
       },
     });
 
@@ -60,8 +62,9 @@ describe('PlannedWorkoutsSection', () => {
               createdAt: '',
               updatedAt: '',
             },
-            sets: [],
+            sets: [{ id: 's-1', reps: 5, weight: 205, unit: 'lbs', completed: false }],
             restTime: 120,
+            emphasis: 'strength',
           },
         ],
       }),
@@ -143,30 +146,38 @@ describe('PlannedWorkoutsSection', () => {
     expect(missed?.status).toBe('skipped');
   });
 
-  it('opens PlanEditSheet when tapping a today plan card and saves edits', () => {
-    const { store } = setup();
+  it('navigates to /build with plan loaded via both explicit Edit button and card tap, and shows emphasis chip', () => {
+    const { store, today } = setup();
 
-    const editTrigger = screen.getByRole('button', { name: /edit push day today/i });
-    fireEvent.click(editTrigger);
+    expect(screen.getByText('Strength')).toBeInTheDocument();
 
-    const nameInput = screen.getByLabelText(/workout name/i) as HTMLInputElement;
-    expect(nameInput.value).toBe('Push Day Today');
+    const editBtn = screen.getByRole('button', { name: /edit push day today/i });
+    fireEvent.click(editBtn);
 
-    fireEvent.change(nameInput, { target: { value: 'Push Day Edited' } });
-    fireEvent.click(screen.getByRole('button', { name: /save/i }));
+    expect(mockNavigate).toHaveBeenCalledWith('/build');
+    expect(store.getState().ai.buildPreset?.planEdit).toMatchObject({
+      planId: 'plan-today',
+      dateKey: today,
+    });
+    expect(store.getState().ai.buildPreset?.workout.workoutText).toContain('[strength]');
 
-    const updated = store.getState().plannedWorkouts.plans.find((p) => p.id === 'plan-today');
-    expect(updated?.name).toBe('Push Day Edited');
-    expect(screen.getByText('Push Day Edited')).toBeInTheDocument();
+    // Card tap on an upcoming plan row also loads the plan and navigates to /build
+    mockNavigate.mockClear();
+    fireEvent.click(screen.getByText('Pull Day Tomorrow'));
+    expect(mockNavigate).toHaveBeenCalledWith('/build');
+    expect(store.getState().ai.buildPreset?.planEdit?.planId).toBe('plan-upcoming');
   });
 
-  it('opens PlanEditSheet when tapping an upcoming plan row', () => {
-    setup();
+  it('asks before replacing an unsaved Build draft when editing a plan', () => {
+    const { store } = setup();
+    store.dispatch(buildDraftChanged(true));
 
-    const editTrigger = screen.getByRole('button', { name: /edit pull day tomorrow/i });
-    fireEvent.click(editTrigger);
+    fireEvent.click(screen.getByRole('button', { name: /edit push day today/i }));
+    expect(mockNavigate).not.toHaveBeenCalled();
+    expect(screen.getByText('This replaces what is on the Build screen now.')).toBeInTheDocument();
 
-    const nameInput = screen.getByLabelText(/workout name/i) as HTMLInputElement;
-    expect(nameInput.value).toBe('Pull Day Tomorrow');
+    fireEvent.click(screen.getByRole('button', { name: /replace draft/i }));
+    expect(mockNavigate).toHaveBeenCalledWith('/build');
+    expect(store.getState().ai.buildPreset?.planEdit?.planId).toBe('plan-today');
   });
 });

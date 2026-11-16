@@ -30,7 +30,7 @@ import {
   type SetPatch,
 } from '../store/slices/workoutSlice';
 import { planAdded, planRemoved, type PlannedWorkout } from '../store/slices/plannedWorkoutsSlice';
-import { buildEditRequested, buildPresetSet, planEditRequested } from '../store/slices/aiSlice';
+import { buildEditRequested, buildPresetSet } from '../store/slices/aiSlice';
 import type { SavedWorkout } from '../services/workoutStorageService';
 import type { ActivePlanContext } from '../lib/workoutSession';
 import { preparePlannedWorkoutForExecution } from '../lib/planWorkout';
@@ -60,18 +60,10 @@ import {
   addDraftExercise,
   editDraftExercise,
   removeDraftExercise,
+  setDraftEmphasis,
   type DraftChange,
   type DraftEdit,
 } from './buildDraft';
-import {
-  addPlanDraftExercise,
-  editPlanDraftExercise,
-  findPlanDraftExercise,
-  removePlanDraftExercise,
-  type PlanChange,
-  type PlanDraftEdit,
-  type PlanDraftState,
-} from './planDraft';
 import type { BuildDraftState } from './screenSnapshot';
 import type { AiAppTab, AiAssistantTurn, AiToolCall } from './types';
 
@@ -110,8 +102,6 @@ export interface PlanContext {
   buildHasDraft?: boolean;
   /** The Build page's draft while it is open (the Build edit tools plan against it). */
   buildDraft?: BuildDraftState;
-  /** The PlanEditSheet's draft while it is open (the plan edit tools plan against it). */
-  planDraft?: PlanDraftState;
 }
 
 /** What the host does once a confirm plan is applied (outside the store). */
@@ -1229,66 +1219,29 @@ export function planToolCall(call: ToolCallForPlan | AiToolCall, ctx: PlanContex
       };
     }
 
-    case 'setPlanName': {
-      const draft = ctx.planDraft;
-      if (!draft) return reject(NO_PLAN_EDIT);
-      const name = str(i.name);
-      if (!name || name.length > 80) return reject('That name is not valid.');
-      if (name === draft.name.trim()) return reject(`The workout is already named "${name}".`);
-      return {
-        kind: 'auto',
-        id,
-        summary: `Named the planned workout "${name}"`,
-        apply: [planEditRequested({ id: `plan-${id}`, planId: draft.planId, name })],
-        undo: [planEditRequested({ id: `plan-undo-${id}`, planId: draft.planId, name: draft.name })],
-      };
-    }
-
-    case 'editPlanExercise':
-    case 'addPlanExercise':
-    case 'removePlanExercise': {
-      const draft = ctx.planDraft;
-      if (!draft) return reject(NO_PLAN_EDIT);
+    case 'setBuildEmphasis': {
+      const draft = ctx.buildDraft;
+      if (!draft) return reject(NO_BUILD);
       const asked = str(i.exerciseName);
       if (!asked) return reject('No exercise was named.');
+      if (i.emphasis !== 'volume' && i.emphasis !== 'strength' && i.emphasis !== null) {
+        return reject('Emphasis must be volume, strength, or null.');
+      }
       const same = (a: string, b: string): boolean => {
         const x = libraryMatch(ctx, a);
         return !!x && x.id === libraryMatch(ctx, b)?.id;
       };
-      const defaultUnit: 'lbs' | 'kg' = ctx.units ?? 'lbs';
-      let edit: PlanDraftEdit;
-      let summary = '';
-      if (call.name === 'removePlanExercise') {
-        edit = removePlanDraftExercise(draft.exercises, asked, { same });
-        if (edit.ok) summary = `Removed ${edit.name} from plan`;
-      } else if (call.name === 'editPlanExercise') {
-        const existing = findPlanDraftExercise(draft.exercises, asked, same);
-        const checkUnit = typeof existing === 'string' ? defaultUnit : existing.unit;
-        const change = readPlanChange(i, checkUnit, false);
-        if (typeof change === 'string') return reject(change);
-        edit = editPlanDraftExercise(draft.exercises, asked, change, { same });
-        if (edit.ok) summary = `Changed ${edit.name} on plan to ${edit.line}`;
-      } else {
-        const change = readPlanChange(i, defaultUnit, true);
-        if (typeof change === 'string') return reject(change);
-        const matched = libraryMatch(ctx, asked);
-        if (!matched) return reject(`"${asked}" is not in the exercise library.`);
-        edit = addPlanDraftExercise(
-          draft.exercises,
-          id,
-          plainExercise(matched),
-          change,
-          { same, defaultUnit },
-        );
-        if (edit.ok) summary = `Added ${edit.line} to plan`;
-      }
+      const edit = setDraftEmphasis(draft.text, asked, i.emphasis, { same });
       if (!edit.ok) return reject(edit.reason);
+      const summary = i.emphasis
+        ? `Marked ${edit.name} as ${i.emphasis} on Build`
+        : `Cleared emphasis on ${edit.name}`;
       return {
         kind: 'auto',
         id,
         summary,
-        apply: [planEditRequested({ id: `plan-${id}`, planId: draft.planId, exercises: edit.exercises })],
-        undo: [planEditRequested({ id: `plan-undo-${id}`, planId: draft.planId, exercises: draft.exercises })],
+        apply: [buildEditRequested({ id: `build-${id}`, text: edit.text })],
+        undo: [buildEditRequested({ id: `build-undo-${id}`, text: draft.text })],
       };
     }
 
@@ -1302,53 +1255,6 @@ export function planToolCall(call: ToolCallForPlan | AiToolCall, ctx: PlanContex
 // ---------------------------------------------------------------------------
 
 const NO_BUILD = 'The Build screen is not open, so there is no draft to edit. Open Build first.';
-const NO_PLAN_EDIT = 'The plan editor is not open, so there is no draft to edit — open the plan first.';
-
-/** sets / reps / weight / unit of a plan editor tool call, checked; or the reason it is not valid. */
-function readPlanChange(
-  i: Record<string, unknown>,
-  defaultUnit: 'lbs' | 'kg',
-  allowEmpty: boolean,
-): PlanChange | string {
-  const change: PlanChange = {};
-  if (i.sets !== undefined) {
-    const n = index(i.sets);
-    if (!n || n > 10) return 'Sets must be 1–10.';
-    change.sets = n;
-  }
-  if (i.reps !== undefined) {
-    const n = index(i.reps);
-    if (!n || n > 100) return 'Reps must be 1–100.';
-    change.reps = n;
-  }
-  if (i.unit !== undefined) {
-    if (i.unit !== 'lbs' && i.unit !== 'kg') return 'Unit must be lbs or kg.';
-    change.unit = i.unit;
-  }
-  if (i.weight !== undefined) {
-    const w = num(i.weight);
-    if (w === undefined || w < 0) return 'Load must be zero or more.';
-    if (w > 2_000) return 'That load is not realistic.';
-    if (w > 0) {
-      const unit = change.unit ?? defaultUnit;
-      const check = checkProposedLoad(w, null, unit === 'kg' ? 'kg' : 'lb');
-      if (!check.ok) return check.reason;
-      change.weight = check.value;
-    } else {
-      change.weight = 0;
-    }
-  }
-  if (
-    !allowEmpty &&
-    change.sets === undefined &&
-    change.reps === undefined &&
-    change.weight === undefined &&
-    change.unit === undefined
-  ) {
-    return 'Nothing to change.';
-  }
-  return change;
-}
 
 /** sets / reps / repsMax / weight / unit of a Build tool call, checked; or the reason it is not valid. */
 function readBuildChange(i: Record<string, unknown>, defaultUnit: 'lbs' | 'kg'): DraftChange | string {
