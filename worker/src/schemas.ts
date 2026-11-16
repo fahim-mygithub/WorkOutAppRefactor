@@ -57,7 +57,7 @@ export const screenContextSchema = z.union([
   z.enum(['workout', 'build', 'other']),
   z
     .object({
-      tab: z.enum(['today', 'workout', 'build', 'library', 'profile', 'other']),
+      tab: z.enum(['today', 'workout', 'build', 'library', 'profile', 'plan-edit', 'other']),
       title: z.string().max(120),
       summary: z.string().max(1_200),
       data: z.unknown().optional(),

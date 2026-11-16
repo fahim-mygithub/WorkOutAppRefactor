@@ -57,10 +57,17 @@ export type AiToolName =
   | 'setBuildName'
   | 'editBuildExercise'
   | 'addBuildExercise'
-  | 'removeBuildExercise';
+  | 'removeBuildExercise'
+  | 'setPlanName'
+  | 'editPlanExercise'
+  | 'addPlanExercise'
+  | 'removePlanExercise';
 
 /** The app's bottom-nav tabs, as openTab names them. */
 export type AiAppTab = 'today' | 'workout' | 'build' | 'library' | 'profile';
+
+/** Screens that publish snapshots (bottom-nav tabs plus modal sheets). */
+export type AiScreenTab = AiAppTab | 'plan-edit';
 
 /** Tool input as validated by the Worker; the planner narrows it per tool. */
 export type AiToolInput = Record<string, unknown>;
@@ -74,7 +81,7 @@ export interface AiToolCall<TInput extends AiToolInput = AiToolInput> {
 
 /** The visible screen's snapshot as sent to the Worker (see `screenSnapshot.ts`). */
 export interface AiScreenContext {
-  tab: AiAppTab | 'other';
+  tab: AiScreenTab | 'other';
   title: string;
   summary: string;
   data?: unknown;

@@ -3,9 +3,11 @@
 // Undo that restores the prior text, and refuses what does not fit.
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { configureStore } from '@reduxjs/toolkit';
-import ai, { buildEditConsumed, screenCleared, screenPublished } from '../store/slices/aiSlice';
+import ai, { buildEditConsumed, planEditConsumed, screenCleared, screenPublished } from '../store/slices/aiSlice';
+import { toDateKey } from '../lib/dateKey';
 import type { Exercise } from '../types/exercise';
 import { planToolCall, type PlanContext, type ToolPlan } from './applyTool';
+import { planEditorScreen, toPlanDraftExercises } from './planDraft';
 import type { AiToolCall } from './types';
 
 const library = [
@@ -176,5 +178,175 @@ describe('setBuildName', () => {
     // The page publishes its state before it has consumed the edit.
     store.dispatch(screenPublished({ tab: 'build', title: 'Build workout', summary: 'x', draft: { name: 'Push', text: TEXT } }));
     expect(store.getState().ai.buildDraft?.name).toBe('Pull day');
+  });
+});
+
+function setupPlan(name = 'Upper Push') {
+  const today = toDateKey(new Date());
+  const store = configureStore({ reducer: { ai } });
+  const initialExercises = toPlanDraftExercises(
+    [
+      {
+        id: 'pe-bench',
+        exercise: library[0],
+        sets: [
+          { id: 's1', reps: 8, weight: 135, unit: 'lbs', completed: false },
+          { id: 's2', reps: 8, weight: 135, unit: 'lbs', completed: false },
+          { id: 's3', reps: 8, weight: 135, unit: 'lbs', completed: false },
+        ],
+        restTime: 120,
+      },
+      {
+        id: 'pe-pull',
+        exercise: library[2],
+        sets: [
+          { id: 's4', reps: 10, unit: 'lbs', completed: false },
+          { id: 's5', reps: 10, unit: 'lbs', completed: false },
+          { id: 's6', reps: 10, unit: 'lbs', completed: false },
+          { id: 's7', reps: 10, unit: 'lbs', completed: false },
+        ],
+        restTime: 90,
+      },
+    ],
+    'lbs',
+  );
+  store.dispatch(screenPublished(planEditorScreen({ planId: 'plan-1', date: today, name, exercises: initialExercises })));
+  const ctx = (): PlanContext => ({
+    activeWorkout: null,
+    trackedLifts: [],
+    library,
+    units: 'lbs',
+    planDraft: store.getState().ai.planDraft,
+  });
+  const plan = (callName: AiToolCall['name'], input: Record<string, unknown>, id = 'c1') =>
+    planToolCall({ id, name: callName, input }, ctx());
+  const auto = (p: ToolPlan) => {
+    if (p.kind !== 'auto') throw new Error(p.kind === 'rejected' ? p.reason : p.kind);
+    return p;
+  };
+  const settle = () => {
+    const edit = store.getState().ai.planEdit;
+    if (edit) store.dispatch(planEditConsumed(edit.id));
+    return store.getState().ai.planDraft;
+  };
+  return { store, ctx, plan, auto, settle, initialExercises };
+}
+
+describe('editPlanExercise', () => {
+  it('plans an auto edit of one exercise and leaves the rest of the plan draft alone', () => {
+    const { store, plan, auto, settle } = setupPlan();
+    const p = auto(plan('editPlanExercise', { exerciseName: 'Bench Press', sets: 5, reps: 5, weight: 155, unit: 'lbs' }));
+    expect(p.summary).toContain('Barbell Bench Press');
+    p.apply.forEach((a) => store.dispatch(a));
+    const draft = settle()!;
+    expect(draft.exercises[0]).toMatchObject({ setsCount: '5', reps: '5', weight: '155', unit: 'lbs' });
+    expect(draft.exercises[1]).toMatchObject({ setsCount: '4', reps: '10', weight: '', unit: 'lbs' });
+  });
+
+  it('Undo restores the prior exercise draft values', () => {
+    const { store, plan, auto, settle, initialExercises } = setupPlan();
+    const p = auto(plan('editPlanExercise', { exerciseName: 'Pull Ups', sets: 3, reps: 12, weight: 25, unit: 'kg' }));
+    p.apply.forEach((a) => store.dispatch(a));
+    expect(settle()?.exercises[1]).toMatchObject({ setsCount: '3', reps: '12', weight: '25', unit: 'kg' });
+    p.undo.forEach((a) => store.dispatch(a));
+    expect(settle()?.exercises).toEqual(initialExercises);
+  });
+
+  it('clears weight when weight is 0', () => {
+    const { store, plan, auto, settle } = setupPlan();
+    const p = auto(plan('editPlanExercise', { exerciseName: 'Barbell Bench Press', weight: 0 }));
+    p.apply.forEach((a) => store.dispatch(a));
+    expect(settle()?.exercises[0].weight).toBe('');
+  });
+
+  it('rejects an unknown exercise, out-of-range values, and a no-op', () => {
+    const { plan } = setupPlan();
+    expect(reason(plan('editPlanExercise', { exerciseName: 'Deadlift', sets: 3 }))).toContain('"Deadlift"');
+    expect(reason(plan('editPlanExercise', { exerciseName: 'Pull Ups', sets: 11 }))).toBe('Sets must be 1–10.');
+    expect(reason(plan('editPlanExercise', { exerciseName: 'Pull Ups', reps: 101 }))).toBe('Reps must be 1–100.');
+    expect(reason(plan('editPlanExercise', { exerciseName: 'Pull Ups', weight: -5 }))).toBe('Load must be zero or more.');
+    expect(reason(plan('editPlanExercise', { exerciseName: 'Pull Ups', weight: 2_001 }))).toBe('That load is not realistic.');
+    expect(reason(plan('editPlanExercise', { exerciseName: 'Pull Ups', unit: 'stone' }))).toBe('Unit must be lbs or kg.');
+    expect(reason(plan('editPlanExercise', { exerciseName: 'Barbell Bench Press', sets: 3 }))).toBe('Barbell Bench Press is already like that.');
+    expect(reason(plan('editPlanExercise', { sets: 3 }))).toBe('No exercise was named.');
+    expect(reason(plan('editPlanExercise', { exerciseName: 'Pull Ups' }))).toBe('Nothing to change.');
+  });
+
+  it('refuses when the plan editor sheet is not open, saying open the plan first', () => {
+    const { store, plan } = setupPlan();
+    store.dispatch(screenCleared('plan-edit'));
+    expect(store.getState().ai.planDraft).toBeUndefined();
+    expect(reason(plan('editPlanExercise', { exerciseName: 'Pull Ups', sets: 3 }))).toContain('open the plan first');
+    expect(reason(plan('setPlanName', { name: 'Pull' }))).toContain('open the plan first');
+    expect(reason(plan('addPlanExercise', { exerciseName: 'Dumbbell Curl' }))).toContain('open the plan first');
+    expect(reason(plan('removePlanExercise', { exerciseName: 'Pull Ups' }))).toContain('open the plan first');
+  });
+
+  it('chains multiple plan edits in the same turn before the sheet consumes them', () => {
+    const { store, plan, auto, settle } = setupPlan();
+    auto(plan('editPlanExercise', { exerciseName: 'Pull Ups', sets: 5 }, 'a')).apply.forEach((a) => store.dispatch(a));
+    auto(plan('editPlanExercise', { exerciseName: 'Bench Press', weight: 145 }, 'b')).apply.forEach((a) => store.dispatch(a));
+    const draft = settle()!;
+    expect(draft.exercises[0].weight).toBe('145');
+    expect(draft.exercises[1].setsCount).toBe('5');
+  });
+});
+
+describe('addPlanExercise / removePlanExercise / setPlanName', () => {
+  it('adds a library exercise by matching name (3x10 default) and Undo removes it', () => {
+    const { store, plan, auto, settle, initialExercises } = setupPlan();
+    const p = auto(plan('addPlanExercise', { exerciseName: 'Bent Over Row', sets: 4, reps: 8, weight: 95 }));
+    expect(p.summary).toContain('Barbell Bent Over Row');
+    p.apply.forEach((a) => store.dispatch(a));
+    const draft = settle()!;
+    expect(draft.exercises).toHaveLength(3);
+    expect(draft.exercises[2]).toMatchObject({
+      setsCount: '4',
+      reps: '8',
+      weight: '95',
+      unit: 'lbs',
+    });
+    expect(draft.exercises[2].base.exercise.name).toBe('Barbell Bent Over Row');
+
+    p.undo.forEach((a) => store.dispatch(a));
+    expect(settle()?.exercises).toEqual(initialExercises);
+  });
+
+  it('rejects adding an unknown library exercise or one already in the plan', () => {
+    const { plan } = setupPlan();
+    expect(reason(plan('addPlanExercise', { exerciseName: 'Zercher Quagmire' }))).toBe('"Zercher Quagmire" is not in the exercise library.');
+    expect(reason(plan('addPlanExercise', { exerciseName: 'Pull Ups' }))).toContain('already in');
+  });
+
+  it('removes one exercise and Undo restores it', () => {
+    const { store, plan, auto, settle, initialExercises } = setupPlan();
+    const p = auto(plan('removePlanExercise', { exerciseName: 'pull ups' }));
+    expect(p.summary).toBe('Removed Pull Ups from plan');
+    p.apply.forEach((a) => store.dispatch(a));
+    expect(settle()?.exercises.map((e) => e.base.exercise.name)).toEqual(['Barbell Bench Press']);
+    p.undo.forEach((a) => store.dispatch(a));
+    expect(settle()?.exercises).toEqual(initialExercises);
+  });
+
+  it('rejects removing an exercise not in the plan', () => {
+    const { plan } = setupPlan();
+    expect(reason(plan('removePlanExercise', { exerciseName: 'Deadlift' }))).toContain('"Deadlift"');
+  });
+
+  it('renames the plan draft and Undo restores the old name', () => {
+    const { store, plan, auto, settle } = setupPlan('Upper Push');
+    const p = auto(plan('setPlanName', { name: 'Heavy Upper' }));
+    expect(p.summary).toContain('Heavy Upper');
+    p.apply.forEach((a) => store.dispatch(a));
+    expect(settle()?.name).toBe('Heavy Upper');
+    p.undo.forEach((a) => store.dispatch(a));
+    expect(settle()?.name).toBe('Upper Push');
+  });
+
+  it('rejects empty, overlong, or unchanged plan names', () => {
+    const { plan } = setupPlan('Upper Push');
+    expect(reason(plan('setPlanName', { name: '   ' }))).toBe('That name is not valid.');
+    expect(reason(plan('setPlanName', { name: 'x'.repeat(81) }))).toBe('That name is not valid.');
+    expect(reason(plan('setPlanName', { name: 'Upper Push' }))).toBe('The workout is already named "Upper Push".');
   });
 });

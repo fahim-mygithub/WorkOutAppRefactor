@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { Trash2 } from 'lucide-react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Sparkles, Trash2 } from 'lucide-react';
 import { Sheet, SheetContent, SheetTitle, SheetDescription } from '../ui/sheet';
 import { Button } from '../ui/button';
 import { IconButton } from '../ui/icon-button';
@@ -8,86 +8,21 @@ import { Label } from '../ui/label';
 import { ExerciseQuickAdd } from '../workout/ExerciseQuickAdd';
 import { useAppDispatch, useAppSelector } from '../../store/hooks';
 import { updatePlanned, type PlannedWorkout } from '../../store/slices/plannedWorkoutsSlice';
-import type { Exercise, WorkoutExercise, WorkoutSet } from '../../types/exercise';
+import { askAiOpened, planEditConsumed } from '../../store/slices/aiSlice';
+import { isBackendAvailable, isSignedIn } from '../../ai/aiClient';
+import {
+  buildUpdatedPlanExercise,
+  planEditorScreen,
+  toPlanDraftExercises,
+  type PlanDraftExercise,
+} from '../../ai/planDraft';
+import { usePublishScreen } from '../../ai/useScreenSnapshot';
+import type { Exercise, WorkoutExercise } from '../../types/exercise';
 
 export interface PlanEditSheetProps {
   plan: PlannedWorkout | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-}
-
-interface DraftExercise {
-  key: string;
-  base: WorkoutExercise;
-  setsCount: string;
-  reps: string;
-  weight: string;
-  unit: 'lbs' | 'kg';
-}
-
-function toDraftExercises(exercises: WorkoutExercise[], defaultUnit: 'lbs' | 'kg'): DraftExercise[] {
-  return exercises.map((ex, idx) => {
-    const firstSet = ex.sets[0];
-    const unit = firstSet?.unit ?? defaultUnit;
-    return {
-      key: `${ex.id}-${idx}`,
-      base: {
-        ...ex,
-        sets: ex.sets.map((s) => ({ ...s })),
-      },
-      setsCount: String(ex.sets.length),
-      reps: String(firstSet?.reps ?? 10),
-      weight: firstSet?.weight !== undefined && firstSet.weight > 0 ? String(firstSet.weight) : '',
-      unit,
-    };
-  });
-}
-
-function buildUpdatedExercise(draft: DraftExercise): WorkoutExercise {
-  const parsedSets = parseInt(draft.setsCount, 10);
-  const targetCount = Number.isNaN(parsedSets)
-    ? draft.base.sets.length
-    : Math.max(0, Math.min(30, parsedSets));
-
-  const parsedReps = parseInt(draft.reps, 10);
-  const targetReps = Number.isNaN(parsedReps) || parsedReps < 1
-    ? (draft.base.sets[0]?.reps ?? 10)
-    : parsedReps;
-
-  const trimmedWeight = draft.weight.trim();
-  const parsedWeight = trimmedWeight === '' ? undefined : Number(trimmedWeight);
-  const targetWeight =
-    parsedWeight !== undefined && Number.isFinite(parsedWeight) && parsedWeight > 0
-      ? parsedWeight
-      : undefined;
-
-  const existingSets = draft.base.sets;
-  const originalFirstReps = existingSets[0]?.reps;
-  const repsChanged = originalFirstReps !== targetReps;
-
-  const nextSets: WorkoutSet[] = [];
-  for (let i = 0; i < targetCount; i++) {
-    const prev = existingSets[i] ?? existingSets[existingSets.length - 1];
-    const nextSet: WorkoutSet = {
-      id: existingSets[i]?.id ?? `plan-set-${Date.now()}-${i}-${Math.random().toString(36).slice(2, 6)}`,
-      reps: targetReps,
-      ...(targetWeight !== undefined ? { weight: targetWeight } : {}),
-      unit: prev?.unit ?? draft.unit,
-      completed: false,
-      ...(!repsChanged && prev?.repMin !== undefined ? { repMin: prev.repMin } : {}),
-      ...(!repsChanged && prev?.repMax !== undefined ? { repMax: prev.repMax } : {}),
-      ...(prev?.time !== undefined ? { time: prev.time } : {}),
-      ...(prev?.distance !== undefined ? { distance: prev.distance } : {}),
-      ...(prev?.rpe !== undefined ? { rpe: prev.rpe } : {}),
-      ...(prev?.rir !== undefined ? { rir: prev.rir } : {}),
-    };
-    nextSets.push(nextSet);
-  }
-
-  return {
-    ...draft.base,
-    sets: nextSets,
-  };
 }
 
 export const PlanEditSheet: React.FC<PlanEditSheetProps> = ({
@@ -97,23 +32,49 @@ export const PlanEditSheet: React.FC<PlanEditSheetProps> = ({
 }) => {
   const dispatch = useAppDispatch();
   const defaultUnit = useAppSelector((s) => s.user?.preferences?.weightUnit ?? 'lbs');
+  const aiDisabledReason = useAppSelector((s) => s.ai?.disabledReason);
+  const planEdit = useAppSelector((s) => s.ai?.planEdit);
 
   const [activePlanId, setActivePlanId] = useState<string | null>(plan?.id ?? null);
+  const [activePlanDate, setActivePlanDate] = useState<string>(plan?.dateKey ?? '');
   const [name, setName] = useState<string>(plan?.name ?? '');
-  const [draftExercises, setDraftExercises] = useState<DraftExercise[]>(() =>
-    plan ? toDraftExercises(plan.exercises, defaultUnit) : [],
+  const [draftExercises, setDraftExercises] = useState<PlanDraftExercise[]>(() =>
+    plan ? toPlanDraftExercises(plan.exercises, defaultUnit) : [],
   );
 
   useEffect(() => {
     if (open && plan) {
       setActivePlanId(plan.id);
+      setActivePlanDate(plan.dateKey);
       setName(plan.name);
-      setDraftExercises(toDraftExercises(plan.exercises, defaultUnit));
+      setDraftExercises(toPlanDraftExercises(plan.exercises, defaultUnit));
     }
   }, [open, plan, defaultUnit]);
 
+  const snapshot = useMemo(() => {
+    if (!open || !plan || activePlanId !== plan.id) return null;
+    return planEditorScreen({
+      planId: activePlanId,
+      date: activePlanDate,
+      name,
+      exercises: draftExercises,
+    });
+  }, [open, plan, activePlanId, activePlanDate, name, draftExercises]);
+
+  usePublishScreen('plan-edit', snapshot);
+
+  useEffect(() => {
+    if (!planEdit) return;
+    if (open && activePlanId && planEdit.planId === activePlanId) {
+      if (planEdit.name !== undefined) setName(planEdit.name);
+      if (planEdit.exercises !== undefined) setDraftExercises(planEdit.exercises);
+    }
+    dispatch(planEditConsumed(planEdit.id));
+  }, [planEdit, open, activePlanId, dispatch]);
+
   const trimmedName = name.trim();
   const canSave = Boolean(activePlanId && trimmedName.length > 0);
+  const aiUsable = !aiDisabledReason && isBackendAvailable() && isSignedIn();
 
   const handleFieldChange = (
     key: string,
@@ -145,7 +106,7 @@ export const PlanEditSheet: React.FC<PlanEditSheetProps> = ({
 
     setDraftExercises((prev) => [
       ...prev,
-      ...toDraftExercises([newWorkoutExercise], defaultUnit).map((d) => ({
+      ...toPlanDraftExercises([newWorkoutExercise], defaultUnit).map((d) => ({
         ...d,
         key: `${newId}-${prev.length}`,
       })),
@@ -158,7 +119,7 @@ export const PlanEditSheet: React.FC<PlanEditSheetProps> = ({
       updatePlanned({
         id: activePlanId,
         name: trimmedName,
-        exercises: draftExercises.map(buildUpdatedExercise),
+        exercises: draftExercises.map(buildUpdatedPlanExercise),
       }),
     );
     onOpenChange(false);
@@ -167,7 +128,21 @@ export const PlanEditSheet: React.FC<PlanEditSheetProps> = ({
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent className="mx-auto max-w-lg overflow-x-hidden">
-        <SheetTitle className="text-title">Edit workout</SheetTitle>
+        <div className="flex items-center justify-between gap-3">
+          <SheetTitle className="text-title">Edit workout</SheetTitle>
+          {aiUsable ? (
+            <IconButton
+              type="button"
+              variant="ghost"
+              size="sm"
+              aria-label="Ask AI"
+              onClick={() => dispatch(askAiOpened())}
+              className="shrink-0 text-ink-muted hover:text-ink"
+            >
+              <Sparkles className="h-4 w-4" aria-hidden="true" />
+            </IconButton>
+          ) : null}
+        </div>
         <SheetDescription>
           Rename this planned session or adjust its exercises, sets, reps, and weights.
         </SheetDescription>

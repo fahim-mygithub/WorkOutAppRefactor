@@ -407,11 +407,62 @@ export const buildScreenToolSchemas = {
 } as const;
 
 // ---------------------------------------------------------------------------
+// Plan editor tools: change the planned-workout edit sheet's draft while open
+// ---------------------------------------------------------------------------
+
+const planExerciseName = z
+  .string()
+  .min(1)
+  .max(120)
+  .describe('Exercise as named in the plan editor (or the library for an add).');
+const planLoadFields = {
+  sets: z.number().int().min(1).max(10).optional().describe('Number of sets.'),
+  reps: z.number().int().min(1).max(100).optional().describe('Reps per set.'),
+  weight: z.number().min(0).finite().optional().describe('Load per set; 0 clears it.'),
+  unit: z.enum(['lbs', 'kg']).optional().describe('Unit of weight.'),
+};
+
+export const planScreenToolSchemas = {
+  setPlanName: z
+    .object({ name: z.string().min(1).max(80).describe('New workout name.') })
+    .strict()
+    .describe('Rename the planned workout in the plan editor. Only while the plan editor is open. Applies at once.'),
+
+  editPlanExercise: z
+    .object({ exerciseName: planExerciseName, ...planLoadFields })
+    .strict()
+    .refine((i) => i.sets !== undefined || i.reps !== undefined || i.weight !== undefined || i.unit !== undefined, {
+      message: 'Change at least one of sets, reps, weight or unit.',
+    })
+    .describe(
+      'Change sets / reps / weight / unit of one exercise already in the plan editor. Only while the plan editor is open. Applies at once.',
+    ),
+
+  addPlanExercise: z
+    .object({ exerciseName: planExerciseName, ...planLoadFields })
+    .strict()
+    .describe(
+      'Add a library exercise to the end of the planned workout in the plan editor. Only while the plan editor is open. Applies at once.',
+    ),
+
+  removePlanExercise: z
+    .object({ exerciseName: planExerciseName })
+    .strict()
+    .describe('Remove one exercise from the planned workout in the plan editor. Only while the plan editor is open. Applies at once.'),
+} as const;
+
+// ---------------------------------------------------------------------------
 // Assembly: Zod -> Anthropic tool definitions
 // ---------------------------------------------------------------------------
 
 /** Per-tool human descriptions surface in the API tool list via `.describe()`. */
-const allToolSchemas = { ...mutationToolSchemas, ...buildToolSchemas, ...appToolSchemas, ...buildScreenToolSchemas } as const;
+const allToolSchemas = {
+  ...mutationToolSchemas,
+  ...buildToolSchemas,
+  ...appToolSchemas,
+  ...buildScreenToolSchemas,
+  ...planScreenToolSchemas,
+} as const;
 
 export type ToolName = keyof typeof allToolSchemas;
 

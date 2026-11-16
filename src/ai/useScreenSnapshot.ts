@@ -7,16 +7,20 @@
 import { useEffect, useRef } from 'react';
 import { useAppDispatch } from '../store/hooks';
 import { screenCleared, screenPublished } from '../store/slices/aiSlice';
+import type { PlanDraftState } from './planDraft';
 import type { BuildDraftState, ScreenSnapshot } from './screenSnapshot';
-import type { AiAppTab } from './types';
+import type { AiScreenTab } from './types';
 
-export type PublishedScreen = ScreenSnapshot & { draft?: BuildDraftState };
+export type PublishedScreen = ScreenSnapshot & {
+  draft?: BuildDraftState;
+  planDraft?: PlanDraftState;
+};
 
 /**
- * @param tab      the tab this screen is (the clear on unmount only affects it)
+ * @param tab      the screen this publisher owns (the clear on unmount only affects it)
  * @param snapshot what the screen shows now; null publishes nothing yet
  */
-export function usePublishScreen(tab: AiAppTab, snapshot: PublishedScreen | null): void {
+export function usePublishScreen(tab: AiScreenTab, snapshot: PublishedScreen | null): void {
   const dispatch = useAppDispatch();
   const latest = useRef(snapshot);
   latest.current = snapshot;

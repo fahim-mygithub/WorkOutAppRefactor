@@ -11,7 +11,7 @@
  * `SCREEN_BUDGET` characters of JSON, and keys that look like secrets or
  * images are dropped whatever a publisher puts in `data`.
  */
-import type { AiAppTab } from './types';
+import type { AiScreenTab } from './types';
 
 /** Largest serialized screen block (characters), below the Worker's 3,500 cap. */
 export const SCREEN_BUDGET = 3_000;
@@ -21,7 +21,7 @@ const SUMMARY_CAP = 500;
 const SECRET_KEY = /token|secret|password|image|photo|email|api.?key|auth/i;
 
 export interface ScreenSnapshot {
-  tab: AiAppTab;
+  tab: AiScreenTab;
   title: string;
   summary: string;
   data?: unknown;

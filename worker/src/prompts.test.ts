@@ -116,6 +116,13 @@ describe('CHAT_SYSTEM_PROMPT screen awareness', () => {
     expect(CHAT_SYSTEM_PROMPT).toContain('Active workout editing:');
     expect(line('addSets')).toHaveLength(1);
   });
+  it('gives each plan editor tool a single line, scoped to the plan editor screen', () => {
+    expect(CHAT_SYSTEM_PROMPT).toContain('plan-edit');
+    expect(CHAT_SYSTEM_PROMPT).toContain('plan editor');
+    for (const tool of ['setPlanName', 'editPlanExercise', 'addPlanExercise', 'removePlanExercise']) {
+      expect(line(tool)).toHaveLength(1);
+    }
+  });
   it('stays byte-stable: no per-request values in the prompt', () => {
     expect(CHAT_SYSTEM_PROMPT).not.toMatch(/\d{4}-\d{2}-\d{2}/);
   });
