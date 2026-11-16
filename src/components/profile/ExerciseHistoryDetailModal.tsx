@@ -9,6 +9,7 @@ import { IconButton } from '../ui/icon-button';
 import { Skeleton } from '../ui/skeleton';
 import { cn } from '../../lib/utils';
 import { formatDateTime } from './historyFormat';
+import { EmphasisChip } from '../plan/EmphasisChip';
 
 interface ExerciseGroup {
   exerciseId: string;
@@ -189,7 +190,10 @@ export const ExerciseHistoryDetailModal: React.FC<ExerciseHistoryDetailModalProp
                     <li key={entry.id} className={cn('px-4 py-3', index > 0 && 'border-t border-hairline')}>
                       <div className="flex items-start gap-2">
                         <div className="min-w-0 flex-1 pt-1">
-                          <p className="text-body-sm font-semibold text-ink">{formatDateTime(entry.workoutDate)}</p>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="text-body-sm font-semibold text-ink">{formatDateTime(entry.workoutDate)}</p>
+                            <EmphasisChip emphasis={entry.emphasis} />
+                          </div>
                           {entry.workoutName && (
                             <p className="truncate text-caption text-ink-muted">{entry.workoutName}</p>
                           )}

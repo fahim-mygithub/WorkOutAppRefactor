@@ -10,6 +10,7 @@ import workoutReducer from '../../store/slices/workoutSlice';
 import trackedLiftsReducer from '../../store/slices/trackedLiftsSlice';
 import userReducer from '../../store/slices/userSlice';
 import exerciseReducer from '../../store/slices/exerciseSlice';
+import aiReducer from '../../store/slices/aiSlice';
 import { TodayWorkout } from './TodayWorkout';
 import { toDateKey, addDaysKey } from '../../lib/dateKey';
 import type { WorkoutSummary } from '../../types/exerciseHistory';
@@ -64,6 +65,7 @@ function createTestStore() {
       trackedLifts: trackedLiftsReducer,
       user: userReducer,
       exercise: exerciseReducer,
+      ai: aiReducer,
     },
   });
 }
@@ -317,5 +319,40 @@ describe('TodayWorkout', () => {
     );
 
     expect(screen.getByRole('heading', { name: 'Free day' })).toBeInTheDocument();
+  });
+
+  it('shows emphasis chips on Today hero and navigates to /build via Edit button or card tap', () => {
+    const store = createTestStore();
+    const today = toDateKey(new Date());
+
+    store.dispatch(
+      planAdded({
+        id: 'plan-hero',
+        dateKey: today,
+        name: 'Heavy Push',
+        exercises: [{ ...makeExercise('e1', 'Bench Press'), emphasis: 'strength' }],
+      }),
+    );
+
+    render(
+      <Provider store={store}>
+        <MemoryRouter>
+          <TodayWorkout workoutHistory={[]} isLoading={false} />
+        </MemoryRouter>
+      </Provider>,
+    );
+
+    expect(screen.getByText('Strength')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /edit heavy push/i }));
+    expect(mockNavigate).toHaveBeenCalledWith('/build');
+    expect(store.getState().ai.buildPreset?.planEdit).toMatchObject({
+      planId: 'plan-hero',
+      dateKey: today,
+    });
+
+    mockNavigate.mockClear();
+    fireEvent.click(screen.getByTestId('today-plan-card'));
+    expect(mockNavigate).toHaveBeenCalledWith('/build');
   });
 });

@@ -1,10 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { Exercise } from '../../types/exercise';
+import { effectiveEmphasis, Exercise, type ExerciseEmphasis } from '../../types/exercise';
+import type { TrackedLift } from '../../types/trackedLifts';
 import { ExercisePreviewModal } from './ExercisePreviewModal';
 import { ExerciseSearchModal } from './ExerciseSearchModal';
 import { useAppSelector } from '../../store/hooks';
+import { accessoryExercise, prescribe } from '../../lib/trackedLiftProgression';
+import { EmphasisChip } from '../plan/EmphasisChip';
 import { ChevronDown, GripVertical, Link2, Plus, Replace, Trash2, X } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { Button } from '../ui/button';
@@ -17,6 +20,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from '../ui/select';
+
+const EMPTY_LIFTS: TrackedLift[] = [];
+
+const isPrescriptionNote = (n: unknown): boolean =>
+  typeof n === 'string' &&
+  (/^Checkpoint:/i.test(n) || n === 'Add load or slow the tempo' || n.endsWith('; try the next step up'));
 
 // Tailwind JIT can't resolve class names built from runtime strings, so the
 // superset-group token keys (see ParsedWorkoutConfigurator.getSupersetColor)
@@ -69,6 +78,67 @@ export const ExerciseConfigCard: React.FC<ExerciseConfigCardProps> = ({
   const [showSearchModal, setShowSearchModal] = useState(false);
 
   const { weightUnit } = useAppSelector((state) => state.user.preferences);
+  const trackedLifts = useAppSelector((state) => state.trackedLifts?.lifts ?? EMPTY_LIFTS);
+
+  const currentEmphasis: ExerciseEmphasis | undefined = effectiveEmphasis(exercise);
+
+  const matchedTrackedLift = trackedLifts.find(
+    (l) =>
+      (exercise.tracked?.liftId && l.id === exercise.tracked.liftId) ||
+      l.name.trim().toLowerCase() === String(exercise.name ?? '').trim().toLowerCase(),
+  );
+
+  const handleEmphasisToggle = (option: ExerciseEmphasis) => {
+    const next: ExerciseEmphasis | undefined = currentEmphasis === option ? undefined : option;
+    if (matchedTrackedLift) {
+      if (next) {
+        if (matchedTrackedLift.progression) {
+          const prescribed = prescribe(matchedTrackedLift, next);
+          const copy = {
+            ...exercise,
+            sets: prescribed.sets,
+            restTime: prescribed.restTime ?? exercise.restTime,
+            tracked: { liftId: matchedTrackedLift.id, goal: next },
+            emphasis: next,
+          };
+          if (prescribed.notes) copy.notes = prescribed.notes;
+          else if (isPrescriptionNote(copy.notes)) delete copy.notes;
+          onUpdate(copy);
+        } else {
+          onUpdate({
+            ...exercise,
+            tracked: { liftId: matchedTrackedLift.id, goal: next },
+            emphasis: next,
+          });
+        }
+      } else {
+        const fallback = accessoryExercise(matchedTrackedLift);
+        const copy = {
+          ...exercise,
+          sets: matchedTrackedLift.progression ? fallback.sets : exercise.sets,
+          restTime: matchedTrackedLift.progression
+            ? (fallback.restTime ?? exercise.restTime)
+            : exercise.restTime,
+        };
+        if (matchedTrackedLift.progression) {
+          if (fallback.notes) copy.notes = fallback.notes;
+          else if (isPrescriptionNote(copy.notes)) delete copy.notes;
+        }
+        delete copy.emphasis;
+        delete copy.tracked;
+        onUpdate(copy);
+      }
+      return;
+    }
+
+    const copy = { ...exercise };
+    if (next) {
+      copy.emphasis = next;
+    } else {
+      delete copy.emphasis;
+    }
+    onUpdate(copy);
+  };
 
   const {
     attributes,
@@ -250,14 +320,17 @@ export const ExerciseConfigCard: React.FC<ExerciseConfigCardProps> = ({
           >
             {exercise.name}
           </button>
-          <p className="text-body-sm text-ink-muted">
-            <span className="font-tabular">{exercise.sets.length}</span> set{exercise.sets.length !== 1 ? 's' : ''}
-            {' · '}
-            <span className="font-tabular">{getRestTimeInMinutes()}</span> min rest
+          <p className="flex flex-wrap items-center gap-1.5 text-body-sm text-ink-muted">
+            <span>
+              <span className="font-tabular">{exercise.sets.length}</span> set{exercise.sets.length !== 1 ? 's' : ''}
+              {' · '}
+              <span className="font-tabular">{getRestTimeInMinutes()}</span> min rest
+            </span>
+            <EmphasisChip emphasis={currentEmphasis} />
             {isInSuperset && supersetGroup ? (
-              <span className={ssColor.text}>{` · Superset ${supersetGroup}`}</span>
+              <span className={ssColor.text}>{`· Superset ${supersetGroup}`}</span>
             ) : isInSupersetMode ? (
-              <span className="text-ink">{' · Pick a partner'}</span>
+              <span className="text-ink">{'· Pick a partner'}</span>
             ) : null}
           </p>
         </div>
@@ -289,6 +362,35 @@ export const ExerciseConfigCard: React.FC<ExerciseConfigCardProps> = ({
             aria-hidden="true"
           />
         </IconButton>
+      </div>
+
+      {/* Per-exercise Volume | Strength segmented control */}
+      <div className="mt-2 pl-7 pr-2">
+        <div
+          role="group"
+          aria-label={`${exercise.name} emphasis`}
+          className="grid w-full max-w-[14rem] grid-cols-2 gap-1 rounded-full bg-surface-subtle p-1"
+        >
+          {(['volume', 'strength'] as const).map((option) => {
+            const selected = currentEmphasis === option;
+            const label = option === 'volume' ? 'Volume' : 'Strength';
+            return (
+              <button
+                key={option}
+                type="button"
+                aria-pressed={selected}
+                onClick={() => handleEmphasisToggle(option)}
+                className={cn(
+                  'min-h-touch-min rounded-full px-3 text-body-sm font-semibold transition-colors duration-snap',
+                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent',
+                  selected ? 'bg-ink text-ink-inverse' : 'text-ink-muted hover:text-ink',
+                )}
+              >
+                {label}
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       {/* Modals */}

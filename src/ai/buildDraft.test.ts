@@ -1,5 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { addDraftExercise, draftTextForAi, DRAFT_TEXT_CAP, editDraftExercise, readDraft, removeDraftExercise } from './buildDraft';
+import {
+  addDraftExercise,
+  draftTextForAi,
+  DRAFT_TEXT_CAP,
+  editDraftExercise,
+  readDraft,
+  removeDraftExercise,
+  setDraftEmphasis,
+} from './buildDraft';
 
 const text = ['3x8 Barbell Bench Press @135lbs', '4x10-12 Pull Ups', '3x12 Dumbbell Curl @30lbs ss 3x12 Dumbbell Overhead Tricep Extension @25lbs'].join('\n');
 
@@ -10,15 +18,22 @@ beforeEach(() => {
 });
 
 describe('readDraft', () => {
-  it('lists each exercise with sets, reps and load, in line order', () => {
+  it('lists each exercise with sets, reps, load, emphasis and superset pairing, in line order', () => {
     const { exercises, issues } = readDraft(text);
     expect(exercises).toEqual([
       { name: 'Barbell Bench Press', sets: 3, reps: '8', weight: 135, unit: 'lbs' },
       { name: 'Pull Ups', sets: 4, reps: '10-12' },
-      { name: 'Dumbbell Curl', sets: 3, reps: '12', weight: 30, unit: 'lbs', superset: true },
-      { name: 'Dumbbell Overhead Tricep Extension', sets: 3, reps: '12', weight: 25, unit: 'lbs', superset: true },
+      { name: 'Dumbbell Curl', sets: 3, reps: '12', weight: 30, unit: 'lbs', superset: true, supersetGroup: 1 },
+      { name: 'Dumbbell Overhead Tricep Extension', sets: 3, reps: '12', weight: 25, unit: 'lbs', superset: true, supersetGroup: 1 },
     ]);
     expect(issues).toEqual([]);
+
+    const flagged = readDraft('3x5 Barbell Bench Press @185lbs [strength]\n3x12 Curl @30lbs [volume] ss 3x8 Skullcrusher @75lbs [strength]');
+    expect(flagged.exercises).toEqual([
+      { name: 'Barbell Bench Press', sets: 3, reps: '5', weight: 185, unit: 'lbs', emphasis: 'strength' },
+      { name: 'Curl', sets: 3, reps: '12', weight: 30, unit: 'lbs', emphasis: 'volume', superset: true, supersetGroup: 1 },
+      { name: 'Skullcrusher', sets: 3, reps: '8', weight: 75, unit: 'lbs', emphasis: 'strength', superset: true, supersetGroup: 1 },
+    ]);
   });
 
   it('reports a line that is only a name, and reads nothing from empty text', () => {
@@ -92,5 +107,49 @@ describe('addDraftExercise / removeDraftExercise', () => {
     expect(removeDraftExercise(text, 'Pull Ups')).toEqual({ ok: true, name: 'Pull Ups', line: '4x10-12 Pull Ups', text: text.split('\n').filter((l) => !l.includes('Pull Ups')).join('\n') });
     expect(removeDraftExercise(text, 'Deadlift').ok).toBe(false);
     expect(removeDraftExercise(text, 'Dumbbell Curl').ok).toBe(false);
+  });
+});
+
+describe('setDraftEmphasis', () => {
+  it('sets and clears emphasis on straight-set and superset partner lines, preserving partner flags', () => {
+    const s1 = setDraftEmphasis(text, 'Bench Press', 'strength');
+    expect(s1).toEqual({
+      ok: true,
+      name: 'Barbell Bench Press',
+      line: '3x8 Barbell Bench Press @135lbs [strength]',
+      text: text.replace('3x8 Barbell Bench Press @135lbs', '3x8 Barbell Bench Press @135lbs [strength]'),
+    });
+
+    // Edit sets/weight preserves existing [strength] tag
+    const edited = editDraftExercise(s1.ok ? s1.text : '', 'Barbell Bench Press', { weight: 145 });
+    expect(edited.ok && edited.line).toBe('3x8 Barbell Bench Press @145lbs [strength]');
+
+    // Clear with null
+    const cleared = setDraftEmphasis(s1.ok ? s1.text : '', 'Bench Press', null);
+    expect(cleared).toEqual({
+      ok: true,
+      name: 'Barbell Bench Press',
+      line: '3x8 Barbell Bench Press @135lbs',
+      text,
+    });
+
+    // Superset partners can have independent flags
+    const ssVol = setDraftEmphasis(text, 'Dumbbell Curl', 'volume');
+    expect(ssVol.ok).toBe(true);
+    const ssMixed = setDraftEmphasis(ssVol.ok ? ssVol.text : '', 'Tricep Extension', 'strength');
+    expect(ssMixed.ok && ssMixed.line).toBe(
+      '3x12 Dumbbell Curl @30lbs [volume] ss 3x12 Dumbbell Overhead Tricep Extension @25lbs [strength]',
+    );
+  });
+
+  it('rejects unknown exercises, ambiguous matches, and no-op emphasis', () => {
+    expect(setDraftEmphasis(text, 'Deadlift', 'strength')).toEqual({
+      ok: false,
+      reason: '"Deadlift" is not in the Build draft.',
+    });
+    expect(setDraftEmphasis(text, 'Pull Ups', null)).toEqual({
+      ok: false,
+      reason: 'Pull Ups already has no emphasis.',
+    });
   });
 });

@@ -24,7 +24,7 @@ import {
   ExerciseHistoryFilter,
   ProgressMetrics
 } from '../types/exerciseHistory';
-import { WorkoutExercise, ActiveWorkout } from '../types/exercise';
+import { WorkoutExercise, ActiveWorkout, effectiveEmphasis, type ExerciseEmphasis } from '../types/exercise';
 import { fromFirestore } from '../firestore/serde';
 
 export class ExerciseHistoryService {
@@ -48,6 +48,7 @@ export class ExerciseHistoryService {
       progressionData?: import('../types/progression').ProgressionTracking;
       daysSinceLastWorkout?: number;
       notes?: string;
+      emphasis?: ExerciseEmphasis;
     }
   ): Promise<string> {
     if (isDemo(userId)) return 'demo-exercise-performance';
@@ -118,7 +119,8 @@ export class ExerciseHistoryService {
         ...(exerciseData.workoutName && { workoutName: exerciseData.workoutName }),
         ...(exerciseData.progressionData && { progressionData: exerciseData.progressionData }),
         ...(exerciseData.daysSinceLastWorkout && { daysSinceLastWorkout: exerciseData.daysSinceLastWorkout }),
-        ...(exerciseData.notes && typeof exerciseData.notes === 'string' && exerciseData.notes.trim() && { notes: exerciseData.notes.trim() })
+        ...(exerciseData.notes && typeof exerciseData.notes === 'string' && exerciseData.notes.trim() && { notes: exerciseData.notes.trim() }),
+        ...(exerciseData.emphasis && { emphasis: exerciseData.emphasis }),
       };
 
       const docRef = await addDoc(
@@ -185,12 +187,14 @@ export class ExerciseHistoryService {
         totalReps += exerciseReps;
         totalVolume += exerciseVolume;
 
+        const emphasis = effectiveEmphasis(exercise);
         return {
           exerciseId: exercise.exercise.id,
           exerciseName: exercise.exercise.name,
           sets: exerciseSets,
           reps: exerciseReps,
-          volume: exerciseVolume
+          volume: exerciseVolume,
+          ...(emphasis ? { emphasis } : {}),
         };
       });
 

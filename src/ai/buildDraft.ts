@@ -12,6 +12,7 @@
  */
 import { WorkoutParser } from '../parser/workoutParser';
 import type { ParsedExercise, ParsedSet } from '../parser/types';
+import type { ExerciseEmphasis } from '../types/exercise';
 import { exerciseLine } from './workoutText';
 
 /** Most characters of the draft text the assistant is shown. */
@@ -37,8 +38,11 @@ export interface DraftExercise {
   reps: string;
   weight?: number;
   unit?: 'lbs' | 'kg';
-  /** Part of a superset line: listed, not editable by the Build tools. */
+  emphasis?: ExerciseEmphasis;
+  /** Part of a superset line: listed, not editable by editBuildExercise. */
   superset?: boolean;
+  /** Superset pairing index (1-based) so the assistant sees which partners belong together. */
+  supersetGroup?: number;
 }
 
 export interface DraftReading {
@@ -92,10 +96,12 @@ const repsText = (set?: ParsedSet): string => {
 export function readDraft(text: string): DraftReading {
   const exercises: DraftExercise[] = [];
   const issues: string[] = [];
+  let nextSupersetGroup = 1;
   for (const line of readLines(text)) {
     if (line.guessed && issues.length < MAX_ISSUES) {
       issues.push(`"${line.raw.trim().slice(0, 60)}" has no sets x reps; read as 10 reps`);
     }
+    const group = line.superset ? nextSupersetGroup++ : undefined;
     for (const e of line.exercises) {
       const first = e.sets[0];
       exercises.push({
@@ -103,7 +109,8 @@ export function readDraft(text: string): DraftReading {
         sets: e.sets.length,
         reps: repsText(first),
         ...(first?.weight ? { weight: first.weight, unit: first.unit ?? 'lbs' } : {}),
-        ...(line.superset ? { superset: true } : {}),
+        ...(e.emphasis ? { emphasis: e.emphasis } : {}),
+        ...(line.superset ? { superset: true, supersetGroup: group } : {}),
       });
     }
   }
@@ -119,8 +126,12 @@ export type DraftEdit = { ok: true; text: string; name: string; line: string } |
 const fail = (reason: string): DraftEdit => ({ ok: false, reason });
 
 /** An exercise's line from its first set's values, `sets` times. */
-function lineFor(name: string, sets: number, set: ParsedSet): string {
-  return exerciseLine({ name, sets: Array.from({ length: sets }, () => ({ ...set })) });
+function lineFor(name: string, sets: number, set: ParsedSet, emphasis?: ExerciseEmphasis): string {
+  return exerciseLine({
+    name,
+    sets: Array.from({ length: sets }, () => ({ ...set })),
+    ...(emphasis ? { emphasis } : {}),
+  });
 }
 
 /** The set a change describes, starting from `base` (the line's first set). */
@@ -190,6 +201,7 @@ export function editDraftExercise(
     exercise.name,
     change.sets ?? exercise.sets.length,
     changedSet(first, change, opts.defaultUnit ?? 'lbs'),
+    exercise.emphasis,
   );
   if (next === exerciseLine(exercise)) return fail(`${exercise.name} is already like that.`);
   const all = splitLines(text);
@@ -230,4 +242,59 @@ export function removeDraftExercise(
   const all = splitLines(text);
   all.splice(found.at, 1);
   return { ok: true, text: all.join('\n'), name: found.exercises[0].name, line: found.raw.trim() };
+}
+
+/**
+ * Sets or clears `emphasis` ('volume' | 'strength' | null) on one exercise in
+ * the Build draft, including exercises paired in a superset line.
+ */
+export function setDraftEmphasis(
+  text: string,
+  asked: string,
+  emphasis: ExerciseEmphasis | null,
+  opts: { same?: (a: string, b: string) => boolean } = {},
+): DraftEdit {
+  const same = opts.same ?? (() => false);
+  const key = normalName(asked);
+  if (!key) return fail('No exercise was named.');
+  const lines = readLines(text);
+  type Candidate = { line: DraftLine; memberIndex: number; exercise: ParsedExercise };
+  const allCandidates: Candidate[] = [];
+  for (const line of lines) {
+    line.exercises.forEach((exercise, memberIndex) => {
+      allCandidates.push({ line, memberIndex, exercise });
+    });
+  }
+  const exact = allCandidates.filter(
+    (c) => normalName(c.exercise.name) === key || same(c.exercise.name, asked),
+  );
+  const words = key.split(' ').filter(Boolean);
+  const loose = exact.length
+    ? exact
+    : allCandidates.filter((c) => {
+        const own = new Set(normalName(c.exercise.name).split(' '));
+        return words.every((w) => own.has(w));
+      });
+  if (loose.length === 0) return fail(`"${asked}" is not in the Build draft.`);
+  if (loose.length > 1) return fail(`"${asked}" matches more than one exercise in the Build draft.`);
+  const target = loose[0];
+  const current = target.exercise.emphasis ?? null;
+  if (current === emphasis) {
+    return fail(
+      emphasis === null
+        ? `${target.exercise.name} already has no emphasis.`
+        : `${target.exercise.name} is already marked ${emphasis}.`,
+    );
+  }
+  const updatedExercises = target.line.exercises.map((ex, idx) => {
+    if (idx !== target.memberIndex) return ex;
+    const copy: ParsedExercise = { ...ex };
+    if (emphasis) copy.emphasis = emphasis;
+    else delete copy.emphasis;
+    return copy;
+  });
+  const nextLine = updatedExercises.map(exerciseLine).join(' ss ');
+  const all = splitLines(text);
+  all[target.line.at] = nextLine;
+  return { ok: true, text: all.join('\n'), name: target.exercise.name, line: nextLine };
 }

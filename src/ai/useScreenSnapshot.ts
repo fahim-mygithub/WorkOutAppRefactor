@@ -7,13 +7,11 @@
 import { useEffect, useRef } from 'react';
 import { useAppDispatch } from '../store/hooks';
 import { screenCleared, screenPublished } from '../store/slices/aiSlice';
-import type { PlanDraftState } from './planDraft';
 import type { BuildDraftState, ScreenSnapshot } from './screenSnapshot';
 import type { AiScreenTab } from './types';
 
 export type PublishedScreen = ScreenSnapshot & {
   draft?: BuildDraftState;
-  planDraft?: PlanDraftState;
 };
 
 /**

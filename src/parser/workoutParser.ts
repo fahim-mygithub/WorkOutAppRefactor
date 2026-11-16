@@ -109,8 +109,19 @@ export class WorkoutParser {
   }
 
   private parseExerciseLine(line: string, lineNumber: number): ParsedExercise | null {
-    // Clean the line
-    const cleanLine = line.replace(/[^\w\s\-x×\*@,.()]/gi, ' ').replace(/\s+/g, ' ').trim();
+    let rawLine = line.trim();
+    if (!rawLine) return null;
+
+    // Extract optional trailing emphasis tag: `[volume]` or `[strength]`
+    let emphasis: ParsedExercise['emphasis'];
+    const tagMatch = rawLine.match(/\s*\[(volume|strength)\]\s*$/i);
+    if (tagMatch && tagMatch.index !== undefined) {
+      emphasis = tagMatch[1].toLowerCase() as ParsedExercise['emphasis'];
+      rawLine = rawLine.slice(0, tagMatch.index).trim();
+    }
+
+    // Clean the remaining line without disturbing existing exercise syntax
+    const cleanLine = rawLine.replace(/[^\w\s\-x×\*@,.()]/gi, ' ').replace(/\s+/g, ' ').trim();
 
     if (!cleanLine) return null;
 
@@ -129,15 +140,17 @@ export class WorkoutParser {
     for (const pattern of patterns) {
       const match = cleanLine.match(pattern);
       if (match) {
-        return this.createExerciseFromMatch(match, pattern, lineNumber);
+        const parsed = this.createExerciseFromMatch(match, pattern, lineNumber);
+        return emphasis ? { ...parsed, emphasis } : parsed;
       }
     }
 
     // Fallback: treat as exercise name only
-    this.addWarning(`Line ${lineNumber}: Treating "${line}" as exercise name with default sets`);
+    this.addWarning(`Line ${lineNumber}: Treating "${rawLine}" as exercise name with default sets`);
     return {
-      name: line.trim(),
-      sets: [{ reps: 10 }]
+      name: rawLine,
+      sets: [{ reps: 10 }],
+      ...(emphasis ? { emphasis } : {}),
     };
   }
 

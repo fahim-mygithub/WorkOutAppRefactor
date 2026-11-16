@@ -21,15 +21,9 @@ What is on screen:
 Build screen editing (only while the context's \`tab\` is build):
 - setBuildName: rename the workout being built. Applies at once.
 - editBuildExercise: change sets, reps, weight or unit of one exercise listed in \`screen.data.exercises\`. Applies at once.
+- setBuildEmphasis: to mark an exercise volume or strength use setBuildEmphasis (pass null to clear). Applies at once.
 - addBuildExercise / removeBuildExercise: add a library exercise to the draft, or drop one that is listed. Apply at once. Use these, not loadIntoBuild, to change part of a draft; loadIntoBuild replaces all of it.
-- Exercises inside a superset line cannot be edited this way; say so and suggest the Visual tab.
-
-Plan editor editing (only while \`screen.tab\` is plan-edit, the plan editor):
-- Answer questions about the open planned workout from \`screen\`, without tools; edits update the open sheet's draft and do not save until the lifter taps Save.
-- setPlanName: rename the planned workout open in the plan editor. Applies at once.
-- editPlanExercise: change sets, reps, weight or unit of one exercise listed in \`screen.data.exercises\`. Applies at once.
-- addPlanExercise: add a library exercise to the end of the planned workout in the plan editor. Applies at once.
-- removePlanExercise: remove one exercise listed in \`screen.data.exercises\` from the plan editor. Applies at once.
+- Exercises inside a superset line cannot have sets/reps/weight edited via editBuildExercise; say so and suggest the Visual tab (setBuildEmphasis works on superset exercises too).
 
 Active workout editing:
 - addSets: append sets to an active exercise when the lifter wants more volume or an extra set.

@@ -5,10 +5,10 @@ import { buildToolDefs, toolValidators } from './tools';
 describe('tool catalog', () => {
   it('exposes exactly the applied tools', () => {
     expect(buildToolDefs().map((t) => t.name).sort()).toEqual([
-      'addBuildExercise', 'addExercise', 'addExerciseToWorkout', 'addPlanExercise', 'addSets', 'addTrackedLift', 'adjustSet',
-      'createWorkout', 'editBuildExercise', 'editPastWorkout', 'editPlanExercise', 'loadIntoBuild', 'logPastWorkout', 'logSet', 'openTab', 'planWorkout',
-      'removeBuildExercise', 'removeExerciseFromWorkout', 'removeOpenSets', 'removePlanExercise', 'removeTrackedLift', 'setBuildName', 'setExerciseNote',
-      'setPlanName', 'startWorkout', 'swapExercise', 'updateBenchmark', 'updateProfile', 'updateWorkout',
+      'addBuildExercise', 'addExercise', 'addExerciseToWorkout', 'addSets', 'addTrackedLift', 'adjustSet',
+      'createWorkout', 'editBuildExercise', 'editPastWorkout', 'loadIntoBuild', 'logPastWorkout', 'logSet', 'openTab', 'planWorkout',
+      'removeBuildExercise', 'removeExerciseFromWorkout', 'removeOpenSets', 'removeTrackedLift', 'setBuildEmphasis', 'setBuildName', 'setExerciseNote',
+      'startWorkout', 'swapExercise', 'updateBenchmark', 'updateProfile', 'updateWorkout',
     ]);
   });
   it('validates adjustSet', () => {
@@ -275,6 +275,17 @@ describe('Build screen edit tools', () => {
     expect(toolValidators.removeBuildExercise.safeParse({ exerciseName: 'Barbell Row', sets: 3 }).success).toBe(false);
   });
 
+  it('setBuildEmphasis takes exerciseName and emphasis (volume, strength, or null)', () => {
+    const v = toolValidators.setBuildEmphasis;
+    expect(v.safeParse({ exerciseName: 'Bench Press', emphasis: 'volume' }).success).toBe(true);
+    expect(v.safeParse({ exerciseName: 'Bench Press', emphasis: 'strength' }).success).toBe(true);
+    expect(v.safeParse({ exerciseName: 'Bench Press', emphasis: null }).success).toBe(true);
+    expect(v.safeParse({ exerciseName: 'Bench Press' }).success).toBe(false);
+    expect(v.safeParse({ exerciseName: 'Bench Press', emphasis: 'power' }).success).toBe(false);
+    expect(v.safeParse({ exerciseName: '', emphasis: 'volume' }).success).toBe(false);
+    expect(v.safeParse({ exerciseName: 'Bench Press', emphasis: 'volume', sets: 3 }).success).toBe(false);
+  });
+
   it('emits plain object schemas with the name required', () => {
     const def = (n: string) => buildToolDefs().find((t) => t.name === n)!.input_schema;
     expect(def('editBuildExercise').required).toEqual(['exerciseName']);
@@ -282,51 +293,7 @@ describe('Build screen edit tools', () => {
       ['exerciseName', 'reps', 'repsMax', 'sets', 'unit', 'weight'],
     );
     expect(def('setBuildName').required).toEqual(['name']);
-  });
-});
-
-describe('Plan editor tools', () => {
-  it('setPlanName takes one name and nothing else', () => {
-    const v = toolValidators.setPlanName;
-    expect(v.safeParse({ name: 'Heavy Push' }).success).toBe(true);
-    expect(v.safeParse({}).success).toBe(false);
-    expect(v.safeParse({ name: '' }).success).toBe(false);
-    expect(v.safeParse({ name: 'x'.repeat(81) }).success).toBe(false);
-    expect(v.safeParse({ name: 'Push', extra: true }).success).toBe(false);
-  });
-
-  it('editPlanExercise names an exercise and changes at least one of sets, reps, weight or unit', () => {
-    const v = toolValidators.editPlanExercise;
-    expect(v.safeParse({ exerciseName: 'Bench Press', sets: 4 }).success).toBe(true);
-    expect(v.safeParse({ exerciseName: 'Bench Press', reps: 8, weight: 185, unit: 'lbs' }).success).toBe(true);
-    expect(v.safeParse({ exerciseName: 'Bench Press', weight: 0 }).success).toBe(true);
-    expect(v.safeParse({ exerciseName: 'Bench Press', unit: 'kg' }).success).toBe(true);
-    expect(v.safeParse({ exerciseName: 'Bench Press' }).success).toBe(false);
-    expect(v.safeParse({ sets: 4 }).success).toBe(false);
-    expect(v.safeParse({ exerciseName: 'Bench Press', sets: 11 }).success).toBe(false);
-    expect(v.safeParse({ exerciseName: 'Bench Press', reps: 101 }).success).toBe(false);
-    expect(v.safeParse({ exerciseName: 'Bench Press', weight: -5 }).success).toBe(false);
-    expect(v.safeParse({ exerciseName: 'Bench Press', unit: 'stone' }).success).toBe(false);
-    expect(v.safeParse({ exerciseName: 'Bench Press', sets: 3, selector: '#x' }).success).toBe(false);
-  });
-
-  it('addPlanExercise and removePlanExercise take an exerciseName within bounds', () => {
-    expect(toolValidators.addPlanExercise.safeParse({ exerciseName: 'Lat Pulldown' }).success).toBe(true);
-    expect(toolValidators.addPlanExercise.safeParse({ exerciseName: 'Lat Pulldown', sets: 3, reps: 10, weight: 120, unit: 'lbs' }).success).toBe(true);
-    expect(toolValidators.addPlanExercise.safeParse({}).success).toBe(false);
-    expect(toolValidators.addPlanExercise.safeParse({ exerciseName: 'Lat Pulldown', sets: 0 }).success).toBe(false);
-    expect(toolValidators.removePlanExercise.safeParse({ exerciseName: 'Lat Pulldown' }).success).toBe(true);
-    expect(toolValidators.removePlanExercise.safeParse({ exerciseName: 'Lat Pulldown', sets: 3 }).success).toBe(false);
-  });
-
-  it('emits plain object schemas with required fields for the four plan editor tools', () => {
-    const def = (n: string) => buildToolDefs().find((t) => t.name === n)!.input_schema;
-    expect(def('setPlanName').required).toEqual(['name']);
-    expect(def('editPlanExercise').required).toEqual(['exerciseName']);
-    expect(Object.keys(def('editPlanExercise').properties as object).sort()).toEqual(
-      ['exerciseName', 'reps', 'sets', 'unit', 'weight'],
-    );
-    expect(def('addPlanExercise').required).toEqual(['exerciseName']);
-    expect(def('removePlanExercise').required).toEqual(['exerciseName']);
+    expect(def('setBuildEmphasis').required).toEqual(['exerciseName', 'emphasis']);
+    expect(Object.keys(def('setBuildEmphasis').properties as object).sort()).toEqual(['emphasis', 'exerciseName']);
   });
 });

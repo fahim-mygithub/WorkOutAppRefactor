@@ -56,18 +56,15 @@ export type AiToolName =
   | 'loadIntoBuild'
   | 'setBuildName'
   | 'editBuildExercise'
+  | 'setBuildEmphasis'
   | 'addBuildExercise'
-  | 'removeBuildExercise'
-  | 'setPlanName'
-  | 'editPlanExercise'
-  | 'addPlanExercise'
-  | 'removePlanExercise';
+  | 'removeBuildExercise';
 
 /** The app's bottom-nav tabs, as openTab names them. */
 export type AiAppTab = 'today' | 'workout' | 'build' | 'library' | 'profile';
 
-/** Screens that publish snapshots (bottom-nav tabs plus modal sheets). */
-export type AiScreenTab = AiAppTab | 'plan-edit';
+/** Screens that publish snapshots (bottom-nav tabs). */
+export type AiScreenTab = AiAppTab;
 
 /** Tool input as validated by the Worker; the planner narrows it per tool. */
 export type AiToolInput = Record<string, unknown>;

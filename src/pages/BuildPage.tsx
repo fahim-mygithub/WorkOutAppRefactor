@@ -3,7 +3,13 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { useAppDispatch, useAppSelector } from '../store/hooks';
 import { useAuth } from '../contexts/AuthContext';
 import { startWorkout } from '../store/slices/workoutSlice';
-import { buildDraftChanged, buildEditConsumed, buildPresetConsumed } from '../store/slices/aiSlice';
+import {
+  buildDraftChanged,
+  buildDraftStashed,
+  buildEditConsumed,
+  buildPresetConsumed,
+  type BuildPlanEditTarget,
+} from '../store/slices/aiSlice';
 import { usePublishScreen } from '../ai/useScreenSnapshot';
 import { draftTextForAi, readDraft } from '../ai/buildDraft';
 import { workoutText as aiWorkoutText } from '../ai/workoutText';
@@ -15,9 +21,9 @@ console.log('WorkoutStorageService import check:', {
   saveWorkout: WorkoutStorageService?.saveWorkout,
   typeof: typeof WorkoutStorageService
 });
-import { WorkoutExercise, WorkoutSet, Exercise } from '../types/exercise';
+import { syncExerciseEmphasis, WorkoutExercise, WorkoutSet, Exercise } from '../types/exercise';
 import { WorkoutParser } from '../parser/workoutParser';
-import { ParseResult } from '../parser/types';
+import { ParsedExercise, ParsedWorkout, ParseResult } from '../parser/types';
 import { BuildScreenLayout } from '../components/workout/BuildScreenLayout';
 import { EnhancedTextInput } from '../components/workout/EnhancedTextInput';
 import { ParsedWorkoutConfigurator } from '../components/workout/ParsedWorkoutConfigurator';
@@ -28,10 +34,15 @@ import { workoutNameForLifts } from '../lib/trackedLifts';
 import { buildTrackedWorkout, type LiftGoals } from '../lib/trackedLiftProgression';
 import { matchExercise } from '../lib/exerciseMatch';
 import { orderForWorkout } from '../lib/builderSupersets';
+import { dateKeyToDate } from '../lib/dateKey';
 import type { SessionGoal, TrackedLift } from '../types/trackedLifts';
 import { useExercises } from '../hooks/useExercises';
 import { useUndoRedo } from '../hooks/useUndoRedo';
-import { generateFallbackExerciseId, sanitizeWorkoutExercisesForRedux } from '../utils/workoutConversion';
+import {
+  generateFallbackExerciseId,
+  prepareWorkoutForConfigurator,
+  sanitizeWorkoutExercisesForRedux,
+} from '../utils/workoutConversion';
 import { SharedWorkoutLoader } from '../components/SharedWorkoutLoader';
 import { ShareWorkoutModal } from '../components/ShareWorkoutModal';
 import { useParams } from 'react-router-dom';
@@ -50,8 +61,9 @@ import {
   FileText,
   Sparkles,
   Calendar,
+  X,
 } from 'lucide-react';
-import { planAdded } from '../store/slices/plannedWorkoutsSlice';
+import { planAdded, updatePlanned } from '../store/slices/plannedWorkoutsSlice';
 import { PlanDateModal } from '../components/plan/PlanDateModal';
 import { useToast } from '../hooks/useToast';
 import { ToastContainer } from '../components/Toast';
@@ -156,8 +168,73 @@ const SharedWorkoutBuildView: React.FC<SharedWorkoutBuildViewProps> = ({
   );
 };
 
+function formatPlanEditDate(dateKey: string): string {
+  try {
+    return new Intl.DateTimeFormat('en-US', {
+      weekday: 'short',
+      month: 'short',
+      day: 'numeric',
+    }).format(dateKeyToDate(dateKey));
+  } catch {
+    return dateKey;
+  }
+}
+
+function toParsedWorkoutFromVisual(visual: any): ParsedWorkout {
+  if (!visual) return { exercises: [], supersets: [] };
+  const all: any[] = visual.exercises ?? [];
+  const strip = ({ supersetGroup: _g, ...rest }: any): ParsedExercise => rest;
+  const plain: ParsedExercise[] = [];
+  const supersets: ParsedExercise[][] = all
+    .filter((e) => e.isSuperset && Array.isArray(e.supersetExercises))
+    .map((e) => e.supersetExercises.map(strip));
+  orderForWorkout<any>(all.filter((e) => !e.isSuperset && Array.isArray(e.sets))).forEach((unit) => {
+    if (Array.isArray(unit) && unit.length > 1) {
+      supersets.push(unit.map(strip));
+    } else {
+      const single = Array.isArray(unit) ? unit[0] : unit;
+      if (single) plain.push(strip(single));
+    }
+  });
+  return { exercises: plain, supersets };
+}
+
+function mergePreservedMetadata(prev: any, nextPrepared: any): any {
+  if (!prev?.exercises?.length || !nextPrepared?.exercises?.length) return nextPrepared;
+  const used = new Set<number>();
+  const norm = (s: string) => s.trim().toLowerCase();
+  const mergedExercises = nextPrepared.exercises.map((nextEx: any) => {
+    const idx = prev.exercises.findIndex(
+      (p: any, i: number) => !used.has(i) && norm(String(p.name ?? '')) === norm(String(nextEx.name ?? '')),
+    );
+    if (idx === -1) return nextEx;
+    used.add(idx);
+    const prevEx = prev.exercises[idx];
+    let tracked = nextEx.tracked ?? prevEx.tracked;
+    if (tracked && tracked.goal !== 'checkpoint') {
+      if (nextEx.emphasis) {
+        tracked = { ...tracked, goal: nextEx.emphasis };
+      } else if (prevEx.emphasis && !nextEx.emphasis) {
+        tracked = undefined;
+      }
+    }
+    return {
+      ...nextEx,
+      ...(nextEx.notes === undefined && prevEx.notes ? { notes: prevEx.notes } : {}),
+      ...(nextEx.restTime === undefined && prevEx.restTime ? { restTime: prevEx.restTime } : {}),
+      ...(tracked ? { tracked } : {}),
+    };
+  });
+  return { ...nextPrepared, exercises: mergedExercises };
+}
+
 export default function BuildPage() {
   const { toasts, removeToast, showError } = useToast();
+  const { shareId } = useParams<{ shareId?: string }>() || {};
+  const isViewingSharedWorkout = !!shareId;
+  const stashedBuildDraft = useAppSelector((s) => s.ai.stashedBuildDraft);
+  const initialStashed = !isViewingSharedWorkout ? stashedBuildDraft : undefined;
+
   const {
     value: workoutText,
     setValue: setWorkoutText,
@@ -166,22 +243,31 @@ export default function BuildPage() {
     canUndo: canUndoWorkoutText,
     canRedo: canRedoWorkoutText,
     reset: resetWorkoutText,
-  } = useUndoRedo<string>('', 50);
+  } = useUndoRedo<string>(initialStashed?.workoutText ?? '', 50);
 
-  const [workoutName, setWorkoutName] = useState('');
+  const [workoutName, setWorkoutName] = useState(initialStashed?.workoutName ?? '');
   const [parseResult, setParseResult] = useState<ParseResult | null>(null);
   const [isParsingEnabled, setIsParsingEnabled] = useState(true);
   const [autoParseEnabled, setAutoParseEnabled] = useState(true);
   const [isCurrentlyParsing, setIsCurrentlyParsing] = useState(false);
   const debounceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const { exercises: exerciseDatabase } = useExercises(); // Ensure exercises are loaded
-  const [editedWorkout, setEditedWorkout] = useState<any>(null);
+  const [editedWorkout, setEditedWorkout] = useState<any>(initialStashed?.editedWorkout ?? null);
+  const preservedMetadataRef = useRef<any>(initialStashed?.editedWorkout ?? null);
+  useEffect(() => {
+    if (editedWorkout?.exercises?.length) {
+      preservedMetadataRef.current = editedWorkout;
+    }
+  }, [editedWorkout]);
+  const [editingPlan, setEditingPlan] = useState<BuildPlanEditTarget | null>(
+    initialStashed?.editingPlan ?? null,
+  );
   const [workoutNameError, setWorkoutNameError] = useState('');
   const [isPreviewCollapsed, setIsPreviewCollapsed] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
   // Text / Visual / Templates. A successful manual parse moves the user on to
   // Visual, where the next decision (review, then start) lives.
-  const [activeTab, setActiveTab] = useState('text');
+  const [activeTab, setActiveTab] = useState(initialStashed?.activeTab ?? 'text');
 
   // Get Firebase user from auth context - MUST be at top level
   const { user } = useAuth();
@@ -203,17 +289,17 @@ export default function BuildPage() {
     if (!lifts?.length) return;
     // `goals` is the per-lift map from the chooser; `goal` is one goal for all.
     const goal = state?.goal ?? state?.goals ?? null;
-    setEditedWorkout(buildTrackedWorkout(lifts, goal));
+    const built = buildTrackedWorkout(lifts, goal);
+    preservedMetadataRef.current = built;
+    setEditingPlan(null);
+    setEditedWorkout(built);
+    resetWorkoutText(aiWorkoutText(toParsedWorkoutFromVisual(built)));
     setWorkoutName(
       (name) => name || (goal === 'checkpoint' ? 'Checkpoint day' : workoutNameForLifts(lifts)),
     );
     setActiveTab('visual');
     navigate(location.pathname, { replace: true, state: null });
-  }, [location.state, location.pathname, navigate]);
-
-  // Check if we're viewing a shared workout
-  const { shareId } = useParams<{ shareId?: string }>() || {};
-  const isViewingSharedWorkout = !!shareId;
+  }, [location.state, location.pathname, navigate, resetWorkoutText]);
 
   console.log('BuildPage rendering:', {
     shareId,
@@ -263,8 +349,10 @@ export default function BuildPage() {
       if (result.success && result.workout) {
         console.log('Auto-parse successful, updating state');
         setParseResult(result);
-        // Always update editedWorkout from auto-parse to avoid stale state issues
-        setEditedWorkout(prepareWorkoutForConfigurator(result.workout));
+        const nextPrepared = prepareWorkoutForConfigurator(result.workout);
+        setEditedWorkout((prev: any) =>
+          mergePreservedMetadata(prev ?? preservedMetadataRef.current, nextPrepared),
+        );
       } else {
         console.log('Auto-parse failed, keeping existing state');
       }
@@ -349,8 +437,8 @@ export default function BuildPage() {
       }
       
       // Clear previous parse result to ensure fresh state
+      const priorEdited = editedWorkout ?? preservedMetadataRef.current;
       setParseResult(null);
-      setEditedWorkout(null);
       
       console.log('Cleared previous parse state');
       
@@ -382,10 +470,11 @@ export default function BuildPage() {
     
     setParseResult(result);
     if (result.success && result.workout) {
-      setEditedWorkout(prepareWorkoutForConfigurator(result.workout));
+      setEditedWorkout(mergePreservedMetadata(priorEdited, prepareWorkoutForConfigurator(result.workout)));
       setActiveTab('visual');
       console.log('Manual parse completed successfully');
     } else {
+      setEditedWorkout(null);
       console.log('Manual parse failed');
     }
     } catch (error) {
@@ -393,7 +482,7 @@ export default function BuildPage() {
     } finally {
       setIsCurrentlyParsing(false);
     }
-  }, [workoutText, exerciseDatabase, parser, validateAllExercisesExist, isCurrentlyParsing]);
+  }, [workoutText, editedWorkout, exerciseDatabase, parser, validateAllExercisesExist, isCurrentlyParsing]);
 
   // Handle clear and restart
   const handleClearWorkout = () => {
@@ -408,8 +497,11 @@ export default function BuildPage() {
     resetWorkoutText('');
     setWorkoutName('');
     setParseResult(null);
+    preservedMetadataRef.current = null;
     setEditedWorkout(null);
+    setEditingPlan(null);
     setWorkoutNameError('');
+    dispatch(buildDraftChanged(false));
     
     console.log('Workout cleared successfully');
   };
@@ -495,7 +587,7 @@ export default function BuildPage() {
     const workoutExercises: WorkoutExercise[] = [];
 
     // One parsed exercise -> a player exercise (sets, rep ranges, time, notes,
-    // tracked-lift origin).
+    // tracked-lift origin, and Volume/Strength emphasis).
     const toWorkoutExercise = (exercise: any, index: number, id: string): WorkoutExercise => {
       const dbExercise = findExerciseInDatabase(exercise.name);
       const workoutSets: WorkoutSet[] = exercise.sets.map((set: any, setIndex: number) => ({
@@ -508,14 +600,20 @@ export default function BuildPage() {
         ...(set.time && { time: set.time }),
         completed: false,
       }));
-      return {
+      const emphasis =
+        exercise.emphasis ??
+        (exercise.tracked?.goal === 'volume' || exercise.tracked?.goal === 'strength'
+          ? exercise.tracked.goal
+          : undefined);
+      return syncExerciseEmphasis({
         id,
         exercise: dbExercise || createFallbackExercise(exercise.name, index),
         sets: workoutSets,
         restTime: exercise.restTime || 120,
         ...(exercise.notes && { notes: exercise.notes }),
         ...(exercise.tracked && { tracked: exercise.tracked }),
-      };
+        ...(emphasis && { emphasis }),
+      });
     };
 
     // Visual-tab supersets: partners pulled together, tagged so the player
@@ -540,32 +638,25 @@ export default function BuildPage() {
       if (exercise.isSuperset && exercise.supersetExercises) {
         // Handle superset - create individual exercises for workout execution
         const supersetId = `superset-${Date.now()}-${exercise.supersetIndex}`;
-        const supersetExercises: WorkoutExercise[] = [];
-
-        exercise.supersetExercises.forEach((parsedExercise: any, exerciseIndex: number) => {
-          const dbExercise = findExerciseInDatabase(parsedExercise.name);
-
-          const workoutSets: WorkoutSet[] = parsedExercise.sets.map((set: any, setIndex: number) => ({
-            id: `set-superset-${Date.now()}-${exercise.supersetIndex}-${exerciseIndex}-${setIndex}`,
-            reps: typeof set.reps === 'number' ? set.reps : set.reps.min,
-            weight: set.weight,
-            unit: set.unit,
-            completed: false,
-          }));
-
-          const supersetExercise: WorkoutExercise = {
-            id: `exercise-superset-${Date.now()}-${exercise.supersetIndex}-${exerciseIndex}`,
-            exercise: dbExercise || createFallbackExercise(parsedExercise.name, workoutExercises.length + exerciseIndex),
-            sets: workoutSets,
+        const supersetExercises: WorkoutExercise[] = exercise.supersetExercises.map(
+          (parsedExercise: any, exerciseIndex: number) => ({
+            ...toWorkoutExercise(
+              parsedExercise,
+              workoutExercises.length + exerciseIndex,
+              `exercise-superset-${Date.now()}-${exercise.supersetIndex}-${exerciseIndex}`,
+            ),
             restTime: parsedExercise.restTime || 90,
             isSuperset: true,
             supersetId,
             supersetIndex: exerciseIndex,
-            notes: `Superset ${exercise.supersetIndex + 1}${exercise.supersetExercises.length > 1 ? ` (${exerciseIndex + 1}/${exercise.supersetExercises.length})` : ''}`,
-          };
-
-          supersetExercises.push(supersetExercise);
-        });
+            notes: [
+              `Superset ${exercise.supersetIndex + 1}${exercise.supersetExercises.length > 1 ? ` (${exerciseIndex + 1}/${exercise.supersetExercises.length})` : ''}`,
+              parsedExercise.notes,
+            ]
+              .filter(Boolean)
+              .join(' · '),
+          }),
+        );
 
         // Add superset exercise IDs to the first exercise for navigation
         if (supersetExercises.length > 0) {
@@ -636,6 +727,7 @@ export default function BuildPage() {
       name: workoutName,
       exercises: sanitizedExercises,
     }));
+    dispatch(buildDraftChanged(false));
 
     // Store shared context in sessionStorage for persistence
     if (isViewingSharedWorkout && shareId) {
@@ -679,6 +771,70 @@ export default function BuildPage() {
         exercises: sanitizedExercises,
       }),
     );
+    dispatch(buildDraftChanged(false));
+    navigate('/');
+  };
+
+  const resolveCurrentVisualWorkout = () => {
+    if (activeTab === 'text' && workoutText.trim()) {
+      const parsed = parser.parse(workoutText);
+      if (parsed.success && parsed.workout) {
+        return mergePreservedMetadata(
+          editedWorkout ?? preservedMetadataRef.current,
+          prepareWorkoutForConfigurator(parsed.workout),
+        );
+      }
+    }
+    return (
+      editedWorkout ||
+      (parseResult?.workout
+        ? mergePreservedMetadata(preservedMetadataRef.current, prepareWorkoutForConfigurator(parseResult.workout))
+        : { exercises: [], supersets: [] })
+    );
+  };
+
+  const handleSavePlan = () => {
+    if (!editingPlan) return;
+    if (!workoutName.trim()) {
+      setWorkoutNameError('Name your workout first.');
+      return;
+    }
+    setWorkoutNameError('');
+    setSaveError('');
+    const workoutToUse = resolveCurrentVisualWorkout();
+    const exercises = convertToWorkoutExercises(workoutToUse);
+    const sanitizedExercises = sanitizeWorkoutExercisesForRedux(exercises);
+    dispatch(
+      updatePlanned({
+        id: editingPlan.planId,
+        name: workoutName.trim(),
+        exercises: sanitizedExercises,
+      }),
+    );
+    resetWorkoutText('');
+    setWorkoutName('');
+    setParseResult(null);
+    preservedMetadataRef.current = null;
+    setEditedWorkout(null);
+    setEditingPlan(null);
+    dispatch(buildDraftChanged(false));
+    navigate('/');
+  };
+
+  const handleCancelPlanEdit = () => {
+    if (debounceTimeoutRef.current) {
+      clearTimeout(debounceTimeoutRef.current);
+      debounceTimeoutRef.current = null;
+    }
+    resetWorkoutText('');
+    setWorkoutName('');
+    setParseResult(null);
+    preservedMetadataRef.current = null;
+    setEditedWorkout(null);
+    setEditingPlan(null);
+    setWorkoutNameError('');
+    setSaveError('');
+    dispatch(buildDraftChanged(false));
     navigate('/');
   };
 
@@ -714,7 +870,8 @@ export default function BuildPage() {
       return;
     }
 
-    const workoutToUse = editedWorkout || (parseResult?.workout ? prepareWorkoutForConfigurator(parseResult.workout) : null);
+    const resolvedWorkout = resolveCurrentVisualWorkout();
+    const workoutToUse = resolvedWorkout?.exercises?.length ? resolvedWorkout : null;
     if (!workoutToUse) {
       alert('No valid workout found. Please parse your workout first.');
       return;
@@ -747,11 +904,12 @@ export default function BuildPage() {
         saveWorkoutMethod: !!WorkoutStorageService.saveWorkout
       });
 
+      const structuredParsed = toParsedWorkoutFromVisual(workoutToUse);
       const workoutId = await WorkoutStorageService.saveWorkout(user.uid, {
         name: workoutName.trim(),
-        description: `Workout created from build page with ${workoutToUse.exercises.length + workoutToUse.supersets.length} exercises`,
-        workoutText: workoutText.trim(),
-        parsedWorkout: workoutToUse,
+        description: `Workout created from build page with ${structuredParsed.exercises.length + structuredParsed.supersets.length} exercises`,
+        workoutText: workoutText.trim() || aiWorkoutText(structuredParsed),
+        parsedWorkout: structuredParsed,
         customExercises,
         tags: ['Build Page'],
         category: 'Strength',
@@ -787,35 +945,8 @@ export default function BuildPage() {
     }
   };
 
-  // Prepare workout data for configurator (merge supersets into exercises array)
-  const prepareWorkoutForConfigurator = useCallback((workout: any) => {
-    if (!workout) return workout;
-
-    const preparedWorkout = { ...workout };
-    const allExercises = [...workout.exercises];
-
-    // Add supersets as grouped exercises to the exercises array
-    workout.supersets.forEach((superset: any[], supersetIndex: number) => {
-      // Create a combined superset exercise for display
-      const supersetExercise = {
-        name: superset.map(ex => ex.name).join(' + '),
-        sets: superset[0].sets, // Use the first exercise's sets as reference
-        restTime: superset[0].restTime || 90,
-        isSuperset: true,
-        supersetIndex,
-        supersetExercises: superset,
-        notes: `Superset (${superset.length} exercises)`,
-      };
-
-      allExercises.push(supersetExercise);
-    });
-
-    preparedWorkout.exercises = allExercises;
-    return preparedWorkout;
-  }, []);
-
-  // A workout the assistant loaded (loadIntoBuild): it replaces what is here
-  // and opens on Visual for review; nothing is saved until the lifter does.
+  // A workout the assistant loaded (loadIntoBuild) or a planned workout being edited:
+  // it replaces what is here and opens on Visual for review; nothing is saved until the lifter does.
   const buildPreset = useAppSelector((s) => s.ai.buildPreset);
   useEffect(() => {
     if (!buildPreset || isViewingSharedWorkout) return;
@@ -823,35 +954,61 @@ export default function BuildPage() {
       clearTimeout(debounceTimeoutRef.current);
       debounceTimeoutRef.current = null;
     }
-    const { workout } = buildPreset;
+    const { workout, planEdit } = buildPreset;
     resetWorkoutText(workout.workoutText);
     setParseResult(null);
-    setEditedWorkout(
-      prepareWorkoutForConfigurator({
-        exercises: workout.parsedWorkout.exercises ?? [],
-        supersets: workout.parsedWorkout.supersets ?? [],
-      }),
+    setEditingPlan(
+      planEdit ? { planId: planEdit.planId, dateKey: planEdit.dateKey } : null,
     );
+    const nextEdited = planEdit?.exercises
+      ? { exercises: planEdit.exercises, supersets: [] }
+      : prepareWorkoutForConfigurator({
+          exercises: workout.parsedWorkout.exercises ?? [],
+          supersets: workout.parsedWorkout.supersets ?? [],
+        });
+    preservedMetadataRef.current = nextEdited;
+    setEditedWorkout(nextEdited);
     setWorkoutName(buildPreset.name);
     setWorkoutNameError('');
     setActiveTab('visual');
     dispatch(buildPresetConsumed(buildPreset.id));
-  }, [buildPreset, isViewingSharedWorkout, resetWorkoutText, prepareWorkoutForConfigurator, dispatch]);
+  }, [buildPreset, isViewingSharedWorkout, resetWorkoutText, dispatch]);
 
-  // Tells the assistant whether loading a workout here would replace something.
-  const hasDraft = !!(workoutText.trim() || workoutName.trim() || editedWorkout);
+  // Tells the assistant (and plan Edit buttons) whether loading a workout here
+  // would replace unsaved Builder content, keeping the draft across route switches.
+  const hasDraft = !!(workoutText.trim() || workoutName.trim() || editedWorkout || editingPlan);
   useEffect(() => {
-    dispatch(buildDraftChanged(hasDraft));
-  }, [hasDraft, dispatch]);
-  useEffect(() => () => {
-    dispatch(buildDraftChanged(false));
-  }, [dispatch]);
+    if (isViewingSharedWorkout) return;
+    if (hasDraft) {
+      dispatch(
+        buildDraftStashed({
+          workoutName,
+          workoutText,
+          editedWorkout,
+          activeTab,
+          editingPlan,
+        }),
+      );
+    } else {
+      dispatch(buildDraftChanged(false));
+    }
+  }, [
+    hasDraft,
+    workoutName,
+    workoutText,
+    editedWorkout,
+    activeTab,
+    editingPlan,
+    isViewingSharedWorkout,
+    dispatch,
+  ]);
 
-  // Handle workout update from configurator
+  // Handle workout update from configurator (syncs text so switching tabs or re-parsing preserves pairings & emphasis)
   const handleWorkoutUpdate = useCallback((updatedWorkout: any) => {
     console.log('Workout updated from configurator');
     setEditedWorkout(updatedWorkout);
-  }, []);
+    setWorkoutText(aiWorkoutText(toParsedWorkoutFromVisual(updatedWorkout)));
+  }, [setWorkoutText]);
 
   // Handle workout name change with error clearing
   const handleWorkoutNameChange = useCallback((name: string) => {
@@ -884,18 +1041,7 @@ export default function BuildPage() {
   const draftText = useMemo(() => {
     const onVisual = activeTab === 'visual' || !workoutText.trim();
     if (!onVisual || !visualWorkout) return workoutText;
-    // Text-parsed supersets arrive as one combined entry; Visual-tab pairings
-    // are plain exercises sharing a supersetGroup (grouped as the player does).
-    const all: any[] = visualWorkout.exercises ?? [];
-    const plain: any[] = [];
-    const supersets: any[][] = all
-      .filter((e) => e.isSuperset && Array.isArray(e.supersetExercises))
-      .map((e) => e.supersetExercises);
-    orderForWorkout<any>(all.filter((e) => !e.isSuperset && Array.isArray(e.sets))).forEach((unit) => {
-      if (Array.isArray(unit) && unit.length > 1) supersets.push(unit);
-      else plain.push(...(Array.isArray(unit) ? unit : [unit]));
-    });
-    return aiWorkoutText({ exercises: plain, supersets });
+    return aiWorkoutText(toParsedWorkoutFromVisual(visualWorkout));
   }, [activeTab, workoutText, visualWorkout]);
   const draftReading = useMemo(() => readDraft(draftText), [draftText]);
   usePublishScreen(
@@ -904,9 +1050,13 @@ export default function BuildPage() {
       ? null
       : {
           tab: 'build',
-          title: 'Build workout',
+          title: editingPlan ? 'Edit planned workout' : 'Build workout',
           summary: [
-            workoutName.trim() ? `Draft "${workoutName.trim().slice(0, 60)}"` : 'Unnamed draft',
+            editingPlan
+              ? `Editing plan "${workoutName.trim().slice(0, 60) || 'Untitled'}" (${editingPlan.dateKey})`
+              : workoutName.trim()
+                ? `Draft "${workoutName.trim().slice(0, 60)}"`
+                : 'Unnamed draft',
             draftReading.exercises.length
               ? `${draftReading.exercises.length} exercise${draftReading.exercises.length === 1 ? '' : 's'}`
               : 'empty',
@@ -917,13 +1067,14 @@ export default function BuildPage() {
             view: activeTab,
             text: draftTextForAi(draftText),
             exercises: draftReading.exercises.slice(0, 25),
+            ...(editingPlan ? { editingPlan: { planId: editingPlan.planId, dateKey: editingPlan.dateKey } } : {}),
             ...(draftReading.issues.length ? { issues: draftReading.issues } : {}),
           },
           draft: { name: workoutName, text: draftText },
         },
   );
 
-  // An edit the assistant made (setBuildName, editBuildExercise, ...): apply
+  // An edit the assistant made (setBuildName, editBuildExercise, setBuildEmphasis, ...): apply
   // it to this page's own state. The text goes through the same history as the
   // lifter's typing and is parsed at once, so the preview shows it.
   const buildEdit = useAppSelector((s) => s.ai.buildEdit);
@@ -947,30 +1098,36 @@ export default function BuildPage() {
           result.warnings = [...result.warnings, ...parser.validateExerciseNames(all, exerciseDatabase)];
         }
         setParseResult(result);
-        setEditedWorkout(prepareWorkoutForConfigurator(result.workout));
+        const nextPrepared = prepareWorkoutForConfigurator(result.workout);
+        setEditedWorkout((prev: any) =>
+          mergePreservedMetadata(prev ?? preservedMetadataRef.current, nextPrepared),
+        );
       } else {
         setParseResult(null);
         setEditedWorkout(null);
       }
     }
     dispatch(buildEditConsumed(buildEdit.id));
-  }, [buildEdit, isViewingSharedWorkout, parser, exerciseDatabase, setWorkoutText, prepareWorkoutForConfigurator, dispatch]);
+  }, [buildEdit, isViewingSharedWorkout, parser, exerciseDatabase, setWorkoutText, dispatch]);
 
   // Visual's "Add an exercise": append to whatever is on the board (or start one).
   const handleVisualAdd = useCallback((exercise: Exercise) => {
     const base = visualWorkout ?? { exercises: [], supersets: [] };
-    setEditedWorkout({ ...base, exercises: [...base.exercises, newBuilderExercise(exercise)] });
-  }, [visualWorkout]);
+    const next = { ...base, exercises: [...base.exercises, newBuilderExercise(exercise)] };
+    setEditedWorkout(next);
+    setWorkoutText(aiWorkoutText(toParsedWorkoutFromVisual(next)));
+  }, [visualWorkout, setWorkoutText]);
 
   // Visual's "Add from a photo": the machine's exercise with the sets the card ended on.
   const handleMachineAdd = useCallback((exercise: Exercise, defaults: MachineDefaults) => {
     const base = visualWorkout ?? { exercises: [], supersets: [] };
     const sets = Array.from({ length: defaults.sets }, () => ({ reps: defaults.reps, rest: 120 }));
-    setEditedWorkout({ ...base, exercises: [...base.exercises, { name: exercise.name, sets }] });
-  }, [visualWorkout]);
+    const next = { ...base, exercises: [...base.exercises, { name: exercise.name, sets }] };
+    setEditedWorkout(next);
+    setWorkoutText(aiWorkoutText(toParsedWorkoutFromVisual(next)));
+  }, [visualWorkout, setWorkoutText]);
   const isParseDisabled = !workoutText.trim() || !isParsingEnabled || isCurrentlyParsing;
 
-  // Render the text input section
   // Render the configuration section with action buttons. Declared before the
   // mode-selector tabs because the Visual tab renders it.
   const configurationSection = showConfiguration ? (
@@ -982,75 +1139,134 @@ export default function BuildPage() {
         showActionButtons={false}
       />
 
-      {/* One amber action (start), the rest secondary or ghost */}
-      <Stack gap={2}>
-        {workoutNameError && (
-          <Stack direction="row" align="center" gap={2} className="text-body-sm text-danger" role="alert">
-            <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden="true" />
-            <span className="min-w-0 flex-1">{workoutNameError}</span>
-          </Stack>
-        )}
+      {!editingPlan && (
+        <Stack gap={2}>
+          {workoutNameError && (
+            <Stack direction="row" align="center" gap={2} className="text-body-sm text-danger" role="alert">
+              <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden="true" />
+              <span className="min-w-0 flex-1">{workoutNameError}</span>
+            </Stack>
+          )}
 
-        <Button variant="primary" size="xl" onClick={handleStartWorkout}>
-          <Play className="h-5 w-5" fill="currentColor" aria-hidden="true" />
-          Start workout
-        </Button>
-
-        <div className={isViewingSharedWorkout ? 'grid grid-cols-1' : 'grid grid-cols-2 gap-2'}>
-          <Button
-            variant="secondary"
-            size="lg"
-            onClick={handleSaveWorkout}
-            disabled={isSaving || !user?.uid}
-          >
-            {isSaving ? (
-              <>
-                <Loader2 className="h-5 w-5 animate-spin" aria-hidden="true" />
-                Saving
-              </>
-            ) : (
-              <>
-                <Save className="h-5 w-5" aria-hidden="true" />
-                {user?.uid ? 'Save routine' : 'Sign in to save'}
-              </>
-            )}
+          <Button variant="primary" size="xl" onClick={handleStartWorkout}>
+            <Play className="h-5 w-5" fill="currentColor" aria-hidden="true" />
+            Start workout
           </Button>
 
-          {!isViewingSharedWorkout && (
+          <div className={isViewingSharedWorkout ? 'grid grid-cols-1' : 'grid grid-cols-2 gap-2'}>
             <Button
               variant="secondary"
               size="lg"
-              onClick={handleShareWorkout}
-              disabled={!user?.uid}
+              onClick={handleSaveWorkout}
+              disabled={isSaving || !user?.uid}
             >
-              <Share2 className="h-5 w-5" aria-hidden="true" />
-              {user?.uid ? 'Share' : 'Sign in to share'}
+              {isSaving ? (
+                <>
+                  <Loader2 className="h-5 w-5 animate-spin" aria-hidden="true" />
+                  Saving
+                </>
+              ) : (
+                <>
+                  <Save className="h-5 w-5" aria-hidden="true" />
+                  {user?.uid ? 'Save routine' : 'Sign in to save'}
+                </>
+              )}
             </Button>
+
+            {!isViewingSharedWorkout && (
+              <Button
+                variant="secondary"
+                size="lg"
+                onClick={handleShareWorkout}
+                disabled={!user?.uid}
+              >
+                <Share2 className="h-5 w-5" aria-hidden="true" />
+                {user?.uid ? 'Share' : 'Sign in to share'}
+              </Button>
+            )}
+          </div>
+
+          <Button
+            variant="secondary"
+            size="lg"
+            onClick={() => setIsPlanDateModalOpen(true)}
+          >
+            <Calendar className="h-5 w-5" aria-hidden="true" />
+            Save for later
+          </Button>
+
+          {saveError && (
+            <Stack direction="row" align="center" gap={2} className="text-body-sm text-danger" role="alert">
+              <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden="true" />
+              {saveError}
+            </Stack>
           )}
-        </div>
 
-        <Button
-          variant="secondary"
-          size="lg"
-          onClick={() => setIsPlanDateModalOpen(true)}
-        >
-          <Calendar className="h-5 w-5" aria-hidden="true" />
-          Save for later
-        </Button>
-
-        {saveError && (
-          <Stack direction="row" align="center" gap={2} className="text-body-sm text-danger" role="alert">
-            <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden="true" />
-            {saveError}
-          </Stack>
-        )}
-
-        <Button variant="ghost" onClick={handleClearWorkout}>
-          <Trash2 className="h-4 w-4" aria-hidden="true" />
-          Clear and start over
-        </Button>
-      </Stack>
+          <Button variant="ghost" onClick={handleClearWorkout}>
+            <Trash2 className="h-4 w-4" aria-hidden="true" />
+            Clear and start over
+          </Button>
+        </Stack>
+      )}
     </div>
+  ) : null;
+
+  const planEditIntro = editingPlan ? (
+    <div
+      data-testid="editing-plan-banner"
+      className="flex flex-wrap items-center justify-between gap-2 rounded-2xl bg-surface-subtle px-4 py-3"
+    >
+      <p className="min-w-0 flex-1 break-words text-body-sm font-semibold text-ink">
+        {`Editing plan: ${workoutName.trim() || 'Untitled'} · ${formatPlanEditDate(editingPlan.dateKey)}`}
+      </p>
+      <span className="font-tabular text-caption text-ink-muted">{editingPlan.dateKey}</span>
+    </div>
+  ) : undefined;
+
+  const planEditActionsSection = editingPlan ? (
+    <Stack gap={2} className="pt-2">
+      {workoutNameError && (
+        <Stack direction="row" align="center" gap={2} className="text-body-sm text-danger" role="alert">
+          <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden="true" />
+          <span className="min-w-0 flex-1">{workoutNameError}</span>
+        </Stack>
+      )}
+      {saveError && (
+        <Stack direction="row" align="center" gap={2} className="text-body-sm text-danger" role="alert">
+          <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden="true" />
+          {saveError}
+        </Stack>
+      )}
+
+      <Button variant="primary" size="xl" onClick={handleSavePlan}>
+        <Save className="h-5 w-5" aria-hidden="true" />
+        Save plan
+      </Button>
+
+      <Button
+        variant="secondary"
+        size="lg"
+        onClick={handleSaveWorkout}
+        disabled={isSaving || !user?.uid}
+      >
+        {isSaving ? (
+          <>
+            <Loader2 className="h-5 w-5 animate-spin" aria-hidden="true" />
+            Saving
+          </>
+        ) : (
+          <>
+            <Save className="h-5 w-5" aria-hidden="true" />
+            Save as new workout
+          </>
+        )}
+      </Button>
+
+      <Button variant="ghost" onClick={handleCancelPlanEdit}>
+        <X className="h-4 w-4" aria-hidden="true" />
+        Cancel
+      </Button>
+    </Stack>
   ) : null;
 
   // History (undo/redo) controls: a quiet row under the text editor.
@@ -1077,10 +1293,36 @@ export default function BuildPage() {
     </Stack>
   );
 
+  const handleTabChange = useCallback(
+    (nextTab: string) => {
+      if (activeTab === 'text' && nextTab === 'visual' && workoutText.trim()) {
+        const canonical = editedWorkout ? aiWorkoutText(toParsedWorkoutFromVisual(editedWorkout)) : '';
+        if (!editedWorkout || workoutText.trim() !== canonical.trim()) {
+          if (debounceTimeoutRef.current) {
+            clearTimeout(debounceTimeoutRef.current);
+            debounceTimeoutRef.current = null;
+          }
+          const result = parser.parse(workoutText);
+          if (result.success && result.workout) {
+            setParseResult(result);
+            setEditedWorkout(
+              mergePreservedMetadata(
+                editedWorkout ?? preservedMetadataRef.current,
+                prepareWorkoutForConfigurator(result.workout),
+              ),
+            );
+          }
+        }
+      }
+      setActiveTab(nextTab);
+    },
+    [activeTab, workoutText, editedWorkout, parser],
+  );
+
   // Mode selector: Text (natural-language editor) / Visual (parsed
   // configurator) / Templates. Built on the Tabs primitive.
   const textInputSection = (
-    <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
+    <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-4">
       <TabsList className="flex w-full">
         <TabsTrigger value="text" className="min-h-[44px] flex-1 gap-1.5">
           <FileText className="h-4 w-4" aria-hidden="true" />
@@ -1220,11 +1462,17 @@ export default function BuildPage() {
     );
   }
 
-  // Regular build page for creating new workouts
+  // Regular build page for creating new workouts (or editing a planned workout)
   return (
     <>
       <BuildScreenLayout
-        textInputSection={textInputSection}
+        intro={planEditIntro}
+        textInputSection={
+          <>
+            {textInputSection}
+            {planEditActionsSection}
+          </>
+        }
         actionButtons={parseErrorsSection}
       />
 

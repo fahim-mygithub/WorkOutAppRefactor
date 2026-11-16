@@ -11,7 +11,7 @@
  * exercise `id` → `exerciseId`, set `index` → `setIndex` / `fromSetIndex`,
  * tracked lift `id` → `liftId`.
  */
-import type { ActiveWorkout, Exercise } from '../types/exercise';
+import { effectiveEmphasis, type ActiveWorkout, type Exercise, type ExerciseEmphasis } from '../types/exercise';
 import type { UserPreferences } from '../store/slices/userSlice';
 import type { SessionGoal, TrackedLift, TrackedSetLog, WeightUnit } from '../types/trackedLifts';
 import { currentEstimate, prescribe, progressionStatus, roundLoad } from '../lib/trackedLiftProgression';
@@ -43,6 +43,7 @@ export interface AiContextExercise {
   unit?: 'lbs' | 'kg';
   trackedLiftId?: string;
   goal?: SessionGoal;
+  emphasis?: ExerciseEmphasis;
   sets: AiContextSet[];
   /** Library names that work the same muscles: what swapExercise can resolve. */
   alternatives?: string[];
@@ -156,15 +157,19 @@ export function buildAiContext(input: {
       ? {
           activeWorkout: {
             name: activeWorkout.name,
-            exercises: activeWorkout.exercises.map((e) => ({
-              id: e.id,
-              name: e.customTitle || e.exercise.name,
-              ...(e.notes ? { notes: e.notes } : {}),
-              ...(e.sets[0]?.unit ? { unit: e.sets[0].unit } : {}),
-              ...(e.tracked ? { trackedLiftId: e.tracked.liftId, goal: e.tracked.goal } : {}),
-              sets: e.sets.map((s, index) => ({ index, ...pick(s, SET_KEYS), completed: s.completed })),
-              ...alternativesFor(e),
-            })),
+            exercises: activeWorkout.exercises.map((e) => {
+              const emphasis = effectiveEmphasis(e);
+              return {
+                id: e.id,
+                name: e.customTitle || e.exercise.name,
+                ...(e.notes ? { notes: e.notes } : {}),
+                ...(e.sets[0]?.unit ? { unit: e.sets[0].unit } : {}),
+                ...(e.tracked ? { trackedLiftId: e.tracked.liftId, goal: e.tracked.goal } : {}),
+                ...(emphasis ? { emphasis } : {}),
+                sets: e.sets.map((s, index) => ({ index, ...pick(s, SET_KEYS), completed: s.completed })),
+                ...alternativesFor(e),
+              };
+            }),
           },
         }
       : {}),

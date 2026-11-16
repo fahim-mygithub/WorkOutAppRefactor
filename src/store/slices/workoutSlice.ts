@@ -1,5 +1,12 @@
 import { createSlice, type PayloadAction } from '@reduxjs/toolkit';
-import type { ActiveWorkout, Exercise, RestTimer, WorkoutExercise, WorkoutSet } from '../../types/exercise';
+import {
+  syncExerciseEmphasis,
+  type ActiveWorkout,
+  type Exercise,
+  type RestTimer,
+  type WorkoutExercise,
+  type WorkoutSet,
+} from '../../types/exercise';
 import type { ExperienceLevel, ProgressionTracking } from '../../types/progression';
 import { computeTargetEndTime } from '../../lib/restTimer';
 import { prescribedFloor } from '../../lib/progression/setPrescription';
@@ -50,7 +57,8 @@ const workoutSlice = createSlice({
   initialState,
   reducers: {
     startWorkout: (state, action: PayloadAction<{ name: string; exercises: WorkoutExercise[] }>) => {
-      const { name, exercises } = action.payload;
+      const { name } = action.payload;
+      const exercises = action.payload.exercises.map(syncExerciseEmphasis);
       const firstExercise = exercises[0];
       state.restoredFromSnapshot = false;
       state.activeWorkout = {

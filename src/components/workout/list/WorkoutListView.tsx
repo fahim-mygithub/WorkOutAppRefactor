@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
 import { Check, Replace, Pencil, BookOpen, MessageCircle, Minus, Plus } from 'lucide-react';
-import type { WorkoutExercise, ActiveWorkout } from '../../../types/exercise';
+import { effectiveEmphasis, type WorkoutExercise, type ActiveWorkout } from '../../../types/exercise';
 import type { ExerciseHistory } from '../../../types/exerciseHistory';
 import type { InSessionDecision } from '@/types/progression';
 import { IconButton } from '@/components/ui/icon-button';
 import { Modal, ModalContent, ModalTitle, ModalDescription } from '@/components/ui/modal';
+import { EmphasisChip } from '../../plan/EmphasisChip';
 import { prescribedFloor } from '@/lib/progression/setPrescription';
 import {
   groupWorkoutCards,
@@ -239,7 +240,7 @@ export const WorkoutListView: React.FC<WorkoutListViewProps> = ({
                       id={`workout-exercise-${exerciseIndex}`}
                       className="flex items-center justify-between gap-2"
                     >
-                      <div className="flex items-center gap-2 min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2 min-w-0 flex-1">
                         {card.isSuperset && (
                           <span
                             className={cn('shrink-0 w-2.5 h-2.5 bg-accent-2', shapeClass)}
@@ -254,6 +255,7 @@ export const WorkoutListView: React.FC<WorkoutListViewProps> = ({
                         >
                           {exTitle}
                         </h2>
+                        <EmphasisChip emphasis={effectiveEmphasis(ex)} />
                       </div>
                       <div className="flex shrink-0 items-center gap-1">
                         {ex.exercise.instructions && ex.exercise.instructions.length > 0 && (

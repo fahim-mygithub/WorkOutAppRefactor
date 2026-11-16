@@ -322,40 +322,21 @@ describe('chat context screen block', () => {
     expect((await request({ screen: { ...screen, data: { text: 'x'.repeat(3_600) } } })).success).toBe(false);
   });
 
-  it('validates the Build edit tool calls the model emits', async () => {
+  it('validates the Build edit tool calls the model emits, including setBuildEmphasis with null', async () => {
+    expect((await request({ screen: { ...screen, tab: 'plan-edit' } })).success).toBe(false);
+
     const { client } = fakeClient([
       { type: 'tool_use', id: 'b1', name: 'editBuildExercise', input: { exerciseName: 'Bench Press', sets: 4 } },
       { type: 'tool_use', id: 'b2', name: 'editBuildExercise', input: { exerciseName: 'Bench Press' } },
       { type: 'tool_use', id: 'b3', name: 'setBuildName', input: { name: 'Pull day' } },
       { type: 'tool_use', id: 'b4', name: 'removeBuildExercise', input: { exerciseName: 'Row', sets: 2 } },
       { type: 'tool_use', id: 'b5', name: 'addBuildExercise', input: { exerciseName: 'Barbell Row', sets: 3, reps: 10 } },
+      { type: 'tool_use', id: 'b6', name: 'setBuildEmphasis', input: { exerciseName: 'Bench Press', emphasis: 'strength' } },
+      { type: 'tool_use', id: 'b7', name: 'setBuildEmphasis', input: { exerciseName: 'Bench Press', emphasis: null } },
+      { type: 'tool_use', id: 'b8', name: 'setBuildEmphasis', input: { exerciseName: 'Bench Press' } },
     ], 'tool_use');
     const r = await handleChat(client, [{ role: 'user', content: 'edit' }], { tab: 'build' });
-    expect(r.toolCalls.map((c) => c.id)).toEqual(['b1', 'b3', 'b5']);
-  });
-
-  it('accepts the plan-edit screen snapshot and validates the plan editor tool calls', async () => {
-    const planScreen = {
-      tab: 'plan-edit',
-      title: 'Plan editor',
-      summary: 'Plan "Upper Push", 2 exercises',
-      data: {
-        planId: 'p1',
-        name: 'Upper Push',
-        exercises: [{ name: 'Bench Press', sets: 3, reps: 8, weight: 185, unit: 'lbs' }],
-      },
-    };
-    const parsed = await request({ tab: 'today', screen: planScreen });
-    expect(parsed.success).toBe(true);
-
-    const { client } = fakeClient([
-      { type: 'tool_use', id: 'p1', name: 'editPlanExercise', input: { exerciseName: 'Bench Press', sets: 5, weight: 195 } },
-      { type: 'tool_use', id: 'p2', name: 'editPlanExercise', input: { exerciseName: 'Bench Press' } },
-      { type: 'tool_use', id: 'p3', name: 'setPlanName', input: { name: 'Heavy Push' } },
-      { type: 'tool_use', id: 'p4', name: 'removePlanExercise', input: { exerciseName: 'Fly', reps: 10 } },
-      { type: 'tool_use', id: 'p5', name: 'addPlanExercise', input: { exerciseName: 'Lat Pulldown', sets: 3, reps: 10 } },
-    ], 'tool_use');
-    const r = await handleChat(client, [{ role: 'user', content: 'update plan' }], parsed.success ? parsed.data.context : undefined);
-    expect(r.toolCalls.map((c) => c.id)).toEqual(['p1', 'p3', 'p5']);
+    expect(r.toolCalls.map((c) => c.id)).toEqual(['b1', 'b3', 'b5', 'b6', 'b7']);
+    expect(r.toolCalls.find((c) => c.id === 'b7')?.input).toEqual({ exerciseName: 'Bench Press', emphasis: null });
   });
 });

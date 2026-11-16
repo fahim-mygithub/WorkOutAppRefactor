@@ -11,6 +11,7 @@ export interface PerformedSet {
 }
 
 import type { ProgressionTracking } from './progression';
+import type { ExerciseEmphasis } from './exercise';
 
 export interface ExerciseHistory {
   id: string;
@@ -34,6 +35,7 @@ export interface ExerciseHistory {
   progressionData?: ProgressionTracking; // Track progression recommendation data
   daysSinceLastWorkout?: number;
   notes?: string;
+  emphasis?: ExerciseEmphasis;
 }
 
 export interface ExerciseStats {
@@ -76,6 +78,7 @@ export interface WorkoutSummary {
     sets: number;
     reps: number;
     volume: number;
+    emphasis?: ExerciseEmphasis;
   }[];
   notes?: string;
 }

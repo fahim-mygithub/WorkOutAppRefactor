@@ -1,8 +1,18 @@
+import type { MouseEvent } from 'react';
+import { Pencil, Play } from 'lucide-react';
 import type { WorkoutCalendarDay } from '../../utils/statsCalculator';
 import { getWorkoutIntensity } from '../../utils/workoutColors';
 import { getMuscleGroupMeta } from './muscleGroup';
 import { usePlannedSchedule } from '../../hooks/usePlannedSchedule';
+import { useStartPlannedWorkout } from '../../hooks/useStartPlannedWorkout';
+import { useAppSelector } from '../../store/hooks';
+import { selectPlansByDateKey, type PlannedWorkout } from '../../store/slices/plannedWorkoutsSlice';
+import { toDateKey } from '../../lib/dateKey';
+import { effectiveEmphasis } from '../../types/exercise';
 import { PlannedDayCard } from './PlannedDayCard';
+import { EmphasisChip } from '../plan/EmphasisChip';
+import { useEditPlannedWorkout } from '../plan/useEditPlannedWorkout';
+import { Button } from '../ui/button';
 import {
   Sheet,
   SheetContent,
@@ -32,19 +42,33 @@ const formatNumber = (num: number): string => {
 /**
  * Day detail sheet (Tempo). A logged day reads as a muted context line, the
  * date as a display title, the day's totals as display numbers with muted
- * labels, then one hairline row per workout. Nothing to act on here, so there
- * is no amber action; planned days hand off to PlannedDayCard, which has one.
+ * labels, then one hairline row per workout. Custom planned workouts from
+ * `plannedWorkoutsSlice` show here with Start + Edit (opening the Builder);
+ * Charlie-Split template days hand off to `PlannedDayCard`.
  */
 export function WorkoutDayModal({ day, isOpen, onClose }: WorkoutDayModalProps) {
   const { plannedByDate } = usePlannedSchedule();
+  const startPlannedWorkout = useStartPlannedWorkout();
+  const plannedWorkoutsState = useAppSelector((s) => s.plannedWorkouts);
+  const { requestEditPlan, handlePlanCardClick, replaceDraftDialog } = useEditPlannedWorkout();
+
   const hasWorkouts = !!day && day.workouts.length > 0;
   const isToday = day?.isToday ?? false;
   const isPast = day?.isPast ?? false;
+
+  const dayPlans: PlannedWorkout[] =
+    day && plannedWorkoutsState
+      ? selectPlansByDateKey({ plannedWorkouts: plannedWorkoutsState }, toDateKey(day.date)).filter(
+          (p) => p.status === 'planned',
+        )
+      : [];
+  const hasCustomPlans = dayPlans.length > 0;
+
   // Read the LIVE planned day (so a re-roll updates the preview in place).
   const planned = day?.planned ? plannedByDate.get(day.planned.dateKey) ?? day.planned : null;
-  const showPlanned = !hasWorkouts && planned != null && planned.status === 'planned';
+  const showPlanned = !hasWorkouts && !hasCustomPlans && planned != null && planned.status === 'planned';
 
-  // Planned days get a bespoke centered card; completed/rest keep the bottom sheet.
+  // Charlie-Split template days get a bespoke centered card; custom plans & logged/rest keep the bottom sheet.
   if (day && showPlanned && planned) {
     return <PlannedDayCard day={day} planned={planned} isOpen={isOpen} onClose={onClose} />;
   }
@@ -53,47 +77,124 @@ export function WorkoutDayModal({ day, isOpen, onClose }: WorkoutDayModalProps) 
     ? isToday
       ? 'Done today'
       : 'Logged'
-    : isToday
-      ? 'Today'
-      : isPast
-        ? 'Nothing logged'
-        : 'Nothing planned';
+    : hasCustomPlans
+      ? isToday
+        ? 'Planned for today'
+        : 'Planned'
+      : isToday
+        ? 'Today'
+        : isPast
+          ? 'Nothing logged'
+          : 'Nothing planned';
 
   return (
-    <Sheet open={isOpen} onOpenChange={(next) => !next && onClose()}>
-      <SheetContent className="mx-auto max-w-md">
-        {day && (
-          <>
-            <p className={cn('text-body-sm', hasWorkouts ? 'text-accent-2' : 'text-ink-muted')}>
-              {stateLabel}
-            </p>
-            <SheetTitle className="mt-1 text-display">
-              {day.date.toLocaleDateString('en-US', {
-                weekday: 'long',
-                month: 'long',
-                day: 'numeric',
-              })}
-            </SheetTitle>
-            <SheetDescription className="sr-only">
-              Workout details for{' '}
-              {day.date.toLocaleDateString('en-US', {
-                weekday: 'long',
-                month: 'long',
-                day: 'numeric',
-              })}
-            </SheetDescription>
+    <>
+      <Sheet open={isOpen} onOpenChange={(next) => !next && onClose()}>
+        <SheetContent className="mx-auto max-w-md">
+          {day && (
+            <>
+              <p className={cn('text-body-sm', hasWorkouts ? 'text-accent-2' : 'text-ink-muted')}>
+                {stateLabel}
+              </p>
+              <SheetTitle className="mt-1 text-display">
+                {day.date.toLocaleDateString('en-US', {
+                  weekday: 'long',
+                  month: 'long',
+                  day: 'numeric',
+                })}
+              </SheetTitle>
+              <SheetDescription className="sr-only">
+                Workout details for{' '}
+                {day.date.toLocaleDateString('en-US', {
+                  weekday: 'long',
+                  month: 'long',
+                  day: 'numeric',
+                })}
+              </SheetDescription>
 
-            <div className="mt-5">
-              {hasWorkouts ? (
-                <WorkoutDayContent workouts={day.workouts} />
-              ) : (
-                <RestDayContent />
+              <div className="mt-5 flex flex-col gap-6">
+                {hasWorkouts && <WorkoutDayContent workouts={day.workouts} />}
+                {hasCustomPlans && (
+                  <PlannedWorkoutsForDay
+                    plans={dayPlans}
+                    onStart={(plan) => {
+                      startPlannedWorkout(plan);
+                      onClose();
+                    }}
+                    onEdit={(plan) => requestEditPlan(plan, { onProceed: onClose })}
+                    onCardClick={(e, plan) => handlePlanCardClick(e, plan, { onProceed: onClose })}
+                  />
+                )}
+                {!hasWorkouts && !hasCustomPlans && <RestDayContent />}
+              </div>
+            </>
+          )}
+        </SheetContent>
+      </Sheet>
+      {replaceDraftDialog}
+    </>
+  );
+}
+
+function PlannedWorkoutsForDay({
+  plans,
+  onStart,
+  onEdit,
+  onCardClick,
+}: {
+  plans: PlannedWorkout[];
+  onStart: (plan: PlannedWorkout) => void;
+  onEdit: (plan: PlannedWorkout) => void;
+  onCardClick: (e: MouseEvent, plan: PlannedWorkout) => void;
+}) {
+  return (
+    <section aria-label={plans.length === 1 ? 'Planned workout' : 'Planned workouts'} className="space-y-3">
+      <div className="flex flex-col gap-3">
+        {plans.map((plan) => {
+          const flagged = plan.exercises.filter((ex) => effectiveEmphasis(ex));
+          return (
+            <div
+              key={plan.id}
+              onClick={(e) => onCardClick(e, plan)}
+              className="cursor-pointer rounded-2xl border border-hairline bg-surface p-4"
+            >
+              <h3 className="break-words text-title font-semibold text-ink">{plan.name}</h3>
+              <p className="mt-0.5 text-body-sm text-ink-muted">
+                {plan.exercises.length} exercise{plan.exercises.length === 1 ? '' : 's'}
+              </p>
+              {flagged.length > 0 && (
+                <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                  {flagged.map((ex) => (
+                    <span
+                      key={ex.id}
+                      className="inline-flex max-w-full items-center gap-1 text-caption text-ink-muted"
+                    >
+                      <span className="truncate">{ex.customTitle || ex.exercise.name}</span>
+                      <EmphasisChip emphasis={effectiveEmphasis(ex)} />
+                    </span>
+                  ))}
+                </div>
               )}
+              <div className="mt-4 flex flex-wrap items-center gap-2">
+                <Button variant="primary" size="md" onClick={() => onStart(plan)}>
+                  <Play className="h-4 w-4" fill="currentColor" aria-hidden="true" />
+                  Start
+                </Button>
+                <Button
+                  variant="secondary"
+                  size="md"
+                  onClick={() => onEdit(plan)}
+                  aria-label={`Edit ${plan.name}`}
+                >
+                  <Pencil className="h-4 w-4" aria-hidden="true" />
+                  Edit
+                </Button>
+              </div>
             </div>
-          </>
-        )}
-      </SheetContent>
-    </Sheet>
+          );
+        })}
+      </div>
+    </section>
   );
 }
 

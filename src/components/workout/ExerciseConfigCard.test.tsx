@@ -1,12 +1,15 @@
 import { describe, it, expect } from 'vitest';
 import { useState } from 'react';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Provider } from 'react-redux';
 import { configureStore } from '@reduxjs/toolkit';
 import { DndContext } from '@dnd-kit/core';
 import { SortableContext } from '@dnd-kit/sortable';
 import user from '../../store/slices/userSlice';
+import trackedLifts, { trackedLiftsHydrated } from '../../store/slices/trackedLiftsSlice';
+import type { TrackedLift } from '../../types/trackedLifts';
+import { prescribe } from '../../lib/trackedLiftProgression';
 import { ExerciseConfigCard, parseReps } from './ExerciseConfigCard';
 
 /** Holds the exercise in state the way the configurator does. */
@@ -103,5 +106,134 @@ describe('parseReps', () => {
     expect(parseReps('8-')).toBeNull();
     expect(parseReps('')).toBeNull();
     expect(parseReps('12-8')).toBeNull();
+  });
+});
+
+describe('ExerciseConfigCard Volume | Strength segmented control', () => {
+  it('defaults unset, sets and clears emphasis via click and keyboard on a plain exercise without changing sets', async () => {
+    const u = userEvent.setup();
+    const store = configureStore({ reducer: { user, trackedLifts } });
+    let latest: any = null;
+    const initialSets = [
+      { reps: 10, weight: 35, unit: 'lbs' },
+      { reps: 10, weight: 35, unit: 'lbs' },
+    ];
+    render(
+      <Provider store={store}>
+        <Harness
+          initial={{ name: 'Dumbbell Curl', restTime: 90, sets: initialSets, supersetGroup: 1 }}
+          onChange={(ex) => (latest = ex)}
+        />
+      </Provider>,
+    );
+
+    const group = screen.getByRole('group', { name: 'Dumbbell Curl emphasis' });
+    const volumeBtn = within(group).getByRole('button', { name: 'Volume' });
+    const strengthBtn = within(group).getByRole('button', { name: 'Strength' });
+
+    // Unset by default, 44px touch targets
+    expect(volumeBtn).toHaveAttribute('aria-pressed', 'false');
+    expect(strengthBtn).toHaveAttribute('aria-pressed', 'false');
+    expect(volumeBtn.className).toContain('min-h-touch-min');
+    expect(strengthBtn.className).toContain('min-h-touch-min');
+    expect(screen.queryByTestId('emphasis-chip')).not.toBeInTheDocument();
+
+    // Click Volume -> sets emphasis: 'volume', leaves sets untouched, shows chip
+    await u.click(volumeBtn);
+    expect(volumeBtn).toHaveAttribute('aria-pressed', 'true');
+    expect(strengthBtn).toHaveAttribute('aria-pressed', 'false');
+    expect(latest.emphasis).toBe('volume');
+    expect(latest.sets).toEqual(initialSets);
+    expect(latest.supersetGroup).toBe(1);
+    expect(screen.getByTestId('emphasis-chip')).toHaveTextContent('Volume');
+
+    // Keyboard activation on Strength -> flips to 'strength'
+    strengthBtn.focus();
+    await u.keyboard('{Enter}');
+    expect(strengthBtn).toHaveAttribute('aria-pressed', 'true');
+    expect(volumeBtn).toHaveAttribute('aria-pressed', 'false');
+    expect(latest.emphasis).toBe('strength');
+    expect(latest.sets).toEqual(initialSets);
+    expect(screen.getByTestId('emphasis-chip')).toHaveTextContent('Strength');
+
+    // Tapping the selected one clears it
+    await u.click(strengthBtn);
+    expect(volumeBtn).toHaveAttribute('aria-pressed', 'false');
+    expect(strengthBtn).toHaveAttribute('aria-pressed', 'false');
+    expect(latest.emphasis).toBeUndefined();
+    expect(screen.queryByTestId('emphasis-chip')).not.toBeInTheDocument();
+  });
+
+  it('re-derives sets via prescribe when flipping emphasis on a tracked lift and stays in sync with tracked.goal', async () => {
+    const u = userEvent.setup();
+    const benchLift: TrackedLift = {
+      id: 'lift-bench',
+      name: 'Barbell Bench Press',
+      category: 'Push',
+      load: { kind: 'weight', value: 225, unit: 'lb' },
+      target: { kind: 'reps', min: 5 },
+      progression: true,
+    };
+    const store = configureStore({ reducer: { user, trackedLifts } });
+    store.dispatch(trackedLiftsHydrated({ categories: ['Push'], lifts: [benchLift] }));
+
+    let latest: any = null;
+    const initial = { ...prescribe(benchLift, 'volume'), supersetGroup: 2 };
+    render(
+      <Provider store={store}>
+        <Harness initial={initial} onChange={(ex) => (latest = ex)} />
+      </Provider>,
+    );
+
+    const group = screen.getByRole('group', { name: 'Barbell Bench Press emphasis' });
+    const volumeBtn = within(group).getByRole('button', { name: 'Volume' });
+    const strengthBtn = within(group).getByRole('button', { name: 'Strength' });
+
+    expect(volumeBtn).toHaveAttribute('aria-pressed', 'true');
+    expect(strengthBtn).toHaveAttribute('aria-pressed', 'false');
+
+    // Flip to Strength -> re-derives sets to heavy strength ramp and syncs tracked.goal
+    await u.click(strengthBtn);
+    const expectedStrength = prescribe(benchLift, 'strength');
+    expect(latest.emphasis).toBe('strength');
+    expect(latest.tracked).toEqual({ liftId: 'lift-bench', goal: 'strength' });
+    expect(latest.sets).toEqual(expectedStrength.sets);
+    expect(latest.supersetGroup).toBe(2);
+
+    // Tapping Strength again clears both emphasis and tracked goal while keeping supersetGroup
+    await u.click(strengthBtn);
+    expect(latest.emphasis).toBeUndefined();
+    expect(latest.tracked).toBeUndefined();
+    expect(latest.supersetGroup).toBe(2);
+  });
+
+  it('clears stale auto-generated prescription notes when flipping a bodyweight tracked lift from Strength to Volume', async () => {
+    const u = userEvent.setup();
+    const pullLift: TrackedLift = {
+      id: 'lift-pull',
+      name: 'Pull Ups',
+      category: 'Pull',
+      load: { kind: 'bodyweight' },
+      target: { kind: 'reps', min: 10 },
+      progression: true,
+    };
+    const store = configureStore({ reducer: { user, trackedLifts } });
+    store.dispatch(trackedLiftsHydrated({ categories: ['Pull'], lifts: [pullLift] }));
+
+    let latest: any = null;
+    const initial = prescribe(pullLift, 'strength');
+    expect(initial.notes).toBe('Add load or slow the tempo');
+
+    render(
+      <Provider store={store}>
+        <Harness initial={initial} onChange={(ex) => (latest = ex)} />
+      </Provider>,
+    );
+
+    const group = screen.getByRole('group', { name: 'Pull Ups emphasis' });
+    await u.click(within(group).getByRole('button', { name: 'Volume' }));
+    expect(latest.emphasis).toBe('volume');
+    expect(latest.tracked).toEqual({ liftId: 'lift-pull', goal: 'volume' });
+    expect(latest.notes).toBeUndefined();
   });
 });

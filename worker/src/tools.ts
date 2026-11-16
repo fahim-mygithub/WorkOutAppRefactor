@@ -404,51 +404,17 @@ export const buildScreenToolSchemas = {
     .object({ exerciseName: buildExerciseName })
     .strict()
     .describe('Remove one exercise from the Build draft. Only while the lifter is on Build. Applies at once.'),
-} as const;
 
-// ---------------------------------------------------------------------------
-// Plan editor tools: change the planned-workout edit sheet's draft while open
-// ---------------------------------------------------------------------------
-
-const planExerciseName = z
-  .string()
-  .min(1)
-  .max(120)
-  .describe('Exercise as named in the plan editor (or the library for an add).');
-const planLoadFields = {
-  sets: z.number().int().min(1).max(10).optional().describe('Number of sets.'),
-  reps: z.number().int().min(1).max(100).optional().describe('Reps per set.'),
-  weight: z.number().min(0).finite().optional().describe('Load per set; 0 clears it.'),
-  unit: z.enum(['lbs', 'kg']).optional().describe('Unit of weight.'),
-};
-
-export const planScreenToolSchemas = {
-  setPlanName: z
-    .object({ name: z.string().min(1).max(80).describe('New workout name.') })
-    .strict()
-    .describe('Rename the planned workout in the plan editor. Only while the plan editor is open. Applies at once.'),
-
-  editPlanExercise: z
-    .object({ exerciseName: planExerciseName, ...planLoadFields })
-    .strict()
-    .refine((i) => i.sets !== undefined || i.reps !== undefined || i.weight !== undefined || i.unit !== undefined, {
-      message: 'Change at least one of sets, reps, weight or unit.',
+  setBuildEmphasis: z
+    .object({
+      exerciseName: buildExerciseName,
+      emphasis: z
+        .enum(['volume', 'strength'])
+        .nullable()
+        .describe('Emphasis for this exercise ("volume" or "strength"), or null to clear it.'),
     })
-    .describe(
-      'Change sets / reps / weight / unit of one exercise already in the plan editor. Only while the plan editor is open. Applies at once.',
-    ),
-
-  addPlanExercise: z
-    .object({ exerciseName: planExerciseName, ...planLoadFields })
     .strict()
-    .describe(
-      'Add a library exercise to the end of the planned workout in the plan editor. Only while the plan editor is open. Applies at once.',
-    ),
-
-  removePlanExercise: z
-    .object({ exerciseName: planExerciseName })
-    .strict()
-    .describe('Remove one exercise from the planned workout in the plan editor. Only while the plan editor is open. Applies at once.'),
+    .describe('Mark one exercise in the Build draft as volume or strength, or clear it with null. Only while the lifter is on Build. Applies at once.'),
 } as const;
 
 // ---------------------------------------------------------------------------
@@ -461,7 +427,6 @@ const allToolSchemas = {
   ...buildToolSchemas,
   ...appToolSchemas,
   ...buildScreenToolSchemas,
-  ...planScreenToolSchemas,
 } as const;
 
 export type ToolName = keyof typeof allToolSchemas;
@@ -482,6 +447,9 @@ function zodToJsonSchema(schema: z.ZodTypeAny): Record<string, unknown> {
   // Unwrap default/optional wrappers, remembering the description on the way.
   let description: string | undefined = schema.description;
   let current: z.ZodTypeAny = schema;
+  const isOptional =
+    schema instanceof z.ZodOptional || schema instanceof z.ZodDefault || schema.isOptional();
+  let nullable = false;
 
   // Peel wrappers (ZodDefault, ZodOptional) to reach the inner type.
   // We keep the outermost description.
@@ -496,9 +464,9 @@ function zodToJsonSchema(schema: z.ZodTypeAny): Record<string, unknown> {
       // runs only when the Worker validates.
       current = current._def.schema;
     } else if (current instanceof z.ZodNullable) {
-      // Emitted as the inner type: tool inputs omit unknown fields rather than
-      // send null (handleChat and handleReadLift also strip top-level nulls
-      // before validating, as a safety net).
+      // Optional+nullable fields (readLift) omit null in the emitted schema;
+      // required+nullable fields (setBuildEmphasis.emphasis) allow null explicitly.
+      if (!isOptional) nullable = true;
       current = current._def.innerType;
     } else {
       break;
@@ -532,6 +500,9 @@ function zodToJsonSchema(schema: z.ZodTypeAny): Record<string, unknown> {
     return withDesc({ type: 'boolean' });
   }
   if (current instanceof z.ZodEnum) {
+    if (nullable) {
+      return withDesc({ type: ['string', 'null'], enum: [...current._def.values, null] });
+    }
     return withDesc({ type: 'string', enum: current._def.values });
   }
   if (current instanceof z.ZodArray) {

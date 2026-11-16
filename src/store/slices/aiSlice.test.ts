@@ -30,15 +30,11 @@ import {
   buildPresetSet,
   buildEditConsumed,
   buildEditRequested,
-  planEditConsumed,
-  planEditRequested,
   screenCleared,
   screenPublished,
   MAX_CHAT_MESSAGES_KEPT,
 } from './aiSlice';
-import { toDateKey } from '../../lib/dateKey';
 import type { AiTranscriptMessage } from '../../ai/types';
-import type { Exercise } from '../../types/exercise';
 
 const msg = (id: string, extra: Partial<AiTranscriptMessage> = {}): AiTranscriptMessage => ({
   id, role: 'user', text: id, ...extra,
@@ -145,87 +141,6 @@ describe('screen snapshot', () => {
     s = reducer(s, buildEditRequested({ id: 'e1', name: 'Pull' }));
     s = reducer(s, screenCleared('build'));
     expect(s.buildEdit).toBeUndefined();
-  });
-
-  describe('plan-edit modal snapshot and draft', () => {
-    const today = toDateKey(new Date());
-    const benchEx = {
-      id: 'bench',
-      name: 'Bench Press',
-      muscleGroup: 'Chest',
-      muscleGroups: ['Chest'],
-      equipment: 'Barbell',
-      videoLinks: [],
-      instructions: [],
-      difficulty: 'Intermediate' as const,
-      force: null,
-      grips: null,
-      mechanic: null,
-      searchKeywords: [],
-      createdAt: '',
-      updatedAt: '',
-    } satisfies Exercise;
-    const planItem = {
-      key: 'pe-1-0',
-      base: {
-        id: 'pe-1',
-        exercise: benchEx,
-        sets: [{ id: 's-1', reps: 8, weight: 185, unit: 'lbs' as const, completed: false }],
-        restTime: 120,
-      },
-      setsCount: '3',
-      reps: '8',
-      weight: '185',
-      unit: 'lbs' as const,
-    };
-    const planSnap = {
-      tab: 'plan-edit' as const,
-      title: 'Plan editor',
-      summary: `Plan "Push" for ${today}, 1 exercise`,
-      data: { planId: 'p1', name: 'Push', date: today, exercises: [{ name: 'Bench Press', sets: 3, reps: 8, weight: 185, unit: 'lbs' }] },
-    };
-    const planDraft = { planId: 'p1', date: today, name: 'Push', exercises: [planItem] };
-
-    it('holds plan-edit over Today, restores Today on close, and clears standalone to undefined', () => {
-      let standalone = reducer(undefined, screenPublished({ ...planSnap, planDraft }));
-      expect(standalone.screen).toEqual(planSnap);
-      expect(standalone.planDraft).toEqual(planDraft);
-      standalone = reducer(standalone, screenCleared('plan-edit'));
-      expect(standalone.screen).toBeUndefined();
-      expect(standalone.planDraft).toBeUndefined();
-
-      const todaySnap = { tab: 'today' as const, title: 'Today', summary: 'Today: Push' };
-      let overToday = reducer(undefined, screenPublished(todaySnap));
-      overToday = reducer(overToday, screenPublished({ ...planSnap, planDraft }));
-      expect(overToday.screen).toEqual(planSnap);
-      // Today re-publishing while the modal is open updates underneath without hiding the modal.
-      const updatedToday = { tab: 'today' as const, title: 'Today', summary: 'Today: Heavy Push' };
-      overToday = reducer(overToday, screenPublished(updatedToday));
-      expect(overToday.screen).toEqual(planSnap);
-      overToday = reducer(overToday, screenCleared('plan-edit'));
-      expect(overToday.screen).toEqual(updatedToday);
-      expect(overToday.planDraft).toBeUndefined();
-    });
-
-    it('ignores planEditRequested when closed or for another planId, and merges pending edits', () => {
-      let s = reducer(undefined, planEditRequested({ id: 'e0', planId: 'p1', name: 'Nope' }));
-      expect(s.planEdit).toBeUndefined();
-
-      s = reducer(undefined, screenPublished({ ...planSnap, planDraft }));
-      s = reducer(s, planEditRequested({ id: 'wrong', planId: 'other-plan', name: 'Wrong' }));
-      expect(s.planEdit).toBeUndefined();
-
-      const nextExercises = [{ ...planItem, setsCount: '5' }];
-      s = reducer(s, planEditRequested({ id: 'e1', planId: 'p1', name: 'Heavy Push' }));
-      s = reducer(s, planEditRequested({ id: 'e2', planId: 'p1', exercises: nextExercises }));
-      expect(s.planEdit).toEqual({ id: 'e2', planId: 'p1', name: 'Heavy Push', exercises: nextExercises });
-      expect(s.planDraft).toEqual({ ...planDraft, name: 'Heavy Push', exercises: nextExercises });
-
-      s = reducer(s, planEditConsumed('e1'));
-      expect(s.planEdit?.id).toBe('e2');
-      s = reducer(s, planEditConsumed('e2'));
-      expect(s.planEdit).toBeUndefined();
-    });
   });
 });
 

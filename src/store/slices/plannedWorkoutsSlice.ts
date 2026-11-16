@@ -1,6 +1,6 @@
 import { createSlice, type PayloadAction } from '@reduxjs/toolkit';
 import type { DateKey } from '../../lib/dateKey';
-import type { WorkoutExercise } from '../../types/exercise';
+import { syncExerciseEmphasis, type WorkoutExercise } from '../../types/exercise';
 
 export type PlanStatus = 'planned' | 'done' | 'skipped';
 
@@ -82,6 +82,7 @@ export const plannedWorkoutsSlice = createSlice({
         return {
           payload: {
             ...plan,
+            exercises: plan.exercises.map(syncExerciseEmphasis),
             id: plan.id ?? generatePlanId(),
             status: plan.status ?? 'planned',
             createdAt: plan.createdAt ?? now,
@@ -136,7 +137,7 @@ export const plannedWorkoutsSlice = createSlice({
         plan.name = action.payload.name;
       }
       if (action.payload.exercises !== undefined) {
-        plan.exercises = action.payload.exercises;
+        plan.exercises = action.payload.exercises.map(syncExerciseEmphasis);
       }
       if (action.payload.dateKey !== undefined) {
         plan.dateKey = action.payload.dateKey;

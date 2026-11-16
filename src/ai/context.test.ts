@@ -39,14 +39,36 @@ describe('buildAiContext', () => {
     expect(ctx.activeWorkout).toBeUndefined();
   });
 
-  it('exposes the ids and indexes the tool planner expects', () => {
+  it('exposes the ids, indexes, and emphasis the tool planner expects', () => {
     const ctx = buildAiContext({ screen: 'workout', units: 'lbs', activeWorkout: workout, trackedLifts: [bench] });
     const ex = ctx.activeWorkout!.exercises[0];
-    expect(ex).toMatchObject({ id: 'e1', name: 'Bench', trackedLiftId: 'l1', goal: 'strength', unit: 'lbs' });
+    expect(ex).toMatchObject({ id: 'e1', name: 'Bench', trackedLiftId: 'l1', goal: 'strength', emphasis: 'strength', unit: 'lbs' });
     expect(ex.sets.map((s) => s.index)).toEqual([0, 1]);
     expect(ex.sets[0]).toEqual({ index: 0, reps: 3, weight: 225, rir: 1, completed: true });
     expect(ex.sets[1]).toMatchObject({ index: 1, repMin: 8, repMax: 12, completed: false });
     expect(ctx.trackedLifts[0].id).toBe('l1');
+
+    // Plain exercise with emphasis carries emphasis; checkpoint exercise omits emphasis
+    const mixed = {
+      ...workout,
+      exercises: [
+        {
+          id: 'e-plain',
+          exercise: { id: 'x-curl', name: 'Dumbbell Curl' },
+          sets: [{ id: 's-c', reps: 12, weight: 30, unit: 'lbs', completed: false }],
+          emphasis: 'volume',
+        },
+        {
+          id: 'e-cp',
+          exercise: { id: 'x-sq', name: 'Squat' },
+          sets: [{ id: 's-sq', reps: 1, weight: 315, unit: 'lbs', completed: false }],
+          tracked: { liftId: 'l1', goal: 'checkpoint' },
+        },
+      ],
+    } as unknown as ActiveWorkout;
+    const mixedCtx = buildAiContext({ screen: 'workout', units: 'lbs', activeWorkout: mixed, trackedLifts: [bench] });
+    expect(mixedCtx.activeWorkout!.exercises[0].emphasis).toBe('volume');
+    expect(mixedCtx.activeWorkout!.exercises[1].emphasis).toBeUndefined();
   });
 
   it('describes prescriptions, with rep ranges as min-max', () => {

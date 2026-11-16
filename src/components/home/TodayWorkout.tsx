@@ -1,7 +1,8 @@
-import type { ReactNode } from 'react';
+import type { MouseEvent, ReactNode } from 'react';
 import { Link } from 'react-router-dom';
-import { Play, Plus } from 'lucide-react';
+import { Pencil, Play, Plus } from 'lucide-react';
 import type { WorkoutSummary } from '../../types/exerciseHistory';
+import { effectiveEmphasis } from '../../types/exercise';
 import { getMuscleGroupMeta, MUSCLE_GROUP_META } from './muscleGroup';
 import { usePlannedSchedule } from '../../hooks/usePlannedSchedule';
 import { useStartPlannedDay } from '../../hooks/useStartPlannedDay';
@@ -10,6 +11,8 @@ import { useAppSelector } from '../../store/hooks';
 import { selectPlansForToday, type PlannedWorkout } from '../../store/slices/plannedWorkoutsSlice';
 import { toDateKey } from '../../lib/dateKey';
 import type { PlannedDay } from '../../types/schedule';
+import { EmphasisChip } from '../plan/EmphasisChip';
+import { useEditPlannedWorkout } from '../plan/useEditPlannedWorkout';
 import { Button } from '../ui/button';
 import { Skeleton } from '../ui/skeleton';
 
@@ -39,7 +42,7 @@ const formatVolume = (num: number): string => {
  * title, one sentence, and at most one amber action. Four states, derived from
  * the raw history (not the displayed calendar month, so it stays correct while
  * the user pages the grid):
- *   1. Planned session today    → "Push" + variant + Start workout (primary).
+ *   1. Planned session today    → "Push" + variant + Start workout (primary) + Edit.
  *   2. A workout logged today   → workout name + three quiet stats.
  *   3. Trained in the last 3 days → "Rest day".
  *   4. Otherwise                → "Nothing planned" + Build a workout (primary).
@@ -49,6 +52,7 @@ export function TodayWorkout({ workoutHistory, isLoading }: TodayWorkoutProps) {
   const startPlannedDay = useStartPlannedDay();
   const startPlannedWorkout = useStartPlannedWorkout();
   const plannedWorkoutsState = useAppSelector((state) => state.plannedWorkouts);
+  const { requestEditPlan, handlePlanCardClick, replaceDraftDialog } = useEditPlannedWorkout();
 
   if (isLoading) {
     return (
@@ -83,6 +87,8 @@ export function TodayWorkout({ workoutHistory, isLoading }: TodayWorkoutProps) {
           plan={calendarPlanToday}
           extraCount={calendarPlansToday.length - 1}
           onStart={() => startPlannedWorkout(calendarPlanToday)}
+          onEdit={() => requestEditPlan(calendarPlanToday)}
+          onCardClick={(e) => handlePlanCardClick(e, calendarPlanToday)}
         />
       ) : showScheduled && plannedToday ? (
         <PlannedToday planned={plannedToday} onStart={() => startPlannedDay(plannedToday)} />
@@ -91,6 +97,7 @@ export function TodayWorkout({ workoutHistory, isLoading }: TodayWorkoutProps) {
       ) : (
         <NoWorkoutPlanned />
       )}
+      {replaceDraftDialog}
     </section>
   );
 }
@@ -105,25 +112,55 @@ function PlannedCalendarToday({
   plan,
   extraCount,
   onStart,
+  onEdit,
+  onCardClick,
 }: {
   plan: PlannedWorkout;
   extraCount: number;
   onStart: () => void;
+  onEdit: () => void;
+  onCardClick: (e: MouseEvent) => void;
 }) {
   const count = plan.exercises.length;
   const exerciseText = `${count} exercise${count === 1 ? '' : 's'}`;
+  const flagged = plan.exercises.filter((ex) => effectiveEmphasis(ex));
+
   return (
-    <div>
+    <div data-testid="today-plan-card" onClick={onCardClick} className="cursor-pointer">
       <p className="text-body-sm text-ink-muted">Planned for today</p>
       <HeroTitle>{plan.name}</HeroTitle>
       <p className="mt-3 max-w-[34ch] text-body text-ink-muted">
         {exerciseText}
         {extraCount > 0 ? ` · +${extraCount} more planned today` : ''}
       </p>
-      <Button variant="primary" size="xl" className="mt-6" onClick={onStart}>
-        <Play size={20} fill="currentColor" aria-hidden="true" />
-        <span>Start workout</span>
-      </Button>
+      {flagged.length > 0 && (
+        <div className="mt-2 flex flex-wrap items-center gap-1.5">
+          {flagged.map((ex) => (
+            <span
+              key={ex.id}
+              className="inline-flex max-w-full items-center gap-1 text-caption text-ink-muted"
+            >
+              <span className="truncate">{ex.customTitle || ex.exercise.name}</span>
+              <EmphasisChip emphasis={effectiveEmphasis(ex)} />
+            </span>
+          ))}
+        </div>
+      )}
+      <div className="mt-6 flex flex-col gap-2 sm:flex-row">
+        <Button variant="primary" size="xl" className="flex-1" onClick={onStart}>
+          <Play size={20} fill="currentColor" aria-hidden="true" />
+          <span>Start workout</span>
+        </Button>
+        <Button
+          variant="secondary"
+          size="lg"
+          onClick={onEdit}
+          aria-label={`Edit ${plan.name}`}
+        >
+          <Pencil size={18} aria-hidden="true" />
+          <span>Edit</span>
+        </Button>
+      </div>
     </div>
   );
 }
