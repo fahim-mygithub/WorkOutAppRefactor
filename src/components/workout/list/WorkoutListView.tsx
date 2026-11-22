@@ -110,9 +110,17 @@ export const WorkoutListView: React.FC<WorkoutListViewProps> = ({
               const lineKey = `${ex.id || exerciseIndex}-s-${set.id || round}`;
               const isTimed = set.time != null && set.time > 0;
 
+              // A single exercise-level recommendation/applied weight must not flatten
+              // sets the user (or plan) deliberately made different (e.g. 12/11/10).
+              const sets = ex.sets ?? [];
+              const repsVary = sets.some((s) => s.reps !== sets[0].reps);
+              const weightsVary = sets.some((s) => (s.weight ?? 0) !== (sets[0].weight ?? 0));
+
               // Resolve initial weight & reps
               let defaultWeight = 0;
               if (set.completed && set.weight !== undefined) {
+                defaultWeight = set.weight;
+              } else if (weightsVary && set.weight && set.weight > 0) {
                 defaultWeight = set.weight;
               } else if (appliedWeights?.[ex.exercise.id] !== undefined) {
                 defaultWeight = appliedWeights[ex.exercise.id];
@@ -127,6 +135,8 @@ export const WorkoutListView: React.FC<WorkoutListViewProps> = ({
                 defaultReps = set.reps ?? 0;
               } else if (set.completed && set.reps !== undefined) {
                 defaultReps = set.reps;
+              } else if (repsVary && set.reps !== undefined && set.reps > 0) {
+                defaultReps = prescribedFloor(set);
               } else if (recommendations?.[ex.exercise.id]?.recommendedReps !== undefined) {
                 defaultReps = recommendations[ex.exercise.id].recommendedReps!;
               } else if (set.reps !== undefined && set.reps > 0) {
