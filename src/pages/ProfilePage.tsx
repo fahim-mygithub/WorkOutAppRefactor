@@ -10,6 +10,7 @@ import { ExerciseHistoryService } from '../services/exerciseHistoryService';
 import { startWorkout } from '../store/slices/workoutSlice';
 import { WorkoutStorageService } from '../services/workoutStorageService';
 import { AllExercisesHistory } from '../components/profile/AllExercisesHistory';
+import { StrengthMarkers } from '../components/profile/StrengthMarkers';
 import { ManualExerciseLogger } from '../components/profile/ManualExerciseLogger';
 import { WorkoutHistoryManager } from '../components/profile/WorkoutHistoryManager';
 import { CompletedWorkoutCard } from '../components/profile/CompletedWorkoutCard';
@@ -398,6 +399,13 @@ export default function ProfilePage() {
               </div>
             )}
           </section>
+
+          {user?.uid && (
+            <StrengthMarkers
+              userId={user.uid}
+              refreshTrigger={refreshTrigger}
+            />
+          )}
 
           {user?.uid && (
             <AllExercisesHistory

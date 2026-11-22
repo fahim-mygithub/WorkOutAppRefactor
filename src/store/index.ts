@@ -9,6 +9,7 @@ import scheduleReducer from './slices/scheduleSlice';
 import trackedLiftsReducer from './slices/trackedLiftsSlice';
 import plannedWorkoutsReducer from './slices/plannedWorkoutsSlice';
 import aiReducer from './slices/aiSlice';
+import strengthMarkersReducer, { initStrengthMarkersPersistence } from './slices/strengthMarkersSlice';
 import { initChatPersistence } from '../ai/chatPersistence';
 
 export const store = configureStore({
@@ -23,6 +24,7 @@ export const store = configureStore({
     trackedLifts: trackedLiftsReducer,
     plannedWorkouts: plannedWorkoutsReducer,
     ai: aiReducer,
+    strengthMarkers: strengthMarkersReducer,
   },
   middleware: (getDefaultMiddleware) =>
     getDefaultMiddleware({
@@ -34,6 +36,7 @@ export const store = configureStore({
 
 // The assistant conversation, kept per signed-in user across reloads.
 initChatPersistence(store);
+initStrengthMarkersPersistence(store);
 
 export type RootState = ReturnType<typeof store.getState>;
 export type AppDispatch = typeof store.dispatch;
